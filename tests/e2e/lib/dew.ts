@@ -32,7 +32,7 @@ export const test = base.extend<{ dew: Dew }>({
     const root = mkdtempSync(join(tmpdir(), 'dew-root-'));
     cpSync(join(repo, 'tests/fixtures'), root, { recursive: true });
     // 開発コンテナの DEW_PUBLIC_* などを持ち込まない
-    const env = { HOME: home, PATH: process.env.PATH ?? '' };
+    const env = { HOME: home, PATH: process.env.PATH ?? '', DEW_PUBLIC_HOST: '127.0.0.1' };
     const port = await freePort();
     execFileSync(bin, ['--port', String(port), '--root', root], { env });
     const server = JSON.parse(readFileSync(join(home, '.cache/dew/server.json'), 'utf8'));

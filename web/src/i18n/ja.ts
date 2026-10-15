@@ -1,4 +1,36 @@
 // UI の文言はすべてここに置く
 export const ja = {
   appTitle: 'dew',
+  startPrompt: 'クリックかキーを押して開始',
+  startHint: '音声付きで再生できるよう、最初に一度だけ操作してください',
+  imeOn: 'IME オン',
+
+  home: 'Home',
+  canvas: 'キャンバス',
+  toCanvas: 'キャンバスへ(Tab)',
+  toHome: 'Home へ(h)',
+  emptyDir: '空のディレクトリです',
+  loading: '読み込み中…',
+  filter: '絞り込み',
+  filterHint: 'Enter で確定、Esc で解除',
+  following: '最新ファイルに追従中(n で解除)',
+  hiddenShown: '隠しファイルを表示中',
+  viewList: 'リスト表示',
+  viewGrid: 'グリッド表示',
+  changed: '新規・更新',
+  unreadable: '読み取り権限がありません',
+  selectedCount: (n: number) => `${n} 件を選択中`,
+  liveWindows: (n: number) => `ライブウィンドウ ${n} 個`,
+
+  size: 'サイズ',
+  modified: '更新',
+  duration: '長さ',
+  resolution: '解像度',
+  codec: 'コーデック',
+  fps: 'fps',
+  needsTranscode: '変換して再生',
+  items: (n: number) => `${n} 項目`,
+
+  openFailed: (name: string, reason: string) => `${name} を開けません: ${reason}`,
+  cannotOpenKind: (name: string) => `${name} は表示できない種類です`,
 } as const;

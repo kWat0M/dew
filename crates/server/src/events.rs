@@ -9,7 +9,7 @@ use axum::extract::State;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use dew_protocol::{ClientEvent, ServerEvent};
+use dew_protocol::{ClientEvent, EntryKind, ServerEvent};
 use futures_util::{SinkExt, StreamExt};
 use notify::{RecursiveMode, Watcher};
 use tokio::sync::mpsc;
@@ -57,7 +57,10 @@ impl Hub {
         });
         let (tx, rx) = mpsc::unbounded_channel();
         match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-            if let Ok(ev) = res {
+            // ファイルを読んだだけの通知(サムネイル作成など)は変更として扱わない
+            if let Ok(ev) = res
+                && changes_content(&ev.kind)
+            {
                 for p in ev.paths {
                     let _ = tx.send(p);
                 }
@@ -76,9 +79,15 @@ impl Hub {
         let Some(tab) = inner.tabs.values().max_by_key(|t| t.last_active) else {
             return false;
         };
+        let kind = if path.is_dir() {
+            EntryKind::Dir
+        } else {
+            EntryKind::File
+        };
         tab.tx
             .send(ServerEvent::Open {
                 path: path.to_string_lossy().into_owned(),
+                kind,
             })
             .is_ok()
     }
@@ -126,7 +135,15 @@ impl Hub {
                     .filter_map(|d| resolve(root, d).ok())
                     .filter(|d| d.is_dir())
                     .collect();
+                let watching = tab
+                    .dirs
+                    .iter()
+                    .map(|d| d.to_string_lossy().into_owned())
+                    .collect();
+                let tx = tab.tx.clone();
                 self.sync_watches(&inner);
+                // 登録が済んでから一覧を読み直してもらう(登録前の変更を取りこぼさないため)
+                let _ = tx.send(ServerEvent::Watching { dirs: watching });
             }
         }
     }
@@ -165,6 +182,16 @@ impl Hub {
                 name: name.to_owned(),
             });
         }
+    }
+}
+
+fn changes_content(kind: &notify::EventKind) -> bool {
+    use notify::EventKind;
+    use notify::event::ModifyKind;
+    match kind {
+        EventKind::Create(_) | EventKind::Remove(_) => true,
+        EventKind::Modify(m) => !matches!(m, ModifyKind::Metadata(_)),
+        _ => false,
     }
 }
 

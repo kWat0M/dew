@@ -17,6 +17,10 @@ export class Events {
 
   constructor(url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/events`) {
     this.url = url;
+  }
+
+  start() {
+    this.closed = false;
     this.connect();
   }
 

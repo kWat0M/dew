@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { current, expect, open, selected, start, test } from '../lib/dew';
 
 // 基準3: Home で j/k/h/l/Enter が動き、3カラムとサムネイルが表示される
-test.fixme('Home のキー操作と3カラム・サムネイル', async ({ page, dew }) => {
+test('Home のキー操作と3カラム・サムネイル', async ({ page, dew }) => {
   await start(page, dew);
   for (const col of ['col-parent', 'col-current', 'col-preview']) {
     await expect(page.getByTestId(col)).toBeVisible();
@@ -43,7 +43,7 @@ test.fixme('Home のキー操作と3カラム・サムネイル', async ({ page,
 });
 
 // 基準7: 新しいファイルを出力ディレクトリに置くと、1秒以内に Home に現れる
-test.fixme('新しいファイルが1秒以内に現れる', async ({ page, dew }) => {
+test('新しいファイルが1秒以内に現れる', async ({ page, dew }) => {
   await start(page, dew);
   await expect(current(page).getByRole('option', { name: 'image.png' })).toBeVisible();
   copyFileSync(join(dew.root, 'image.png'), join(dew.root, 'new.png'));
