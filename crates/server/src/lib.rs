@@ -1,6 +1,7 @@
 //! HTTP / WebSocket サーバとファイル API。1ポートに HTTPS で載せる
 
 mod auth;
+mod files;
 mod tls;
 mod web;
 
@@ -11,10 +12,12 @@ use std::time::Duration;
 
 use anyhow::{Context, bail};
 use axum::Router;
-use axum::extract::State;
+use axum::extract::{Query, Request, State};
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, middleware};
-use dew_protocol::{OpenRequest, OpenResponse};
+use dew_protocol::{Info, OpenRequest, OpenResponse};
 use tokio::sync::Notify;
 
 /// 待ち受けポートが使用中のとき、次の番号を試す回数
@@ -28,6 +31,8 @@ pub struct Config {
     pub port: u16,
     /// 閲覧範囲の起点(正規化済み)
     pub root: PathBuf,
+    /// Home の初期位置(範囲外なら root を使う。7.2)
+    pub home: PathBuf,
     /// 自己署名証明書の置き場所
     pub tls_dir: PathBuf,
     /// 表示用の URL に使うホスト名とポート(コンテナの外から見た値。2.5)
@@ -50,6 +55,8 @@ pub struct Ready {
 pub(crate) struct App {
     pub token: String,
     pub instance_id: String,
+    pub root: PathBuf,
+    pub home: PathBuf,
     pub shutdown: Notify,
 }
 
@@ -62,6 +69,12 @@ pub async fn serve(cfg: Config, on_ready: impl FnOnce(&Ready)) -> anyhow::Result
     let app = Arc::new(App {
         token: random_hex(32),
         instance_id: random_hex(4),
+        home: if cfg.home.starts_with(&cfg.root) {
+            cfg.home.clone()
+        } else {
+            cfg.root.clone()
+        },
+        root: cfg.root.clone(),
         shutdown: Notify::new(),
     });
 
@@ -123,6 +136,9 @@ pub async fn serve(cfg: Config, on_ready: impl FnOnce(&Ready)) -> anyhow::Result
 fn router(app: Arc<App>) -> Router {
     let api = Router::new()
         .route("/health", get(health))
+        .route("/info", get(info))
+        .route("/tree", get(files::tree))
+        .route("/media", get(media))
         .route("/open", post(open))
         .route("/shutdown", post(shutdown));
     Router::new()
@@ -137,6 +153,31 @@ fn router(app: Arc<App>) -> Router {
 
 async fn health(State(app): State<Arc<App>>) -> Json<serde_json::Value> {
     Json(serde_json::json!({ "instanceId": app.instance_id }))
+}
+
+async fn info(State(app): State<Arc<App>>) -> Json<Info> {
+    Json(Info {
+        root: app.root.to_string_lossy().into_owned(),
+        home: app.home.to_string_lossy().into_owned(),
+    })
+}
+
+#[derive(serde::Deserialize)]
+struct MediaQuery {
+    path: String,
+    #[serde(default)]
+    transcode: Option<u8>,
+}
+
+async fn media(
+    State(app): State<Arc<App>>,
+    Query(q): Query<MediaQuery>,
+    req: Request,
+) -> Result<Response, files::ApiError> {
+    if q.transcode == Some(1) {
+        return Ok(StatusCode::NOT_IMPLEMENTED.into_response());
+    }
+    files::media(&app, &q.path, req).await
 }
 
 async fn open(Json(_req): Json<OpenRequest>) -> Json<OpenResponse> {

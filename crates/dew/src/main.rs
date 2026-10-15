@@ -186,6 +186,9 @@ fn foreground(args: &ServeArgs) -> anyhow::Result<()> {
         bind: args.bind,
         port: args.port,
         root,
+        home: state::home()
+            .canonicalize()
+            .unwrap_or_else(|_| state::home()),
         tls_dir: std::env::var_os("DEW_TLS_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|| state::home().join(".local/share/dew/tls")),

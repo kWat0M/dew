@@ -4,6 +4,17 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+/// `GET /api/info` の応答
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Info {
+    /// 閲覧範囲の起点
+    pub root: String,
+    /// Home の初期位置
+    pub home: String,
+}
+
 /// `GET /api/tree?path=` の応答
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]

@@ -78,7 +78,6 @@ fn token_moves_to_cookie() {
 
 // 基準2: `--root` 指定時、範囲外のパス(`../` など)は 403 になる
 #[test]
-#[ignore = "S4 で実装"]
 fn path_outside_root_is_403() {
     let root = copy_fixtures();
     let r = root.path();
