@@ -48,7 +48,7 @@
     ]
   },
   "env": {
-    "DEW_BUDGET_PCT": "10"
+    "DEW_BUDGET_PCT": "40"
   },
   "statusLine": {
     "type": "command",
