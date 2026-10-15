@@ -7,7 +7,8 @@ import { join, resolve } from 'node:path';
 import { test as base, expect, type Page } from '@playwright/test';
 
 const repo = resolve(import.meta.dirname, '../../..');
-const bin = join(repo, 'target/debug/dew');
+// DEW_BIN でリリースビルドなど別のバイナリを試せる
+const bin = process.env.DEW_BIN ?? join(repo, 'target/debug/dew');
 
 export type Dew = {
   /** トークン付き URL(初回に開くと Cookie に移る) */

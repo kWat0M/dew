@@ -1,6 +1,7 @@
 //! dew の CLI と起動処理
 
 mod client;
+mod doctor;
 mod state;
 
 use std::fs::File;
@@ -44,6 +45,8 @@ enum Sub {
     Status,
     /// サーバを停止する
     Stop,
+    /// 依存(ffmpeg、Xvfb、音声サーバ、GPU)を確認する
+    Doctor,
 }
 
 #[derive(Args, Clone)]
@@ -74,6 +77,10 @@ fn main() -> ExitCode {
             println!("pid: {}  ポート: {}", s.pid, s.port);
         }),
         Some(Sub::Stop) => stop(),
+        Some(Sub::Doctor) => {
+            doctor::run();
+            Ok(())
+        }
         None if cli.serve.foreground => foreground(&cli.serve),
         None => start(&cli.serve, cli.path.as_deref()),
     };
@@ -97,6 +104,14 @@ fn start(args: &ServeArgs, path: Option<&Path>) -> anyhow::Result<()> {
     let server = match alive() {
         Some(s) => s,
         None => {
+            let missing = doctor::missing_required();
+            if !missing.is_empty() {
+                eprintln!(
+                    "dew: 警告: {} がありません。動画の変換とサムネイルが使えません。導入: {}",
+                    missing.join(", "),
+                    doctor::install_command(&missing)
+                );
+            }
             let s = spawn(args)?;
             for w in &s.warnings {
                 eprintln!("dew: 警告: {w}");
