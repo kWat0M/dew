@@ -1,0 +1,6 @@
+# ビルドに使わない大きなディレクトリを、ビルドコンテキストから外す
+target/
+**/node_modules/
+dew-recordings/
+.git/
+.env

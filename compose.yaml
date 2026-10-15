@@ -1,0 +1,104 @@
+# =============================================================================
+# 開発用コンテナ（dew）  セクション番号は Dockerfile と対応
+#   使い方: ./dev.sh（中身は docker compose up -d → docker compose exec dew bash）
+# =============================================================================
+services:
+  dew:
+    build:
+      context: .
+      args:
+        # --- [1] 基本設定: ホストと同じ UID/GID でユーザーを作る（dev.sh が id -u / id -g を渡す）---
+        UID: ${HOST_UID:?dev.sh から起動してください}
+        GID: ${HOST_GID:?dev.sh から起動してください}
+        # --- [5] Claude Code: dotfiles の場所（Claude の設定をホストと同じパスにコピーするため）---
+        DOTFILES: ${DOTFILES}
+      # プロジェクト外にある設定（dotfiles）をビルドに渡す（Dockerfile の COPY --from=<名前> で受け取る）
+      # 場所は .env の DOTFILES で指定する（未設定ならエラーにする）
+      additional_contexts:
+        # --- [1] 基本設定: starship の設定 ---
+        starship-config: ${DOTFILES:?.env に DOTFILES を設定してください}/starship/.config
+        # --- [2] git: git と ssh の設定 ---
+        git-config: ${DOTFILES}/git/.config/git
+        ssh-config: ${DOTFILES}/ssh/.ssh
+        # --- [4] Neovim: nvim の設定 ---
+        nvim-config: ${DOTFILES}/nvim/.config/nvim
+        # --- [5] Claude Code: Claude Code の設定（CLAUDE.md など）と同期スクリプト ---
+        claude-config: ${DOTFILES}/claude
+
+    # --- [1] 基本設定: コンテナに入ったときの作業ディレクトリ（リポジトリのルート）---
+    working_dir: /home/dev/${PROJECT_PATH}
+    command: bash
+    # up -d で起動したときに bash が終了しないよう、端末と標準入力を割り当てる（docker run -it 相当）
+    stdin_open: true
+    tty: true
+    # --- [1] 基本設定: ホスト名をプロジェクト名にする（starship のプロンプトに @dew と表示される）---
+    hostname: dew
+    # --- [1] 基本設定: どの UID でビルドしたかの印（dev.sh が前回と比べるのに使う）---
+    labels:
+      - dev.uid=${HOST_UID}
+
+    # --- [6] dew: Windows のブラウザから開くポート ---
+    # WSL2 の localhost 転送で、Windows から https://localhost:8765 / http://localhost:5173 で開ける
+    ports:
+      # dew 本体（HTTPS + WebSocket）
+      - "${DEW_PORT:-8765}:8765"
+      # Vite の開発サーバ（vite.config の server.host を 0.0.0.0 にする）
+      - "${VITE_PORT:-5173}:5173"
+
+    volumes:
+      # --- [1] 基本設定: リポジトリ全体を、ホームからの相対パスがホストと同じ場所にマウントする ---
+      # （.git も含めてコンテナ内で git を使うため。相対パスをそろえるのは、Claude Code の会話履歴を
+      #   ホストと同じ名前で同期させるため。zshrc の cla / clad / _link-claude-projects を参照）
+      # target/ と node_modules/ もリポジトリ内（WSL の ext4 上）に置く
+      - .:/home/dev/${PROJECT_PATH:?.env に PROJECT_PATH を設定してください}
+      # --- [2] git: ホストの ssh-agent を転送する（鍵はコンテナに入れない）---
+      - ${SSH_AUTH_SOCK:?ssh-agent が起動していません（zshrc を確認）}:/run/ssh-agent.sock
+      # --- [3] GUI ウィンドウ: WSLg の X11 / Wayland / PulseAudio ソケットを共有 ---
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - /mnt/wslg:/mnt/wslg
+      # --- [5] Claude Code: ログイン情報・会話履歴・メモリをホストと共有する ---
+      - ${HOME}/.claude:/home/dev/.claude
+      # --- [6] Rust: ダウンロードした依存クレートを残す ---
+      - cargo-home:/home/dev/.cargo
+      # --- [6] Node.js: pnpm のストア（ダウンロードしたパッケージ）を残す ---
+      - pnpm-store:/home/dev/.local/share/pnpm
+      # --- [6] gh: GitHub CLI のログイン情報を残す（Releases への公開・取得用）---
+      - gh-config:/home/dev/.config/gh
+
+    environment:
+      # --- [1] 基本設定: コンテナ内であることの目印（starship がホスト名を表示する条件に使う）---
+      - DEVCONTAINER=1
+      # --- [1] 基本設定: chafa（img コマンド）で使う画像の形式（.env で指定。WezTerm なら iterm）---
+      - IMAGE_FORMAT=${IMAGE_FORMAT:-sixels}
+      # --- [2] git: 転送した ssh-agent を使う ---
+      - SSH_AUTH_SOCK=/run/ssh-agent.sock
+      # --- [3] GUI ウィンドウ: 表示先を WSLg に向ける ---
+      # dew run は自分の Xvfb と pulseaudio を起動し、DISPLAY / PULSE_SERVER を上書きして子プロセスに渡す
+      - DISPLAY=${DISPLAY:-:0}
+      - WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-wayland-0}
+      - XDG_RUNTIME_DIR=/mnt/wslg/runtime-dir
+      - PULSE_SERVER=unix:/mnt/wslg/PulseServer
+      # --- [4] Neovim: 端末の色設定（truecolor）を引き継ぐ ---
+      - TERM=${TERM:-xterm-256color}
+      - COLORTERM=${COLORTERM:-truecolor}
+      # --- [4] Neovim: codecompanion 用（ホストで設定されていれば引き継ぐ）---
+      - GEMINI_API_KEY
+      # --- [5] Claude Code: 設定の場所を共有した ~/.claude にする（.claude.json もこの中に置かれ、ホストの ~/.claude.json とは分かれる）---
+      - CLAUDE_CONFIG_DIR=/home/dev/.claude
+      # --- [5] Claude Code: 会話履歴の使用中の印に書く PC の名前（コンテナのホスト名は PC と違うため）---
+      - SYNC_HOST=${SYNC_HOST:?.env に SYNC_HOST（この PC の uname -n の値）を設定してください}
+      # --- [6] dew: 端末に表示する URL（Windows から見たホスト名とポート。仕様書 2.5）---
+      - DEW_PUBLIC_HOST=localhost
+      - DEW_PUBLIC_PORT=${DEW_PORT:-8765}
+
+    # --- [3] GUI ウィンドウ: 共有メモリ（MIT-SHM）を使う GUI アプリ用 ---
+    # ホストの /dev/shm を使うので、Chrome / Xvfb 用の shm_size 指定は不要（ipc: host とは併用できない）
+    ipc: host
+
+volumes:
+  # --- [6] Rust ---
+  cargo-home:
+  # --- [6] Node.js ---
+  pnpm-store:
+  # --- [6] gh ---
+  gh-config:

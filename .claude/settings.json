@@ -1,0 +1,50 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo:*)",
+      "Bash(rustup:*)",
+      "Bash(pnpm:*)",
+      "Bash(npx playwright:*)",
+      "Bash(node:*)",
+      "Bash(ffmpeg:*)",
+      "Bash(ffprobe:*)",
+      "Bash(Xvfb:*)",
+      "Bash(xdotool:*)",
+      "Bash(xwininfo:*)",
+      "Bash(pulseaudio:*)",
+      "Bash(pactl:*)",
+      "Bash(python3:*)",
+      "Bash(scripts/gen-fixtures.sh:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git switch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git branch:*)",
+      "Bash(git stash:*)",
+      "Bash(git restore:*)"
+    ],
+    "ask": [
+      "Bash(git push:*)",
+      "Bash(git merge:*)",
+      "Bash(git rebase:*)",
+      "Bash(git reset:*)",
+      "Bash(gh:*)",
+      "Bash(sudo:*)",
+      "Bash(apt:*)",
+      "Bash(apt-get:*)",
+      "Bash(pip:*)",
+      "Bash(pip3:*)",
+      "Bash(curl:*)"
+    ],
+    "deny": [
+      "Bash(docker:*)",
+      "Bash(rm -rf /:*)",
+      "Bash(rm -rf ~:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)"
+    ]
+  }
+}
