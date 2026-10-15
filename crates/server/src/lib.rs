@@ -1,6 +1,7 @@
 //! HTTP / WebSocket サーバとファイル API。1ポートに HTTPS で載せる
 
 mod auth;
+mod events;
 mod files;
 mod media;
 mod tls;
@@ -22,6 +23,9 @@ use tokio::sync::Notify;
 
 /// キャッシュの上限(9.1)
 const CACHE_LIMIT: u64 = 5 * 1024 * 1024 * 1024;
+
+/// 接続中のタブがない状態がこれだけ続いたら自動で止まる(7.1)
+const IDLE_LIMIT: Duration = Duration::from_secs(12 * 3600);
 
 /// 待ち受けポートが使用中のとき、次の番号を試す回数
 const PORT_TRIES: u16 = 100;
@@ -65,6 +69,7 @@ pub(crate) struct App {
     pub root: PathBuf,
     pub home: PathBuf,
     pub media: dew_media::Media,
+    pub hub: Arc<events::Hub>,
     pub shutdown: Notify,
 }
 
@@ -84,6 +89,7 @@ pub async fn serve(cfg: Config, on_ready: impl FnOnce(&Ready)) -> anyhow::Result
         },
         root: cfg.root.clone(),
         media: dew_media::Media::new(cfg.cache_dir.join("media"), CACHE_LIMIT, cfg.jobs),
+        hub: events::Hub::new(),
         shutdown: Notify::new(),
     });
 
@@ -133,6 +139,19 @@ pub async fn serve(cfg: Config, on_ready: impl FnOnce(&Ready)) -> anyhow::Result
             app.shutdown.notify_one();
         }
     });
+    tokio::spawn({
+        let app = app.clone();
+        async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(60)).await;
+                if app.hub.idle_for().is_some_and(|d| d >= IDLE_LIMIT) {
+                    tracing::info!("接続中のタブがない状態が 12 時間続いたので止まります");
+                    app.shutdown.notify_one();
+                    return;
+                }
+            }
+        }
+    });
     on_ready(&ready);
     tracing::info!(port, "待ち受けを開始しました");
     axum_server::from_tcp_rustls(listener, tls)?
@@ -155,6 +174,7 @@ fn router(app: Arc<App>) -> Router {
         .route("/shutdown", post(shutdown));
     Router::new()
         .nest("/api", api)
+        .route("/ws/events", get(events::ws))
         .fallback(web::static_file)
         .layer(middleware::from_fn_with_state(
             app.clone(),
@@ -195,9 +215,15 @@ async fn media(
     files::media(&app, &q.path, req).await
 }
 
-async fn open(Json(_req): Json<OpenRequest>) -> Json<OpenResponse> {
-    // 接続中のタブへの転送は /ws/events と合わせて実装する
-    Json(OpenResponse { delivered: false })
+/// `POST /api/open`: CLI からの表示指示を、最後に操作したタブへ送る(F10)
+async fn open(
+    State(app): State<Arc<App>>,
+    Json(req): Json<OpenRequest>,
+) -> Result<Json<OpenResponse>, files::ApiError> {
+    let path = files::resolve(&app.root, &req.path)?;
+    Ok(Json(OpenResponse {
+        delivered: app.hub.open(&path),
+    }))
 }
 
 async fn shutdown(State(app): State<Arc<App>>) -> &'static str {

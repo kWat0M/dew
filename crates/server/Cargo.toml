@@ -6,11 +6,13 @@ publish.workspace = true
 
 [dependencies]
 anyhow = "1"
-axum = "0.8"
+axum = { version = "0.8", features = ["ws"] }
 axum-server = { version = "0.8", default-features = false, features = ["tls-rustls-no-provider"] }
 dew-media = { version = "0.1.0", path = "../media" }
 dew-protocol = { version = "0.1.0", path = "../protocol" }
+futures-util = "0.3"
 getrandom = "0.4"
+notify = "8"
 rcgen = "0.14"
 rust-embed = { version = "8", features = ["mime-guess"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }

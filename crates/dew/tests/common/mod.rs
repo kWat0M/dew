@@ -179,3 +179,71 @@ pub fn wait_until(timeout: Duration, mut f: impl FnMut() -> bool) -> bool {
     }
     false
 }
+
+pub type Ws =
+    tungstenite::WebSocket<rustls::StreamOwned<rustls::ClientConnection, std::net::TcpStream>>;
+
+impl Instance {
+    /// ログイン済みで WebSocket を開く。読み取りには 3 秒の上限を付ける
+    pub fn ws(&self, path: &str) -> Ws {
+        use tungstenite::client::IntoClientRequest;
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let (name, value) = self.login();
+        let config = rustls::ClientConfig::builder()
+            .dangerous()
+            .with_custom_certificate_verifier(std::sync::Arc::new(AcceptAny))
+            .with_no_client_auth();
+        let conn = rustls::ClientConnection::new(
+            std::sync::Arc::new(config),
+            "localhost".try_into().unwrap(),
+        )
+        .unwrap();
+        let tcp = std::net::TcpStream::connect(("127.0.0.1", self.port())).unwrap();
+        tcp.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        let mut req = format!("wss://127.0.0.1:{}{path}", self.port())
+            .into_client_request()
+            .unwrap();
+        req.headers_mut()
+            .insert("cookie", format!("{name}={value}").parse().unwrap());
+        let (ws, _) = tungstenite::client(req, rustls::StreamOwned::new(conn, tcp)).unwrap();
+        ws
+    }
+}
+
+/// 自己署名証明書をそのまま受け入れる(テスト専用)
+#[derive(Debug)]
+struct AcceptAny;
+
+impl rustls::client::danger::ServerCertVerifier for AcceptAny {
+    fn verify_server_cert(
+        &self,
+        _: &rustls::pki_types::CertificateDer<'_>,
+        _: &[rustls::pki_types::CertificateDer<'_>],
+        _: &rustls::pki_types::ServerName<'_>,
+        _: &[u8],
+        _: rustls::pki_types::UnixTime,
+    ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
+        Ok(rustls::client::danger::ServerCertVerified::assertion())
+    }
+    fn verify_tls12_signature(
+        &self,
+        _: &[u8],
+        _: &rustls::pki_types::CertificateDer<'_>,
+        _: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+    fn verify_tls13_signature(
+        &self,
+        _: &[u8],
+        _: &rustls::pki_types::CertificateDer<'_>,
+        _: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+        rustls::crypto::ring::default_provider()
+            .signature_verification_algorithms
+            .supported_schemes()
+    }
+}
