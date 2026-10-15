@@ -1,0 +1,11 @@
+[package]
+name = "dew"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "dew"
+path = "src/main.rs"
+
+[dependencies]
