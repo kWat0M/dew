@@ -130,7 +130,11 @@ pub enum ServerEvent {
     /// 監視を登録した(Watch への応答)。ブラウザはこれを受けて一覧を読み直す
     Watching { dirs: Vec<String> },
     /// CLI からの表示指示(F10)。ファイルはキャンバスに開き、ディレクトリは Home で開く
-    Open { path: String, kind: EntryKind },
+    Open {
+        path: String,
+        kind: EntryKind,
+        media: MediaKind,
+    },
 }
 
 /// `WS /ws/events` でブラウザから送る通知

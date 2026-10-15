@@ -9,13 +9,13 @@ use axum::extract::State;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use dew_protocol::{ClientEvent, EntryKind, ServerEvent};
+use dew_protocol::{ClientEvent, EntryKind, MediaKind, ServerEvent};
 use futures_util::{SinkExt, StreamExt};
 use notify::{RecursiveMode, Watcher};
 use tokio::sync::mpsc;
 
 use crate::App;
-use crate::files::resolve;
+use crate::files::{media_kind, resolve};
 
 /// 変更通知をまとめる時間。書き込み中のファイルで通知が続いても、この間隔で1回にする
 const COALESCE: Duration = Duration::from_millis(100);
@@ -88,6 +88,11 @@ impl Hub {
             .send(ServerEvent::Open {
                 path: path.to_string_lossy().into_owned(),
                 kind,
+                media: if kind == EntryKind::Dir {
+                    MediaKind::Other
+                } else {
+                    media_kind(&path.to_string_lossy())
+                },
             })
             .is_ok()
     }

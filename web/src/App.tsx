@@ -36,8 +36,8 @@ export function App() {
     return () => events.close();
   }, [events]);
 
-  const open = useCallback((paths: string[]) => {
-    const added = paths.map((path) => ({ id: nextId.current++, path }));
+  const open = useCallback((files: Omit<Win, 'id'>[]) => {
+    const added = files.map((f) => ({ ...f, id: nextId.current++ }));
     setWindows((ws) => [...ws, ...added]);
     setFocused(added.at(-1)!.id);
     setScreen('canvas');
@@ -52,7 +52,7 @@ export function App() {
           setHomeDir(ev.path);
           setScreen('home');
         } else {
-          open([ev.path]);
+          open([{ path: ev.path, media: ev.media }]);
         }
       }),
     [events, open],
@@ -110,9 +110,13 @@ export function App() {
           windows={windows}
           focused={focused}
           onFocus={setFocused}
-          onClose={(id) => setWindows((ws) => ws.filter((w) => w.id !== id))}
+          onClose={(ids) => {
+            const rest = windows.filter((w) => !ids.includes(w.id));
+            setWindows(rest);
+            if (focused !== null && ids.includes(focused)) setFocused(rest.at(-1)?.id ?? null);
+          }}
+          onReorder={(ids) => setWindows((ws) => ids.map((id) => ws.find((w) => w.id === id)!))}
           onHome={() => setScreen('home')}
-          onError={onError}
         />
       )}
       {ime && <div className="ime">{ja.imeOn}</div>}

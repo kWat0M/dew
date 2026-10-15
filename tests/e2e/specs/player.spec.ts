@@ -2,7 +2,7 @@
 import { expect, frameNumber, open, start, test } from '../lib/dew';
 
 // 基準4: H.264 の MP4 が変換なしで再生され、音声トラックが有効になっている
-test.fixme('H.264 の MP4 を変換なしで音声付き再生する', async ({ page, dew }) => {
+test('H.264 の MP4 を変換なしで音声付き再生する', async ({ page, dew }) => {
   const transcodes: string[] = [];
   page.on('request', (r) => r.url().includes('transcode=1') && transcodes.push(r.url()));
   await start(page, dew);
@@ -18,7 +18,7 @@ test.fixme('H.264 の MP4 を変換なしで音声付き再生する', async ({ 
 
 // 基準5: `mp4v` の MP4 と AVI が変換されて再生される(キャッシュはサーバのテストで確かめる)
 for (const name of ['mp4v.mp4', 'xvid_mp3.avi']) {
-  test.fixme(`${name} を変換して再生する`, async ({ page, dew }) => {
+  test(`${name} を変換して再生する`, async ({ page, dew }) => {
     await start(page, dew);
     const video = await open(page, name);
     await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(0.5);
@@ -31,7 +31,7 @@ for (const name of ['mp4v.mp4', 'xvid_mp3.avi']) {
 }
 
 // 基準6: `.` を押すと表示中の番号がちょうど1増える。`0`–`9` で 0–90% の位置に移動する
-test.fixme('コマ送りと 0–9 の移動', async ({ page, dew }) => {
+test('コマ送りと 0–9 の移動', async ({ page, dew }) => {
   await start(page, dew);
   const video = await open(page, 'h264_aac.mp4');
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(0.3);
@@ -53,4 +53,38 @@ test.fixme('コマ送りと 0–9 の移動', async ({ page, dew }) => {
     await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeCloseTo(Number(key), 1);
     await expect.poll(() => frameNumber(page, video)).toBe(Number(key) * 30);
   }
+});
+
+// 変換した動画でも、セグメントの境目をまたいでフレーム番号がずれない(7.4、7.5)
+test('変換した動画の 2 番目のセグメントでもフレーム番号が合う', async ({ page, dew }) => {
+  await start(page, dew);
+  const video = await open(page, 'mp4v.mp4');
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(0.3);
+  await page.keyboard.press('k');
+  for (const key of ['7', '2', '9']) {
+    await page.keyboard.press(key);
+    await expect.poll(() => frameNumber(page, video)).toBe(Number(key) * 30);
+  }
+  // 6 秒の境目の前後
+  await page.keyboard.press('2');
+  await expect.poll(() => frameNumber(page, video)).toBe(60);
+  for (let i = 0; i < 4; i++) await page.keyboard.press('L'); // 30 秒進む → 末尾
+  await page.keyboard.press('6');
+  await expect.poll(() => frameNumber(page, video)).toBe(180);
+  await page.keyboard.press(',');
+  await expect.poll(() => frameNumber(page, video)).toBe(179);
+  await page.keyboard.press('.');
+  await expect.poll(() => frameNumber(page, video)).toBe(180);
+});
+
+// F10: dew <ファイル> で、接続中のタブのキャンバスにウィンドウが追加される
+test('dew <ファイル> で開いているタブに表示する', async ({ page, dew }) => {
+  await start(page, dew);
+  await expect(page.getByTestId('col-current').getByRole('option').first()).toBeVisible();
+  await page.waitForTimeout(1200); // 操作したタブとして登録されるのを待つ
+  const out = dew.run([`${dew.root}/h264_aac.mp4`]);
+  expect(out).toContain('ブラウザに表示しました');
+  const win = page.getByTestId('player-window').filter({ hasText: 'h264_aac.mp4' });
+  await expect(win).toBeVisible();
+  await expect.poll(() => win.locator('video').evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(0.3);
 });

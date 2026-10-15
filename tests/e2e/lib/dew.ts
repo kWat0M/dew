@@ -14,6 +14,8 @@ export type Dew = {
   url: string;
   /** --root に渡した、テスト素材の複製 */
   root: string;
+  /** 同じサーバに対して dew を実行する(dew <ファイル> など) */
+  run: (args: string[]) => string;
 };
 
 function freePort(): Promise<number> {
@@ -36,7 +38,8 @@ export const test = base.extend<{ dew: Dew }>({
     const port = await freePort();
     execFileSync(bin, ['--port', String(port), '--root', root], { env });
     const server = JSON.parse(readFileSync(join(home, '.cache/dew/server.json'), 'utf8'));
-    await use({ url: `https://127.0.0.1:${server.port}/?token=${server.token}`, root });
+    const run = (args: string[]) => execFileSync(bin, args, { env, encoding: 'utf8' });
+    await use({ url: `https://127.0.0.1:${server.port}/?token=${server.token}`, root, run });
     execFileSync(bin, ['stop'], { env });
     rmSync(home, { recursive: true, force: true });
     rmSync(root, { recursive: true, force: true });

@@ -76,6 +76,7 @@ fn dew_file_is_sent_to_last_active_tab() {
     let ev = recv_until(&mut first, |v| v["type"] == "open");
     assert_eq!(ev["path"], file.to_str().unwrap());
     assert_eq!(ev["kind"], "file");
+    assert_eq!(ev["media"], "video");
     // もう一方のタブには送らない
     second
         .get_mut()

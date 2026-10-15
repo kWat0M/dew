@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '../api/http';
 import type { Events } from '../api/events';
 import type { Entry } from '../protocol/Entry';
+import type { MediaKind } from '../protocol/MediaKind';
 import type { Tree } from '../protocol/Tree';
 import { basename, join } from '../format';
 import { ja } from '../i18n/ja';
@@ -30,7 +31,7 @@ type Props = {
   /** 表示するディレクトリ(初期位置、または dew <ディレクトリ> の指示) */
   dir: string | null;
   liveCount: number;
-  onOpen: (paths: string[]) => void;
+  onOpen: (files: { path: string; media: MediaKind }[]) => void;
   onCanvas: () => void;
   onError: (message: string) => void;
 };
@@ -88,7 +89,7 @@ export function Home(p: Props) {
         if (e && e.kind === 'file' && openable(e) === null) {
           followTarget.current = null;
           setSelectedName(e.name);
-          onOpen([join(t.path, e.name)]);
+          onOpen([{ path: join(t.path, e.name), media: e.media }]);
         }
       },
       (err: unknown) => alive && onError(err instanceof ApiError ? err.message : String(err)),
@@ -153,11 +154,11 @@ export function Home(p: Props) {
 
   const openEntries = (list: Entry[]) => {
     if (!cwd) return;
-    const files: string[] = [];
+    const files: { path: string; media: MediaKind }[] = [];
     for (const e of list) {
       const reason = openable(e);
       if (reason) onError(reason);
-      else files.push(join(cwd, e.name));
+      else files.push({ path: join(cwd, e.name), media: e.media });
     }
     if (files.length) onOpen(files);
   };
