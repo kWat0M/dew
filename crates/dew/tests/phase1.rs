@@ -10,7 +10,6 @@ use common::{Instance, client, copy_fixtures, find_url, fixtures, free_port, q};
 
 // 基準1: `dew` で起動し、端末にトークン付きの HTTPS URL が表示される
 #[test]
-#[ignore = "S3 で実装"]
 fn dew_prints_https_url_with_token() {
     let a = Instance::new();
     let port = free_port().to_string();
@@ -27,7 +26,6 @@ fn dew_prints_https_url_with_token() {
 
 // 基準1: 2回目の `dew <ファイル>` は既存サーバを再利用する
 #[test]
-#[ignore = "S3 で実装"]
 fn second_dew_reuses_running_server() {
     let a = Instance::new();
     let port = free_port().to_string();
@@ -48,7 +46,6 @@ fn second_dew_reuses_running_server() {
 
 // 基準2: トークンなしのアクセスは 401 になる
 #[test]
-#[ignore = "S3 で実装"]
 fn request_without_token_is_401() {
     let a = Instance::new();
     a.dew(&["--port", &free_port().to_string()]);
@@ -59,12 +56,11 @@ fn request_without_token_is_401() {
         assert_eq!(res.status(), 401, "{path}");
     }
     // トークンを Cookie に移した後は通る
-    assert_eq!(a.get(&tree).status(), 200);
+    assert_eq!(a.get("/api/health").status(), 200);
 }
 
 // 基準2: Cookie には HttpOnly・Secure・SameSite=Strict が付き、リダイレクトで URL からトークンを消す(7.8)
 #[test]
-#[ignore = "S3 で実装"]
 fn token_moves_to_cookie() {
     let a = Instance::new();
     a.dew(&["--port", &free_port().to_string()]);
@@ -165,7 +161,6 @@ fn transcoded_segments_are_cached() {
 
 // 基準8: 2つのコンテナで同時に起動しても、ポートとトークン(Cookie)が衝突しない
 #[test]
-#[ignore = "S3 で実装"]
 fn two_instances_do_not_collide() {
     let port = free_port().to_string();
     let a = Instance::new();

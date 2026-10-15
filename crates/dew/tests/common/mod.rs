@@ -133,6 +133,7 @@ impl Drop for Instance {
 
 /// 自己署名証明書を受け入れ、リダイレクトは追わないクライアント
 pub fn client() -> Client {
+    let _ = rustls::crypto::ring::default_provider().install_default();
     Client::builder()
         .danger_accept_invalid_certs(true)
         .redirect(reqwest::redirect::Policy::none())
