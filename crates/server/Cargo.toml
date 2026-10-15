@@ -8,6 +8,7 @@ publish.workspace = true
 anyhow = "1"
 axum = "0.8"
 axum-server = { version = "0.8", default-features = false, features = ["tls-rustls-no-provider"] }
+dew-media = { version = "0.1.0", path = "../media" }
 dew-protocol = { version = "0.1.0", path = "../protocol" }
 getrandom = "0.4"
 rcgen = "0.14"

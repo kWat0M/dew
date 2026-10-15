@@ -114,7 +114,6 @@ fn path_outside_root_is_403() {
 
 // 基準5: `mp4v` の MP4 と AVI が変換されて再生でき、2回目はキャッシュから返る
 #[test]
-#[ignore = "S5 で実装"]
 fn transcoded_segments_are_cached() {
     let a = Instance::new();
     a.dew(&["--port", &free_port().to_string()]);

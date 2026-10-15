@@ -5,3 +5,12 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
+anyhow = "1"
+dew-protocol = { version = "0.1.0", path = "../protocol" }
+serde_json = "1"
+tokio = { version = "1", features = ["process", "sync", "fs", "rt", "macros"] }
+tracing = "0.1"
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

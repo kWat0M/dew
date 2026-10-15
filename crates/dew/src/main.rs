@@ -57,6 +57,9 @@ struct ServeArgs {
     /// 閲覧できる範囲
     #[arg(long, default_value = "/")]
     root: PathBuf,
+    /// ffmpeg の同時実行数
+    #[arg(long, default_value_t = 2)]
+    jobs: usize,
     /// バックグラウンドに回らず、前面で動かす
     #[arg(long)]
     foreground: bool,
@@ -139,6 +142,8 @@ fn spawn(args: &ServeArgs) -> anyhow::Result<ServerFile> {
         .arg(args.bind.to_string())
         .arg("--root")
         .arg(&args.root)
+        .arg("--jobs")
+        .arg(args.jobs.to_string())
         .stdin(Stdio::null())
         .stdout(log.try_clone()?)
         .stderr(log)
@@ -186,6 +191,8 @@ fn foreground(args: &ServeArgs) -> anyhow::Result<()> {
         bind: args.bind,
         port: args.port,
         root,
+        cache_dir: state::cache_dir(),
+        jobs: args.jobs,
         home: state::home()
             .canonicalize()
             .unwrap_or_else(|_| state::home()),

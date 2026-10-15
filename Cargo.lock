@@ -397,6 +397,14 @@ version = "0.1.0"
 [[package]]
 name = "dew-media"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dew-protocol",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
 
 [[package]]
 name = "dew-protocol"
@@ -414,6 +422,7 @@ dependencies = [
  "anyhow",
  "axum",
  "axum-server",
+ "dew-media",
  "dew-protocol",
  "getrandom 0.4.3",
  "rcgen",

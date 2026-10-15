@@ -2,6 +2,7 @@
 
 mod auth;
 mod files;
+mod media;
 mod tls;
 mod web;
 
@@ -13,12 +14,14 @@ use std::time::Duration;
 use anyhow::{Context, bail};
 use axum::Router;
 use axum::extract::{Query, Request, State};
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use axum::response::Response;
 use axum::routing::{get, post};
 use axum::{Json, middleware};
 use dew_protocol::{Info, OpenRequest, OpenResponse};
 use tokio::sync::Notify;
+
+/// キャッシュの上限(9.1)
+const CACHE_LIMIT: u64 = 5 * 1024 * 1024 * 1024;
 
 /// 待ち受けポートが使用中のとき、次の番号を試す回数
 const PORT_TRIES: u16 = 100;
@@ -33,6 +36,10 @@ pub struct Config {
     pub root: PathBuf,
     /// Home の初期位置(範囲外なら root を使う。7.2)
     pub home: PathBuf,
+    /// キャッシュの置き場所(~/.cache/dew)
+    pub cache_dir: PathBuf,
+    /// ffmpeg の同時実行数(7.3)
+    pub jobs: usize,
     /// 自己署名証明書の置き場所
     pub tls_dir: PathBuf,
     /// 表示用の URL に使うホスト名とポート(コンテナの外から見た値。2.5)
@@ -57,6 +64,7 @@ pub(crate) struct App {
     pub instance_id: String,
     pub root: PathBuf,
     pub home: PathBuf,
+    pub media: dew_media::Media,
     pub shutdown: Notify,
 }
 
@@ -75,6 +83,7 @@ pub async fn serve(cfg: Config, on_ready: impl FnOnce(&Ready)) -> anyhow::Result
             cfg.root.clone()
         },
         root: cfg.root.clone(),
+        media: dew_media::Media::new(cfg.cache_dir.join("media"), CACHE_LIMIT, cfg.jobs),
         shutdown: Notify::new(),
     });
 
@@ -139,6 +148,9 @@ fn router(app: Arc<App>) -> Router {
         .route("/info", get(info))
         .route("/tree", get(files::tree))
         .route("/media", get(media))
+        .route("/probe", get(media::probe))
+        .route("/thumb", get(media::thumb))
+        .route("/sprite", get(media::sprite))
         .route("/open", post(open))
         .route("/shutdown", post(shutdown));
     Router::new()
@@ -167,15 +179,18 @@ struct MediaQuery {
     path: String,
     #[serde(default)]
     transcode: Option<u8>,
+    #[serde(default)]
+    seg: Option<u32>,
 }
 
+/// 原ファイル、または `transcode=1&seg=N` で変換したセグメント
 async fn media(
     State(app): State<Arc<App>>,
     Query(q): Query<MediaQuery>,
     req: Request,
 ) -> Result<Response, files::ApiError> {
     if q.transcode == Some(1) {
-        return Ok(StatusCode::NOT_IMPLEMENTED.into_response());
+        return media::segment(&app, &q.path, q.seg.unwrap_or(0)).await;
     }
     files::media(&app, &q.path, req).await
 }

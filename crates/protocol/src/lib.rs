@@ -83,6 +83,20 @@ pub struct Probe {
     pub segment_count: u32,
     /// 各フレームの表示時刻(秒)。可変フレームレートでも番号がずれないように使う(7.5)
     pub frame_times: Vec<f64>,
+    /// シークバーのプレビュー(`GET /api/sprite?path=`)の並び。映像がなければ None
+    pub sprite: Option<Sprite>,
+}
+
+/// シークバー用のサムネイル列。`interval` 秒ごとの画像を `cols` 列で左上から並べた1枚の画像
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Sprite {
+    pub interval: f64,
+    pub count: u32,
+    pub cols: u32,
+    pub tile_width: u32,
+    pub tile_height: u32,
 }
 
 /// `POST /api/open` の要求(F10)
