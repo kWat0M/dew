@@ -35,13 +35,14 @@ import tile from '@material-symbols/svg-400/rounded/view_quilt.svg?raw';
 import free from '@material-symbols/svg-400/rounded/picture_in_picture.svg?raw';
 import search from '@material-symbols/svg-400/rounded/search.svg?raw';
 import sync from '@material-symbols/svg-400/rounded/sync.svg?raw';
+import compare from '@material-symbols/svg-400/rounded/compare.svg?raw';
 import './icons.css';
 
 const svgs = {
   folder, image, movie, audio, file, lock, home, canvas,
   play, pause, playCircle, pauseCircle, back5, back30, fwd5, fwd30, frameBack, frameNext,
   close, fullscreen, volume, volumeOff, grid, list, minimize, maximize, restore,
-  history, help, menu, power, tile, free, search, sync,
+  history, help, menu, power, tile, free, search, sync, compare,
 };
 
 export type IconName = keyof typeof svgs;

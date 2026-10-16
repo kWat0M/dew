@@ -537,3 +537,108 @@
   color: var(--md-sys-color-on-tertiary-container);
   white-space: nowrap;
 }
+
+/* 比較ウィンドウ(F7) */
+.cmp-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 8px;
+}
+
+/* MD3 の Segmented button */
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-full);
+  overflow: hidden;
+}
+
+.segmented button {
+  height: 32px;
+  padding: 0 16px;
+  border: none;
+  border-left: 1px solid var(--md-sys-color-outline);
+  background: none;
+  font: var(--md-sys-typescale-label-large);
+  cursor: pointer;
+}
+
+.segmented button:first-child {
+  border-left: none;
+}
+
+.segmented button.on {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+/* 差分の重ね合わせが外へ漏れないよう、ここで合成を閉じる */
+.cmp-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  isolation: isolate;
+  background: var(--md-sys-color-scrim);
+}
+
+.cmp-layer {
+  position: absolute;
+}
+
+.cmp-layer video,
+.cmp-layer img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.cmp-label {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  padding: 2px 8px;
+  border-radius: var(--md-sys-shape-corner-small);
+  background: color-mix(in srgb, var(--md-sys-color-inverse-surface) 70%, transparent);
+  color: var(--md-sys-color-inverse-on-surface);
+  font: var(--md-sys-typescale-label-medium);
+}
+
+.cmp-media {
+  position: absolute;
+  pointer-events: none;
+}
+
+.cmp-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--md-sys-color-primary);
+  pointer-events: auto;
+  cursor: ew-resize;
+}
+
+/* 細い線でもつかみやすいよう、当たり判定を広げる */
+.cmp-handle::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -10px;
+  right: -10px;
+}
+
+.cmp-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-primary);
+  box-shadow: var(--md-sys-elevation-level2);
+  transform: translate(-50%, -50%);
+}

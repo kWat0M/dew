@@ -50,7 +50,7 @@ test('キャンバスの s で2本を同期再生する', async ({ page, dew }) 
 });
 
 // 基準1(比較ウィンドウ): Home の c で比較ウィンドウを開き、並べて同期再生する
-test.fixme('比較ウィンドウで2本を同期再生する', async ({ page, dew }) => {
+test('比較ウィンドウで2本を同期再生する', async ({ page, dew }) => {
   test.setTimeout(60_000);
   copyP2(dew, ['long_h264.mp4', 'long_mp4v.mp4']);
   await start(page, dew);
@@ -65,7 +65,7 @@ test.fixme('比較ウィンドウで2本を同期再生する', async ({ page, d
 });
 
 // 基準2: スライダー比較が動く
-test.fixme('スライダー比較で境目より左は1つ目、右は2つ目が見える', async ({ page, dew }) => {
+test('スライダー比較で境目より左は1つ目、右は2つ目が見える', async ({ page, dew }) => {
   copyP2(dew, ['image_b.png']);
   await start(page, dew);
   await pick(page, ['image.png', 'image_b.png']);
@@ -91,7 +91,7 @@ test.fixme('スライダー比較で境目より左は1つ目、右は2つ目が
 });
 
 // 基準2: 差分表示が動く
-test.fixme('差分表示で違うところだけが明るく出る', async ({ page, dew }) => {
+test('差分表示で違うところだけが明るく出る', async ({ page, dew }) => {
   copyP2(dew, ['image_b.png']);
   await start(page, dew);
   await pick(page, ['image.png', 'image_b.png']);

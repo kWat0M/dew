@@ -1,15 +1,15 @@
 // キャンバス上の1つのウィンドウ。動画・音声・画像を表示し、下部に再生コントロールを出す(4.2、F2、F5)
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
-import { api, ApiError } from '../api/http';
+import { api } from '../api/http';
 import type { MediaKind } from '../protocol/MediaKind';
 import type { Probe } from '../protocol/Probe';
 import { basename, formatTime } from '../format';
 import { ja } from '../i18n/ja';
 import { Icon, type IconName } from '../icons';
 import { frameAt, frameFrom, seekTimeFor } from './frames';
-import type { Rect } from './layout';
-import { TranscodeSource } from './mse';
 import { SeekBar } from './SeekBar';
+import { useVideoSource } from './source';
+import { WindowFrame, type FrameProps } from './WindowFrame';
 
 export const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 
@@ -28,35 +28,17 @@ export type PlayerApi = {
   toggleMute(): void;
   toggleZoom(): void;
   fullscreen(): void;
+  /** 比較ウィンドウの表示を切り替える(c) */
+  cycleMode?(): void;
 };
 
-type Props = {
+type Props = FrameProps & {
   id: number;
-  number: number;
   path: string;
   media: MediaKind;
-  rect: Rect;
-  focused: boolean;
-  /** 複数選択に入っているか */
-  selected: boolean;
-  maximized: boolean;
-  /** 最小化中(配置から外し、タスクバーにだけ残す) */
-  minimized: boolean;
-  /** タイルの並べ替えで、落とす先になっている */
-  dropTarget: boolean;
   /** 音を出すか(複数あるときはフォーカス中だけ。7.6) */
   audible: boolean;
-  free: boolean;
   api: Ref<PlayerApi | null>;
-  onFocus: () => void;
-  onClose: () => void;
-  onToggleSelect: () => void;
-  onMinimize: () => void;
-  onToggleMaximize: () => void;
-  /** タイル配置でタイトルバーのドラッグを始めた(並べ替えはキャンバスが行う) */
-  onReorderStart: (e: React.PointerEvent) => void;
-  onMove: (dx: number, dy: number) => void;
-  onResize: (dw: number, dh: number) => void;
 };
 
 /** 再生開始からミュート解除ボタンを出しておく時間 */
@@ -130,21 +112,14 @@ function SpeedMenu({ rate, onChange }: { rate: number; onChange: (r: number) => 
 
 type Status = { kind: 'loading' } | { kind: 'ready' } | { kind: 'error'; message: string };
 
-/** 範囲 [s, e) を秒で(読み込み済みのセグメント) */
-function segmentRanges(loaded: ReadonlySet<number>, secs: number, duration: number): [number, number][] {
-  return [...loaded].sort((a, b) => a - b).map((i) => [i * secs, Math.min(duration, (i + 1) * secs)]);
-}
-
-export function PlayerWindow(p: Props) {
+export function PlayerWindow({ api: apiRef, ...p }: Props) {
   const video = useRef<HTMLVideoElement>(null);
   const win = useRef<HTMLElement>(null);
-  const source = useRef<TranscodeSource | null>(null);
   /**
    * 表示中のフレーム番号。requestVideoFrameCallback で更新し、自分でシークしたときは行き先をすぐ入れる
    * (シーク直後はその通知が遅れ、一時停止直後は currentTime が表示中のフレームより手前になることがあるため)
    */
   const shown = useRef(0);
-  const [probe, setProbe] = useState<Probe | null>(null);
   const [status, setStatus] = useState<Status>({ kind: 'loading' });
   const [playing, setPlaying] = useState(false);
   const [time, setTime] = useState(0);
@@ -159,7 +134,6 @@ export function PlayerWindow(p: Props) {
   const wasFocused = useRef(false);
   const [zoom, setZoom] = useState<'fit' | 'actual'>('fit');
   const [ab, setAb] = useState<{ a: number | null; b: number | null }>({ a: null, b: null });
-  const [ranges, setRanges] = useState<[number, number][]>([]);
   const [imageSize, setImageSize] = useState({ w: 0, h: 0 });
   const timed = p.media === 'video' || p.media === 'audio';
   const abRef = useRef(ab);
@@ -169,42 +143,20 @@ export function PlayerWindow(p: Props) {
 
   const fail = useCallback((message: string) => setStatus({ kind: 'error', message }), []);
 
-  // 調べてから、そのまま再生するか変換して再生するかを決める
-  useEffect(() => {
-    if (!timed) return;
-    let alive = true;
-    api.probe(p.path).then(
-      (pr) => {
-        if (!alive) return;
-        setProbe(pr);
-        // 複数を一度に開いても音が重ならないよう、音声のある動画はミュートで始める
-        if (pr.audioCodec) {
-          setMuted(true);
-          setShowUnmute(true);
-        }
-        const v = video.current!;
-        if (pr.needsTranscode) {
-          source.current = new TranscodeSource(
-            v,
-            p.path,
-            pr,
-            () => alive && setRanges(segmentRanges(source.current!.loaded, pr.segmentSecs, pr.duration)),
-            (m) => alive && fail(m),
-          );
-        } else {
-          v.src = api.mediaUrl(p.path);
-        }
-        void v.play().catch(() => {});
-      },
-      (e: unknown) => alive && fail(e instanceof ApiError ? e.message : String(e)),
-    );
-    return () => {
-      alive = false;
+  // 複数を一度に開いても音が重ならないよう、音声のある動画はミュートで始める(7.6)
+  const onProbe = useCallback((pr: Probe) => {
+    if (pr.audioCodec) {
+      setMuted(true);
+      setShowUnmute(true);
+    }
+  }, []);
+  const { probe, ranges } = useVideoSource(video, p.path, timed, { onProbe, onError: fail });
+  useEffect(
+    () => () => {
       if (unmuteTimer.current !== null) clearTimeout(unmuteTimer.current);
-      source.current?.dispose();
-      source.current = null;
-    };
-  }, [p.path, timed, fail]);
+    },
+    [],
+  );
 
   // 表示中のフレームを追う(7.5)。A-B ループの折り返しもここで行う
   useEffect(() => {
@@ -263,7 +215,7 @@ export function PlayerWindow(p: Props) {
     setRate(r);
   }, []);
 
-  useImperativeHandle(p.api, () => ({
+  useImperativeHandle(apiRef, () => ({
     toggle: togglePlay,
     isPaused: () => video.current?.paused ?? true,
     video: () => (timed ? video.current : null),
@@ -296,77 +248,19 @@ export function PlayerWindow(p: Props) {
     },
   }), [probe, seek, togglePlay, seekBy, stepFrame, setSpeed, timed]);
 
-  // 自由配置ではタイトルバーで移動、右下の角で大きさを変える
-  const drag = (kind: 'move' | 'resize') => (e: React.PointerEvent) => {
-    if (e.button !== 0) return;
-    if (!p.free) {
-      if (kind === 'move' && !p.maximized) p.onReorderStart(e);
-      return;
-    }
-    e.preventDefault();
-    let x = e.clientX;
-    let y = e.clientY;
-    const move = (ev: PointerEvent) => {
-      (kind === 'move' ? p.onMove : p.onResize)(ev.clientX - x, ev.clientY - y);
-      x = ev.clientX;
-      y = ev.clientY;
-    };
-    const up = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-  };
-
   const name = basename(p.path);
   const dpr = window.devicePixelRatio || 1;
   // 等倍表示は Windows の表示倍率を打ち消して、ディスプレイの1画素に合わせる(7.9)
   const actualSize = (w: number, h: number) => (zoom === 'actual' ? { width: w / dpr, height: h / dpr } : undefined);
 
   return (
-    <section
-      ref={win}
-      className={`window${p.focused ? ' focused' : ''}${p.selected ? ' selected' : ''}${p.dropTarget ? ' drop-target' : ''}`}
-      style={{ left: p.rect.x, top: p.rect.y, width: p.rect.w, height: p.rect.h }}
-      hidden={p.minimized}
-      data-testid="player-window"
-      data-focused={p.focused}
-      data-selected={p.selected}
-      aria-label={name}
-      onPointerDown={p.onFocus}
+    <WindowFrame
+      {...p}
+      testId="player-window"
+      name={name}
+      icon={p.media === 'image' ? 'image' : p.media === 'audio' ? 'audio' : 'movie'}
+      sectionRef={win}
     >
-      <header
-        className="window-title"
-        data-testid="window-title"
-        onPointerDown={drag('move')}
-        onDoubleClick={p.onToggleMaximize}
-      >
-        {/* ボタンを押したときはドラッグを始めない */}
-        <span className="title-controls" onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
-          <input type="checkbox" className="checkbox" checked={p.selected} aria-label={ja.select} onChange={p.onToggleSelect} />
-        </span>
-        <span className="window-number">{p.number}</span>
-        <Icon name={p.media === 'image' ? 'image' : p.media === 'audio' ? 'audio' : 'movie'} size={18} />
-        <span className="window-name">{name}</span>
-        <span className="title-controls" onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
-          <button type="button" className="icon-button small" title={ja.minimize} aria-label={ja.minimize} onClick={p.onMinimize}>
-            <Icon name="minimize" size={18} />
-          </button>
-          <button
-            type="button"
-            className="icon-button small"
-            title={p.maximized ? ja.restore : ja.maximize}
-            aria-label={p.maximized ? ja.restore : ja.maximize}
-            onClick={p.onToggleMaximize}
-          >
-            <Icon name={p.maximized ? 'restore' : 'maximize'} size={18} />
-          </button>
-          <button type="button" className="icon-button small" title={ja.close} aria-label={ja.close} onClick={p.onClose}>
-            <Icon name="close" size={18} />
-          </button>
-        </span>
-      </header>
       <div
         className={`window-body ${zoom}`}
         onPointerDown={() => {
@@ -496,7 +390,6 @@ export function PlayerWindow(p: Props) {
           </div>
         </footer>
       )}
-      {p.free && <div className="resize-handle" onPointerDown={drag('resize')} />}
-    </section>
+    </WindowFrame>
   );
 }

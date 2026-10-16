@@ -69,6 +69,15 @@ export function App() {
     setScreen('canvas');
   }, []);
 
+  // 比較ウィンドウ(F7)。1つのウィンドウに複数のファイルを入れる
+  const openCompare = useCallback((files: Omit<Win, 'id'>[]) => {
+    const id = nextId.current++;
+    api.addHistory(files.map((f) => f.path));
+    setWindows((ws) => [...ws, { id, path: files[0]!.path, media: files[0]!.media, members: files }]);
+    setFocused(id);
+    setScreen('canvas');
+  }, []);
+
   // CLI からの表示指示(F10)
   useEffect(
     () =>
@@ -193,6 +202,7 @@ export function App() {
           dir={homeRequest}
           liveCount={0}
           onOpen={open}
+          onCompare={openCompare}
           onCanvas={() => setScreen('canvas')}
           onInitial={toInitial}
           onHistory={() => setHistoryOpen(true)}
@@ -229,6 +239,7 @@ export function App() {
           hints={settings.hints}
           onHideHints={hideHints}
           tabbar={settings.tabbar}
+          onError={onError}
           syncAudio={settings.syncAudio}
           onMessage={onError}
           runRef={canvasRun}

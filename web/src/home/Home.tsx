@@ -19,7 +19,7 @@ import './Home.css';
 
 export type HomeAction =
   | 'down' | 'up' | 'parent' | 'enter' | 'open' | 'mark' | 'top' | 'bottom'
-  | 'filter' | 'follow' | 'view' | 'hidden' | 'canvas' | 'initial' | 'history' | 'help' | 'escape';
+  | 'filter' | 'follow' | 'view' | 'hidden' | 'canvas' | 'initial' | 'history' | 'help' | 'compare' | 'escape';
 
 type Action = HomeAction;
 
@@ -32,6 +32,7 @@ export const homeCommands: CommandDef<HomeAction>[] = [
   { id: 'filter', key: '/', label: '絞り込み' }, { id: 'follow', key: 'n', label: '最新に追従' },
   { id: 'view', key: 'v', label: 'リスト / グリッド' }, { id: 'hidden', key: '.', label: '隠しファイル' },
   { id: 'initial', key: 'H', label: '初期位置へ' }, { id: 'canvas', key: 'Tab', label: 'キャンバスへ' },
+  { id: 'compare', key: 'c', label: '選択を比較' },
 ];
 
 /** 操作パネルの上に出す、画面にボタンがない操作 */
@@ -41,7 +42,7 @@ const keymap = new KeySequence<Action>({
   j: 'down', ArrowDown: 'down', k: 'up', ArrowUp: 'up',
   h: 'parent', ArrowLeft: 'parent', l: 'enter', ArrowRight: 'enter',
   Enter: 'open', ' ': 'mark', 'g g': 'top', G: 'bottom',
-  '/': 'filter', n: 'follow', v: 'view', '.': 'hidden', Tab: 'canvas', H: 'initial', r: 'history', '?': 'help', Escape: 'escape',
+  '/': 'filter', n: 'follow', v: 'view', '.': 'hidden', Tab: 'canvas', H: 'initial', r: 'history', '?': 'help', c: 'compare', Escape: 'escape',
 });
 
 export type DirRequest = { path: string; seq: number };
@@ -53,6 +54,8 @@ type Props = {
   dir: DirRequest | null;
   liveCount: number;
   onOpen: (files: { path: string; media: MediaKind }[]) => void;
+  /** 選んだファイルを比較ウィンドウで開く(F7) */
+  onCompare: (files: { path: string; media: MediaKind }[]) => void;
   onCanvas: () => void;
   /** 初期位置へ戻る(H) */
   onInitial: () => void;
@@ -273,6 +276,14 @@ export function Home(p: Props) {
       case 'initial': return p.onInitial();
       case 'history': return p.onHistory();
       case 'help': return p.onHelp();
+      case 'compare': {
+        const files = entries
+          .filter((e) => marked.has(e.name) && e.kind === 'file' && (e.media === 'video' || e.media === 'image') && e.readable)
+          .map((e) => ({ path: join(cwd ?? '', e.name), media: e.media }));
+        if (files.length < 2) return onError(ja.compareNeedTwo);
+        setMarked(new Set());
+        return p.onCompare(files);
+      }
       case 'escape':
         setMarked(new Set());
         setFilter('');
@@ -329,6 +340,12 @@ export function Home(p: Props) {
         </nav>
         <div className="home-status">
           {marked.size > 0 && <span className="chip">{ja.selectedCount(marked.size)}</span>}
+          {marked.size > 1 && (
+            <button type="button" className="text-button with-icon" title={ja.compareKey} onClick={() => run('compare')}>
+              <Icon name="compare" size={18} />
+              {ja.compare}
+            </button>
+          )}
           {follow && <span className="chip">{ja.following}</span>}
           {showHidden && <span className="chip">{ja.hiddenShown}</span>}
           <Toolbar
