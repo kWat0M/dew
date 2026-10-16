@@ -1,4 +1,5 @@
-// Home とキャンバスの上部バーに並べる共通のボタン(履歴、キー一覧、操作パネル、停止)
+// Home とキャンバスの上部バー右側の共通のボタン。並びは [lead][履歴][middle][キー一覧][操作パネル][停止]
+import type { ReactNode } from 'react';
 import { ja } from '../i18n/ja';
 import { Icon, type IconName } from '../icons';
 
@@ -9,20 +10,23 @@ export type ToolbarActions = {
   onShutdown: () => void;
 };
 
-export function Toolbar(p: ToolbarActions) {
-  const items: [IconName, string, () => void][] = [
-    ['history', ja.history, p.onHistory],
-    ['help', ja.keyHelp, p.onHelp],
-    ['menu', ja.opsPanel, p.onPanel],
-    ['power', ja.shutdown, p.onShutdown],
-  ];
+function Button({ icon, label, onClick }: { icon: IconName; label: string; onClick: () => void }) {
+  return (
+    <button type="button" className="icon-button" title={label} aria-label={label} onClick={onClick}>
+      <Icon name={icon} />
+    </button>
+  );
+}
+
+export function Toolbar(p: ToolbarActions & { lead?: ReactNode; middle?: ReactNode }) {
   return (
     <div className="toolbar">
-      {items.map(([icon, label, run]) => (
-        <button key={label} type="button" className="icon-button" title={label} aria-label={label} onClick={run}>
-          <Icon name={icon} />
-        </button>
-      ))}
+      {p.lead}
+      <Button icon="history" label={ja.history} onClick={p.onHistory} />
+      {p.middle}
+      <Button icon="help" label={ja.keyHelp} onClick={p.onHelp} />
+      <Button icon="menu" label={ja.opsPanel} onClick={p.onPanel} />
+      <Button icon="power" label={ja.shutdown} onClick={p.onShutdown} />
     </div>
   );
 }

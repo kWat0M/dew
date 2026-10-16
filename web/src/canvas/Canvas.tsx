@@ -1,7 +1,8 @@
 // キャンバス: 開いたファイルをフローティングウィンドウとして並べる(4.2、5.3、5.4)
-import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from 'react';
+import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref } from 'react';
 import type { CommandDef } from '../commands';
 import { HintBar } from '../ui/HintBar';
+import { Toolbar, type ToolbarActions } from '../ui/Toolbar';
 import type { MediaKind } from '../protocol/MediaKind';
 import { basename } from '../format';
 import { ja } from '../i18n/ja';
@@ -116,8 +117,10 @@ type Props = {
   onHomeInitial: () => void;
   onHistory: () => void;
   onHelp: () => void;
-  /** 上部バーの右に並べる共通のボタン */
-  toolbar: ReactNode;
+  /** 上部バーの右に並べる共通のボタンの操作 */
+  toolbar: ToolbarActions;
+  /** Snackbar で伝えるメッセージ */
+  onMessage: (m: string) => void;
   hints: boolean;
   onHideHints: () => void;
   tabbar: 'top' | 'side';
@@ -283,13 +286,9 @@ export function Canvas(p: Props) {
       case 'grow': {
         if (f === null) return;
         const scale = (r: Rect) => ({ ...r, w: r.w * a.f, h: r.h * a.f });
-        if (mode === 'free') return updateFree(f, scale);
-        // タイル配置では大きさを変えられないので、今の位置のまま自由配置に切り替えてから変える
-        const base = new Map(shown.map((w, i) => [w.id, tiles[i]!]));
-        const r = base.get(f);
-        if (r) base.set(f, scale(r));
-        setFree(base);
-        return setMode('free');
+        // タイル配置では大きさを変えられないので、自由配置でできる操作だと伝える
+        if (mode !== 'free') return p.onMessage(ja.freeOnly);
+        return updateFree(f, scale);
       }
       case 'equalize':
         setMaximized(null);
@@ -416,7 +415,7 @@ export function Canvas(p: Props) {
             {mode === 'tile' ? ja.layoutTile : ja.layoutFree}
           </button>
         )}
-        {p.toolbar}
+        <Toolbar {...p.toolbar} />
       </header>
       <div ref={area} className="canvas-area" data-testid="canvas-area">
         {ws.length === 0 && <div className="canvas-empty">{ja.canvasEmpty}</div>}

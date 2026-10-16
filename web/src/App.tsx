@@ -7,7 +7,7 @@ import type { Command, Section } from './commands';
 import { useSettings } from './settings';
 import { Dialog } from './ui/Dialog';
 import { OpsPanel } from './ui/OpsPanel';
-import { Toolbar } from './ui/Toolbar';
+import type { ToolbarActions } from './ui/Toolbar';
 import { HistoryWindow } from './history/HistoryWindow';
 import { Home, homeCommands, homeQuick, type DirRequest, type HomeAction } from './home/Home';
 import { ja } from './i18n/ja';
@@ -132,14 +132,12 @@ export function App() {
     });
   };
 
-  const toolbar = (
-    <Toolbar
-      onHistory={() => setHistoryOpen(true)}
-      onHelp={() => setHelpOpen(true)}
-      onPanel={() => setPanelOpen((o) => !o)}
-      onShutdown={() => setConfirmStop(true)}
-    />
-  );
+  const toolbar: ToolbarActions = {
+    onHistory: () => setHistoryOpen(true),
+    onHelp: () => setHelpOpen(true),
+    onPanel: () => setPanelOpen((o) => !o),
+    onShutdown: () => setConfirmStop(true),
+  };
   const hideHints = () => updateSettings({ hints: false });
 
   const runHome = useCallback((a: HomeAction) => homeRun.current?.(a), []);
@@ -200,6 +198,7 @@ export function App() {
           onHistory={() => setHistoryOpen(true)}
           onHelp={() => setHelpOpen(true)}
           toolbar={toolbar}
+          initialDir={startDir}
           hints={settings.hints}
           onHideHints={hideHints}
           showHidden={showHidden}
@@ -230,6 +229,7 @@ export function App() {
           hints={settings.hints}
           onHideHints={hideHints}
           tabbar={settings.tabbar}
+          onMessage={onError}
           runRef={canvasRun}
           onHomeInitial={() => {
             toInitial();
@@ -240,6 +240,7 @@ export function App() {
       {historyOpen && started && <HistoryWindow onOpen={open} onClose={() => setHistoryOpen(false)} onError={onError} />}
       {panelOpen && (
         <OpsPanel
+          withHints={settings.hints}
           toggles={toggles}
           settings={settings}
           onSettings={updateSettings}

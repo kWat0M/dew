@@ -102,7 +102,7 @@ export function HistoryWindow(p: Props) {
             view="list"
             marked={marked}
             thumbs
-            onClick={select}
+            onClick={(i) => select(i)}
             onDoubleClick={(i) => open([entries[i]!.name])}
             empty={history ? ja.historyEmpty : ja.loading}
           />

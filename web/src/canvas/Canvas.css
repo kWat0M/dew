@@ -455,28 +455,6 @@
   cursor: pointer;
 }
 
-.seek-button {
-  position: relative;
-  width: 40px;
-  height: 40px;
-}
-
-.seek-button.forward svg {
-  transform: scaleX(-1);
-}
-
-.seek-sec {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -34%);
-  font: var(--md-sys-typescale-label-small);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: -0.5px;
-  line-height: 1;
-  pointer-events: none;
-}
 
 /* ミュートで始めた動画に出す、大きめのミュート解除ボタン */
 .unmute-button {

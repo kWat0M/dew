@@ -9,6 +9,8 @@ import './OpsPanel.css';
 export type Toggle = { label: string; checked: boolean; onChange: (v: boolean) => void };
 
 type Props = {
+  /** 画面下のヒントの帯を覆わないよう、その分だけ下をあける */
+  withHints: boolean;
   toggles: Toggle[];
   settings: Settings;
   onSettings: (patch: Partial<Settings>) => void;
@@ -32,7 +34,7 @@ function Grid({ items }: { items: Command[] }) {
 
 export function OpsPanel(p: Props) {
   return (
-    <aside className="ops-panel" data-testid="ops-panel" aria-label={ja.opsPanel}>
+    <aside className={`ops-panel${p.withHints ? ' with-hints' : ''}`} data-testid="ops-panel" aria-label={ja.opsPanel}>
       <header className="ops-title">
         <h2>{ja.opsPanel}</h2>
         <button type="button" className="icon-button small" title={ja.close} aria-label={ja.close} onClick={p.onClose}>

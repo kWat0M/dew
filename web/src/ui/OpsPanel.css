@@ -1,6 +1,7 @@
+/* 上部のバー(56px)と画面下のヒントの帯は覆わない */
 .ops-panel {
   position: fixed;
-  top: 0;
+  top: 56px;
   right: 0;
   bottom: 0;
   display: flex;
@@ -10,6 +11,10 @@
   box-shadow: var(--md-sys-elevation-level1);
   border-radius: var(--md-sys-shape-corner-large) 0 0 var(--md-sys-shape-corner-large);
   z-index: 70;
+}
+
+.ops-panel.with-hints {
+  bottom: 33px;
 }
 
 .ops-title {

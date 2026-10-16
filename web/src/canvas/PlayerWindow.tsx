@@ -68,14 +68,10 @@ function IconButton({ icon, label, title, onClick }: { icon: IconName; label: st
   );
 }
 
-/** 5秒 / 30秒の戻り・送り。円い矢印に秒数を重ねる(送りは左右反転) */
+/** 5秒は < >、30秒は << >>。何秒かはホバーで出す */
 function SeekButton({ sec, back, label, onClick }: { sec: number; back?: boolean; label: string; onClick: () => void }) {
-  return (
-    <button type="button" className={`icon-button small seek-button${back ? '' : ' forward'}`} aria-label={label} title={label} onClick={onClick}>
-      <Icon name="replay" size={32} />
-      <span className="seek-sec">{sec}</span>
-    </button>
-  );
+  const icon: IconName = sec >= 30 ? (back ? 'rewind' : 'fastForward') : back ? 'back' : 'forward';
+  return <IconButton icon={icon} label={label} title={label} onClick={onClick} />;
 }
 
 type Status = { kind: 'loading' } | { kind: 'ready' } | { kind: 'error'; message: string };

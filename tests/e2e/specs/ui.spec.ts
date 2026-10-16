@@ -117,3 +117,27 @@ test('キャンバスの操作パネルは設定と拡大・縮小・均等に�
   const quick = panel(page).getByTestId('ops-quick');
   for (const name of ['拡大', '縮小', '均等に並べる']) await expect(quick.getByRole('button', { name: new RegExp(`^${name}`) })).toBeVisible();
 });
+
+test('操作パネルは上部バーを覆わず、開いたままバーのボタンで閉じられる。Home の上には「選択をまとめて開く」だけ', async ({ page, dew }) => {
+  await start(page, dew);
+  await openPanel(page);
+  const bar = await page.locator('.home-bar').boundingBox();
+  const box = await panel(page).boundingBox();
+  expect(box!.y).toBeGreaterThanOrEqual(bar!.y + bar!.height - 1);
+  await expect(panel(page).getByTestId('ops-quick').getByRole('button')).toHaveText([/^選択をまとめて開く/]);
+  await openPanel(page);
+  await expect(panel(page)).toBeHidden();
+});
+
+test('タイル配置での拡大・縮小は、自由配置でできる操作だと伝える', async ({ page, dew }) => {
+  await start(page, dew);
+  for (const name of ['h264_aac.mp4', 'image.png']) {
+    await current(page).getByRole('option', { name }).click({ modifiers: ['Control'] });
+  }
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('player-window')).toHaveCount(2);
+  await openPanel(page);
+  await panel(page).getByTestId('ops-quick').getByRole('button', { name: /^拡大/ }).click();
+  await expect(page.getByRole('status')).toContainText('自由配置');
+  await expect(page.getByRole('button', { name: 'タイル配置' })).toBeVisible();
+});

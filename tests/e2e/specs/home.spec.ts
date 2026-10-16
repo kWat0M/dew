@@ -124,3 +124,30 @@ test('パンくずで閲覧範囲の外を押すとメッセージだけ出て�
   await page.keyboard.press('j');
   expect(await selected(page)).toBe('broken.mp4');
 });
+
+test('Home のバー: キャンバスへは左端、右は 検索・履歴・グリッド・ヒント・その他 の順。初期位置に印', async ({ page, dew }) => {
+  await start(page, dew);
+  const x = async (name: string) => (await page.getByRole('button', { name, exact: true }).first().boundingBox())!.x;
+  const crumbs = await page.getByRole('navigation', { name: 'path' }).boundingBox();
+  expect(await x('キャンバスへ')).toBeLessThan(crumbs!.x);
+  const order = ['絞り込み', '履歴', 'グリッド表示', 'キー一覧', '操作パネル'];
+  const xs = await Promise.all(order.map(x));
+  expect([...xs].sort((a, b) => a - b)).toEqual(xs);
+  // テストでは HOME が範囲外なので、初期位置は --root の場所(パンくずの最後)
+  await expect(page.getByTestId('crumb-initial')).toHaveText(dew.root.split('/').at(-1)!);
+});
+
+test('Shift+クリックで範囲を、Ctrl+クリックで1つずつ複数選択できる', async ({ page, dew }) => {
+  await start(page, dew);
+  const opt = (name: string) => current(page).getByRole('option', { name });
+  const marked = current(page).locator('[data-marked="true"]');
+  await opt('h264_aac.mp4').click();
+  await opt('image.png').click({ modifiers: ['Shift'] });
+  await expect(marked).toHaveText(['h264_aac.mp4', 'image.jpg', 'image.png']);
+  await opt('image.jpg').click({ modifiers: ['Control'] });
+  await expect(marked).toHaveText(['h264_aac.mp4', 'image.png']);
+  await opt('mp4v.mp4').click({ modifiers: ['Control'] });
+  await expect(marked).toHaveText(['h264_aac.mp4', 'image.png', 'mp4v.mp4']);
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('player-window')).toHaveCount(3);
+});

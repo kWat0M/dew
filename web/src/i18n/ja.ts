@@ -9,6 +9,8 @@ export const ja = {
   canvas: 'キャンバス',
   toCanvas: 'キャンバスへ(Tab)',
   canvasButton: 'キャンバスへ',
+  initialDir: '初期位置(最初に dew を起動したディレクトリ)',
+  freeOnly: '拡大・縮小は自由配置でできる操作です。w t か上部の「タイル配置」ボタンで自由配置に切り替えてください',
   toHome: 'Home へ(h)',
   emptyDir: '空のディレクトリです',
   loading: '読み込み中…',
