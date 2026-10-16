@@ -57,9 +57,9 @@ struct ServeArgs {
     /// 待ち受けアドレス(127.0.0.1 にすると ssh -L 専用)
     #[arg(long, default_value = "0.0.0.0")]
     bind: IpAddr,
-    /// 閲覧できる範囲
-    #[arg(long, default_value = "/")]
-    root: PathBuf,
+    /// 閲覧できる範囲。既定は起動したディレクトリの git ルート、git 管理外なら $HOME(--root / でコンテナ全体)
+    #[arg(long)]
+    root: Option<PathBuf>,
     /// ffmpeg の同時実行数
     #[arg(long, default_value_t = 2)]
     jobs: usize,
@@ -120,7 +120,16 @@ fn start(args: &ServeArgs, path: Option<&Path>) -> anyhow::Result<()> {
         }
     };
     if let Some(p) = path {
-        let res = Api::new(&server).open(&p.to_string_lossy())?;
+        let api = Api::new(&server);
+        let res = match api.open(&p.to_string_lossy()) {
+            Ok(r) => r,
+            Err(client::OpenError::OutsideRoot) => bail!(
+                "{} は閲覧範囲({})の外です。範囲を広げるには、dew stop の後、dew --root <ディレクトリ> で起動し直してください",
+                p.display(),
+                api.root().unwrap_or_default()
+            ),
+            Err(client::OpenError::Other(e)) => return Err(e),
+        };
         if res.delivered {
             println!("ブラウザに表示しました: {}", p.display());
             return Ok(());
@@ -149,16 +158,19 @@ fn spawn(args: &ServeArgs) -> anyhow::Result<ServerFile> {
     let log = File::options().create(true).append(true).open(&log_path)?;
     let log_start = log.metadata()?.len();
 
-    let mut child = Command::new(std::env::current_exe()?)
-        .arg("--foreground")
+    let mut cmd = Command::new(std::env::current_exe()?);
+    cmd.arg("--foreground")
         .arg("--port")
         .arg(args.port.to_string())
         .arg("--bind")
         .arg(args.bind.to_string())
-        .arg("--root")
-        .arg(&args.root)
         .arg("--jobs")
-        .arg(args.jobs.to_string())
+        .arg(args.jobs.to_string());
+    // 範囲の既定と Home の初期位置は、子プロセスが引き継いだ作業ディレクトリから決める
+    if let Some(root) = &args.root {
+        cmd.arg("--root").arg(root);
+    }
+    let mut child = cmd
         .stdin(Stdio::null())
         .stdout(log.try_clone()?)
         .stderr(log)
@@ -195,22 +207,37 @@ fn log_tail(path: &Path, from: u64) -> String {
     s.get(from as usize..).unwrap_or("").to_owned()
 }
 
+/// 既定の閲覧範囲(7.2): `dir` を含む git リポジトリのルート。git 管理外なら $HOME。
+/// git コマンドが入っていない環境もあるので、`.git` を親へたどって探す
+fn default_root(dir: &Path) -> PathBuf {
+    let dir = dir.canonicalize().unwrap_or_else(|_| dir.to_owned());
+    let found = dir.ancestors().find(|d| d.join(".git").exists());
+    match found {
+        Some(d) => d.to_owned(),
+        None => {
+            let home = state::home();
+            home.canonicalize().unwrap_or(home)
+        }
+    }
+}
+
 /// 前面でサーバを動かす。待ち受けを始めたら server.json を書く
 fn foreground(args: &ServeArgs) -> anyhow::Result<()> {
     tracing_subscriber::fmt().with_ansi(false).init();
-    let root = args
-        .root
-        .canonicalize()
-        .with_context(|| format!("{} がありません", args.root.display()))?;
+    let cwd = std::env::current_dir()?;
+    let root = match &args.root {
+        Some(r) => r
+            .canonicalize()
+            .with_context(|| format!("{} がありません", r.display()))?,
+        None => default_root(&cwd),
+    };
     let cfg = dew_server::Config {
         bind: args.bind,
         port: args.port,
         root,
         cache_dir: state::cache_dir(),
         jobs: args.jobs,
-        home: state::home()
-            .canonicalize()
-            .unwrap_or_else(|_| state::home()),
+        home: cwd.canonicalize().unwrap_or(cwd),
         tls_dir: std::env::var_os("DEW_TLS_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|| state::home().join(".local/share/dew/tls")),
