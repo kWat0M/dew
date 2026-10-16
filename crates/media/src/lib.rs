@@ -26,6 +26,9 @@ const SPRITE_COLS: u32 = 10;
 const WEBP_MAX: u32 = 16_383;
 /// キャッシュの形式を変えたら上げる(古いキャッシュを使わないため)
 const CACHE_VERSION: u32 = 1;
+/// 調査結果(Probe)のキャッシュの名前。Probe の項目を変えたら上げる(読めない古いものは作り直すが、
+/// 項目の意味を変えたときは読めてしまうので、名前を変えて使わないようにする)
+const PROBE_KIND: &str = "probe2";
 
 pub struct Media {
     dir: PathBuf,
@@ -53,16 +56,26 @@ impl Media {
         }
     }
 
-    /// 長さ・コーデック・フレームごとの時刻など(7.5)
+    /// 長さ・コーデック・フレームごとの時刻など(7.5)。
+    /// キャッシュが読めないとき(Probe に項目を足す前に作った古いもの、壊れたもの)は消して作り直す
     pub async fn probe(&self, src: &Path) -> anyhow::Result<Probe> {
-        let (path, _) = self
-            .cached(src, "probe", "json", |out| async move {
-                let probe = run_probe(src).await?;
-                tokio::fs::write(&out, serde_json::to_vec(&probe)?).await?;
-                Ok(())
-            })
-            .await?;
-        Ok(serde_json::from_slice(&tokio::fs::read(path).await?)?)
+        for _ in 0..2 {
+            let (path, _) = self
+                .cached(src, PROBE_KIND, "json", |out| async move {
+                    let probe = run_probe(src).await?;
+                    tokio::fs::write(&out, serde_json::to_vec(&probe)?).await?;
+                    Ok(())
+                })
+                .await?;
+            match serde_json::from_slice(&tokio::fs::read(&path).await?) {
+                Ok(probe) => return Ok(probe),
+                Err(e) => {
+                    tracing::warn!(cache = %path.display(), "調査結果のキャッシュを読めないので作り直します: {e}");
+                    let _ = tokio::fs::remove_file(&path).await;
+                }
+            }
+        }
+        bail!("{} を調べられません", src.display())
     }
 
     /// 幅 320px の WebP。動画は 10% の位置の画面
@@ -631,6 +644,25 @@ mod tests {
             "yuv420p",
             Some("ac3")
         ));
+    }
+
+    /// 古い形式や壊れた調査結果のキャッシュが残っていても、作り直して読める
+    #[tokio::test]
+    async fn stale_probe_cache_is_rebuilt() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let media = Media::new(dir.path().to_path_buf(), u64::MAX, 1);
+        let src = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/h264_aac.mp4")
+            .canonicalize()
+            .unwrap();
+        let cache = dir
+            .path()
+            .join(format!("{}.json", cache_key(&src, PROBE_KIND).unwrap()));
+        std::fs::write(&cache, br#"{"duration":10.0}"#).unwrap();
+
+        let probe = media.probe(&src).await.unwrap();
+        assert_eq!(probe.frame_times.len(), 300);
+        assert_eq!(probe.bit_depth, 8);
     }
 
     #[test]
