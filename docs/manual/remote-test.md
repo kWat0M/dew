@@ -47,9 +47,30 @@ scp -r tests/fixtures <user>@<server>:~/dew-test/
 
 `ssh <user>@<server>` で入ってから実行する。
 
+### 3-1. サーバのホスト名を `.env` に書く
+
+dew が表示する URL(`https://<ホスト名>:18765/?token=…`)のホスト名部分を、`~/dew-test/.env` に書いておく。compose はこのファイルを毎回自動で読むので、以降の `docker compose …` のたびに指定しなくてよい(書かないと `required variable DEW_PUBLIC_HOST is missing a value` で止まる)。
+
+書く値は、**Windows のブラウザからサーバに届く名前か IP アドレス**。ふだん Windows から `ssh <user>@<server>` で入っているなら、その `<server>` の部分と同じものでよい。
+
+- `~/.ssh/config` の別名(`Host` に書いた名前)で入っている場合は、その別名ではなく `HostName` に書いた値を使う(ブラウザは ssh の別名を知らないため)
+- 分からないときはサーバで次を実行し、出てきた名前か IP のうち Windows から届くものを使う
+
+  ```bash
+  hostname -f   # ホスト名(社内 DNS などで引ける場合)
+  hostname -I   # IP アドレス(複数出たら、Windows と同じネットワークのもの)
+  ```
+
 ```bash
 cd ~/dew-test
-DEW_PUBLIC_HOST=<server> docker compose up -d --build
+echo 'DEW_PUBLIC_HOST=<server>' > .env   # 例: DEW_PUBLIC_HOST=192.168.1.20
+cat .env
+```
+
+### 3-2. コンテナを立てる
+
+```bash
+docker compose up -d --build
 docker compose ps
 ```
 
@@ -97,7 +118,7 @@ Windows の端末(PowerShell など)で転送を張ってから開く。
 ssh -L 18765:localhost:18765 -L 18766:localhost:18766 <user>@<server>
 ```
 
-このときは、手順3で `DEW_PUBLIC_HOST=localhost` としてコンテナを作ると、表示される URL をそのまま開ける(すでに作ったときは、手順6で片付けてから作り直す)。
+このときは、手順3-1の `.env` を `DEW_PUBLIC_HOST=localhost` にしてコンテナを作ると、表示される URL をそのまま開ける(すでに作ったときは、`.env` を書き換えてから `docker compose up -d --force-recreate` で作り直す)。
 
 ## 6. 片付ける(サーバで)
 

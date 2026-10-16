@@ -1,6 +1,6 @@
 # リモートサーバでの確認用に、同じイメージから2つのコンテナを立てる(docs/manual/remote-test.md)。
 # 既存のコンテナと混ざらないよう、プロジェクト名とコンテナ名に dew-test を付ける。
-# 使い方: DEW_PUBLIC_HOST=<サーバ名> docker compose up -d --build
+# 使い方: 同じディレクトリの .env に DEW_PUBLIC_HOST=<サーバ名> を書いてから docker compose up -d --build
 name: dew-test
 
 x-dew: &dew
@@ -18,12 +18,12 @@ services:
     # ホスト側のポートはコンテナごとに分ける(ふだんの運用で各自が割り当てるのと同じ)
     ports: ["18765:8765"]
     environment:
-      DEW_PUBLIC_HOST: ${DEW_PUBLIC_HOST:?サーバのホスト名を DEW_PUBLIC_HOST に入れてください}
+      DEW_PUBLIC_HOST: ${DEW_PUBLIC_HOST:?.env に DEW_PUBLIC_HOST=<サーバのホスト名か IP> を書いてください(docs/manual/remote-test.md の手順3-1)}
       DEW_PUBLIC_PORT: "18765"
   b:
     <<: *dew
     container_name: dew-test-b
     ports: ["18766:8765"]
     environment:
-      DEW_PUBLIC_HOST: ${DEW_PUBLIC_HOST:?サーバのホスト名を DEW_PUBLIC_HOST に入れてください}
+      DEW_PUBLIC_HOST: ${DEW_PUBLIC_HOST:?.env に DEW_PUBLIC_HOST=<サーバのホスト名か IP> を書いてください(docs/manual/remote-test.md の手順3-1)}
       DEW_PUBLIC_PORT: "18766"

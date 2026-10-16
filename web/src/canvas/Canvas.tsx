@@ -468,6 +468,20 @@ export function Canvas(p: Props) {
             {ja.syncing}
           </span>
         )}
+        {/* 右側の並び: 全体のミュート → 同期 → 配置 → 履歴 → キー一覧 → 操作パネル → 停止 */}
+        {/* 全体のミュート。キャンバスに入った直後は、音声のある動画があれば文字でも知らせる */}
+        <button
+          type="button"
+          className={`global-mute${p.globalMuted ? ' muted' : ''}${p.globalMuted && p.muteLabel && hasAudio ? ' labeled' : ''}`}
+          data-testid="global-mute"
+          aria-pressed={p.globalMuted}
+          aria-label={p.globalMuted ? ja.globalUnmute : ja.globalMute}
+          title={`${p.globalMuted ? ja.globalUnmute : ja.globalMute}(M)`}
+          onClick={p.onToggleGlobalMute}
+        >
+          <Icon name={p.globalMuted ? 'volumeOff' : 'volume'} />
+          {p.globalMuted && p.muteLabel && hasAudio && <span>{ja.globalUnmute}</span>}
+        </button>
         {ws.length > 1 && (
           <button
             type="button"
@@ -491,19 +505,6 @@ export function Canvas(p: Props) {
             {mode === 'tile' ? ja.layoutTile : ja.layoutFree}
           </button>
         )}
-        {/* 全体のミュート。キャンバスに入った直後は、音声のある動画があれば文字でも知らせる */}
-        <button
-          type="button"
-          className={`global-mute${p.globalMuted ? ' muted' : ''}${p.globalMuted && p.muteLabel && hasAudio ? ' labeled' : ''}`}
-          data-testid="global-mute"
-          aria-pressed={p.globalMuted}
-          aria-label={p.globalMuted ? ja.globalUnmute : ja.globalMute}
-          title={`${p.globalMuted ? ja.globalUnmute : ja.globalMute}(M)`}
-          onClick={p.onToggleGlobalMute}
-        >
-          <Icon name={p.globalMuted ? 'volumeOff' : 'volume'} />
-          {p.globalMuted && p.muteLabel && hasAudio && <span>{ja.globalUnmute}</span>}
-        </button>
         <Toolbar {...p.toolbar} />
       </header>
       <div ref={area} className={`canvas-area${mode === 'free' ? ' free' : ''}`} data-testid="canvas-area">
