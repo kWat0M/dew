@@ -367,3 +367,63 @@ kbd {
 .help-row kbd {
   min-width: 140px;
 }
+
+/* 複数選択中は tertiary の枠(フォーカスの primary と区別する) */
+.window.selected {
+  border-color: var(--md-sys-color-tertiary);
+}
+
+.window.selected.focused {
+  border-color: var(--md-sys-color-primary);
+  outline: 2px solid var(--md-sys-color-tertiary);
+  outline-offset: -6px;
+}
+
+/* タイルの並べ替えで落とす先 */
+.window.drop-target {
+  border-style: dashed;
+  border-color: var(--md-sys-color-secondary);
+}
+
+.window[hidden] {
+  display: none;
+}
+
+.title-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.checkbox {
+  width: 18px;
+  height: 18px;
+  margin: 0 4px;
+  accent-color: var(--md-sys-color-tertiary);
+  cursor: pointer;
+}
+
+.chip.assist.minimized {
+  color: var(--md-sys-color-on-surface-variant);
+  border-style: dashed;
+}
+
+.text-button.with-icon {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.which-key-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/* ウィンドウ操作モード中はバーの色を変えて示す */
+.canvas.window-mode .canvas-bar {
+  background: var(--md-sys-color-tertiary-container);
+  color: var(--md-sys-color-on-tertiary-container);
+}

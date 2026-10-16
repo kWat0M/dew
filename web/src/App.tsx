@@ -7,6 +7,7 @@ import { Home, type DirRequest } from './home/Home';
 import { ja } from './i18n/ja';
 import { readKey } from './keys';
 import { Snackbar } from './ui/Snackbar';
+import { isTyping } from './useKeys';
 import './App.css';
 
 type Screen = 'home' | 'canvas';
@@ -85,10 +86,19 @@ export function App() {
         events.active();
       }
     };
+    // マウスで押したボタンやチェックボックスにフォーカスを残さない(Space や Enter で押し直されないように)
+    const onClick = (e: MouseEvent) => {
+      const t = e.target;
+      if (t instanceof HTMLElement && !isTyping(t) && t.closest('button, input')) {
+        (document.activeElement as HTMLElement | null)?.blur();
+      }
+    };
+    window.addEventListener('click', onClick);
     window.addEventListener('keydown', onKey);
     window.addEventListener('keydown', onAny, { capture: true });
     window.addEventListener('pointerdown', onAny, { capture: true });
     return () => {
+      window.removeEventListener('click', onClick);
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keydown', onAny, { capture: true });
       window.removeEventListener('pointerdown', onAny, { capture: true });

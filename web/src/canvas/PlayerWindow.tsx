@@ -35,12 +35,24 @@ type Props = {
   media: MediaKind;
   rect: Rect;
   focused: boolean;
+  /** 複数選択に入っているか */
+  selected: boolean;
+  maximized: boolean;
+  /** 最小化中(配置から外し、タスクバーにだけ残す) */
+  minimized: boolean;
+  /** タイルの並べ替えで、落とす先になっている */
+  dropTarget: boolean;
   /** 音を出すか(複数あるときはフォーカス中だけ。7.6) */
   audible: boolean;
   free: boolean;
   api: Ref<PlayerApi | null>;
   onFocus: () => void;
   onClose: () => void;
+  onToggleSelect: () => void;
+  onMinimize: () => void;
+  onToggleMaximize: () => void;
+  /** タイル配置でタイトルバーのドラッグを始めた(並べ替えはキャンバスが行う) */
+  onReorderStart: (e: React.PointerEvent) => void;
   onMove: (dx: number, dy: number) => void;
   onResize: (dw: number, dh: number) => void;
 };
@@ -188,7 +200,11 @@ export function PlayerWindow(p: Props) {
 
   // 自由配置ではタイトルバーで移動、右下の角で大きさを変える
   const drag = (kind: 'move' | 'resize') => (e: React.PointerEvent) => {
-    if (!p.free || e.button !== 0) return;
+    if (e.button !== 0) return;
+    if (!p.free) {
+      if (kind === 'move' && !p.maximized) p.onReorderStart(e);
+      return;
+    }
     e.preventDefault();
     let x = e.clientX;
     let y = e.clientY;
@@ -213,19 +229,45 @@ export function PlayerWindow(p: Props) {
   return (
     <section
       ref={win}
-      className={`window${p.focused ? ' focused' : ''}`}
+      className={`window${p.focused ? ' focused' : ''}${p.selected ? ' selected' : ''}${p.dropTarget ? ' drop-target' : ''}`}
       style={{ left: p.rect.x, top: p.rect.y, width: p.rect.w, height: p.rect.h }}
+      hidden={p.minimized}
       data-testid="player-window"
+      data-focused={p.focused}
+      data-selected={p.selected}
       aria-label={name}
       onPointerDown={p.onFocus}
     >
-      <header className="window-title" onPointerDown={drag('move')}>
+      <header
+        className="window-title"
+        data-testid="window-title"
+        onPointerDown={drag('move')}
+        onDoubleClick={p.onToggleMaximize}
+      >
+        {/* ボタンを押したときはドラッグを始めない */}
+        <span className="title-controls" onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+          <input type="checkbox" className="checkbox" checked={p.selected} aria-label={ja.select} onChange={p.onToggleSelect} />
+        </span>
         <span className="window-number">{p.number}</span>
         <Icon name={p.media === 'image' ? 'image' : p.media === 'audio' ? 'audio' : 'movie'} size={18} />
         <span className="window-name">{name}</span>
-        <button type="button" className="icon-button small" title={ja.close} onClick={p.onClose}>
-          <Icon name="close" size={18} />
-        </button>
+        <span className="title-controls" onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+          <button type="button" className="icon-button small" title={ja.minimize} aria-label={ja.minimize} onClick={p.onMinimize}>
+            <Icon name="minimize" size={18} />
+          </button>
+          <button
+            type="button"
+            className="icon-button small"
+            title={p.maximized ? ja.restore : ja.maximize}
+            aria-label={p.maximized ? ja.restore : ja.maximize}
+            onClick={p.onToggleMaximize}
+          >
+            <Icon name={p.maximized ? 'restore' : 'maximize'} size={18} />
+          </button>
+          <button type="button" className="icon-button small" title={ja.close} aria-label={ja.close} onClick={p.onClose}>
+            <Icon name="close" size={18} />
+          </button>
+        </span>
       </header>
       <div className={`window-body ${zoom}`}>
         {p.media === 'image' ? (
