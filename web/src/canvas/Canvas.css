@@ -88,10 +88,19 @@
 }
 
 /* フォーカス中は primary の枠 */
+/* フォーカスは枠の色だけで示す。影や重なり順を変えると、Firefox 系(Zen)で GPU 合成の動画が
+   黒くなることがあったため。重なりのある自由配置と最大化のときだけ、手前に出す */
 .window.focused {
   border-color: var(--md-sys-color-primary);
+}
+
+.canvas-area.free .window.focused {
   box-shadow: var(--md-sys-elevation-level3);
   z-index: 1;
+}
+
+.window.maximized {
+  z-index: 2;
 }
 
 .window:fullscreen {
@@ -511,24 +520,6 @@
 }
 
 
-/* ミュートで始めた動画に出す、大きめのミュート解除ボタン */
-.unmute-button {
-  position: absolute;
-  left: 16px;
-  bottom: 16px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 48px;
-  padding: 0 20px;
-  border: none;
-  border-radius: var(--md-sys-shape-corner-full);
-  background: var(--md-sys-color-inverse-surface);
-  color: var(--md-sys-color-inverse-on-surface);
-  box-shadow: var(--md-sys-elevation-level2);
-  font: var(--md-sys-typescale-label-large);
-  cursor: pointer;
-}
 
 .icon-button.toggled {
   background: var(--md-sys-color-secondary-container);
@@ -688,4 +679,31 @@
 
 .zoom-level {
   color: var(--md-sys-color-on-surface-variant);
+}
+
+/* 全体のミュート。キャンバスに入った直後は「ミュートを解除」と文字でも出す */
+.global-mute {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  min-width: 40px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: none;
+  color: var(--md-sys-color-on-surface-variant);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.global-mute.muted {
+  color: var(--md-sys-color-error);
+}
+
+.global-mute.labeled {
+  padding: 0 16px 0 12px;
+  background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container);
+  font: var(--md-sys-typescale-label-large);
 }

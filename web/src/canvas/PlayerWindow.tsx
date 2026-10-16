@@ -4,7 +4,6 @@ import type { MediaKind } from '../protocol/MediaKind';
 import type { Probe } from '../protocol/Probe';
 import { basename } from '../format';
 import { ja } from '../i18n/ja';
-import { Icon } from '../icons';
 import { frameAt, frameFrom, seekTimeFor } from './frames';
 import { ImageView, type ImageApi } from './ImageView';
 import { Controls, SPEEDS } from './Controls';
@@ -37,13 +36,12 @@ type Props = FrameProps & {
   id: number;
   path: string;
   media: MediaKind;
-  /** 音を出すか(複数あるときはフォーカス中だけ。7.6) */
+  /** 音を出すか(全体のミュート中は出さない。複数あるときはフォーカス中だけ。7.6) */
   audible: boolean;
+  /** 音声があるか分かったとき(変わらない関数を渡す) */
+  onHasAudio: (id: number, has: boolean) => void;
   api: Ref<PlayerApi | null>;
 };
-
-/** 再生開始からミュート解除ボタンを出しておく時間 */
-const UNMUTE_HINT_MS = 5000;
 
 type Status = { kind: 'loading' } | { kind: 'ready' } | { kind: 'error'; message: string };
 
@@ -62,9 +60,6 @@ export function PlayerWindow({ api: apiRef, ...p }: Props) {
   const [rate, setRate] = useState(1);
   const [volume, setVolume] = useState(1);
   const [muted, setMuted] = useState(false);
-  /** 音声のある動画をミュートで始めたときに出す、大きめのミュート解除ボタン(7.6) */
-  const [showUnmute, setShowUnmute] = useState(false);
-  const unmuteTimer = useRef<number | null>(null);
   /** 本体を押し始めたときにフォーカス中だったか(クリックで再生 / 停止するのはフォーカス中だけ) */
   const wasFocused = useRef(false);
   const [zoom, setZoom] = useState<'fit' | 'actual'>('fit');
@@ -78,20 +73,10 @@ export function PlayerWindow({ api: apiRef, ...p }: Props) {
 
   const fail = useCallback((message: string) => setStatus({ kind: 'error', message }), []);
 
-  // 複数を一度に開いても音が重ならないよう、音声のある動画はミュートで始める(7.6)
-  const onProbe = useCallback((pr: Probe) => {
-    if (pr.audioCodec) {
-      setMuted(true);
-      setShowUnmute(true);
-    }
-  }, []);
+  // 音声があるかをキャンバスへ知らせる(全体のミュートボタンの表示に使う)
+  const { onHasAudio, id } = p;
+  const onProbe = useCallback((pr: Probe) => onHasAudio(id, !!pr.audioCodec), [onHasAudio, id]);
   const { probe, ranges } = useVideoSource(video, p.path, timed, { onProbe, onError: fail });
-  useEffect(
-    () => () => {
-      if (unmuteTimer.current !== null) clearTimeout(unmuteTimer.current);
-    },
-    [],
-  );
 
   // 表示中のフレームを追う(7.5)。A-B ループの折り返しもここで行う
   useEffect(() => {
@@ -212,31 +197,12 @@ export function PlayerWindow({ api: apiRef, ...p }: Props) {
             playsInline
             onLoadedData={() => setStatus({ kind: 'ready' })}
             onPlay={() => setPlaying(true)}
-            onPlaying={() => {
-              // 再生が始まってから約5秒でミュート解除ボタンを消す
-              if (unmuteTimer.current === null) unmuteTimer.current = window.setTimeout(() => setShowUnmute(false), UNMUTE_HINT_MS);
-            }}
             onPause={() => setPlaying(false)}
             onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
             onSeeked={(e) => setTime(e.currentTarget.currentTime)}
             onError={() => status.kind !== 'error' && fail(ja.playFailed)}
             style={probe ? actualSize(probe.width, probe.height) : undefined}
           />
-        )}
-        {showUnmute && muted && (
-          <button
-            type="button"
-            className="unmute-button"
-            aria-label={ja.unmute}
-            onClick={(e) => {
-              e.stopPropagation();
-              setMuted(false);
-              setShowUnmute(false);
-            }}
-          >
-            <Icon name="volumeOff" size={22} />
-            {ja.unmute}
-          </button>
         )}
         {status.kind === 'loading' && <div className="window-overlay">{ja.loading}</div>}
         {status.kind === 'error' && (

@@ -1,5 +1,5 @@
 // キャンバス: 開いたファイルをフローティングウィンドウとして並べる(4.2、5.3、5.4)
-import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref } from 'react';
+import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref } from 'react';
 import type { CommandDef } from '../commands';
 import { HintBar } from '../ui/HintBar';
 import { Toolbar, type ToolbarActions } from '../ui/Toolbar';
@@ -24,12 +24,17 @@ type PlayAction =
   | { do: 'speed'; dir: 1 | -1 } | { do: 'ab' } | { do: 'mute' } | { do: 'zoom' } | { do: 'zoomBy'; f: number };
 
 /** 操作パネルから操作を実行するための入口 */
-export type CanvasRun = { normal: (a: NormalAction) => void; window: (a: WindowAction) => void };
+export type CanvasRun = {
+  normal: (a: NormalAction) => void;
+  window: (a: WindowAction) => void;
+  /** Home へ戻るときに全ウィンドウを止める */
+  pauseAll: () => void;
+};
 
 export type NormalAction =
   | PlayAction
   | { do: 'maximize' } | { do: 'all' } | { do: 'home' } | { do: 'homeInitial' } | { do: 'help' } | { do: 'history' }
-  | { do: 'windowMode' } | { do: 'sync' } | { do: 'compareMode' } | { do: 'escape' };
+  | { do: 'windowMode' } | { do: 'sync' } | { do: 'compareMode' } | { do: 'globalMute' } | { do: 'escape' };
 
 /** ウィンドウ操作モードのキー */
 export type WindowAction =
@@ -46,7 +51,7 @@ export const normal: Record<string, NormalAction> = {
   '[': { do: 'speed', dir: -1 }, ']': { do: 'speed', dir: 1 },
   b: { do: 'ab' }, m: { do: 'mute' }, z: { do: 'zoom' }, '+': { do: 'zoomBy', f: 1.25 }, '-': { do: 'zoomBy', f: 0.8 }, f: { do: 'maximize' }, K: { do: 'all' },
   h: { do: 'home' }, H: { do: 'homeInitial' }, Tab: { do: 'home' }, '?': { do: 'help' },
-  w: { do: 'windowMode' }, r: { do: 'history' }, s: { do: 'sync' }, c: { do: 'compareMode' }, Escape: { do: 'escape' },
+  w: { do: 'windowMode' }, r: { do: 'history' }, s: { do: 'sync' }, c: { do: 'compareMode' }, M: { do: 'globalMute' }, Escape: { do: 'escape' },
 };
 for (let n = 0; n <= 9; n++) normal[String(n)] = { do: 'percent', n };
 
@@ -77,7 +82,7 @@ export const playCommands: CommandDef<NormalAction>[] = [
 export const canvasCommands: CommandDef<NormalAction>[] = [
   { id: { do: 'home' }, key: 'h', label: 'Home へ戻る' }, { id: { do: 'homeInitial' }, key: 'H', label: 'Home の初期位置へ' },
   { id: { do: 'maximize' }, key: 'f', label: 'ウィンドウ最大化' }, { id: { do: 'windowMode' }, key: 'w', label: 'ウィンドウ操作モード' },
-  { id: { do: 'sync' }, key: 's', label: '同期再生' }, { id: { do: 'compareMode' }, key: 'c', label: '比較の表示を切替' },
+  { id: { do: 'globalMute' }, key: 'M', label: '全体のミュート' }, { id: { do: 'sync' }, key: 's', label: '同期再生' }, { id: { do: 'compareMode' }, key: 'c', label: '比較の表示を切替' },
 ];
 export const windowCommands: CommandDef<WindowAction>[] = [
   { id: { do: 'focusDir', dir: 'h' }, key: 'w h', label: '左のウィンドウへ' }, { id: { do: 'focusDir', dir: 'l' }, key: 'w l', label: '右のウィンドウへ' },
@@ -132,6 +137,11 @@ type Props = {
   tabbar: 'top' | 'side';
   /** 同期再生中は全ウィンドウの音を出す */
   syncAudio: boolean;
+  /** 全体のミュート(各ウィンドウの音量・ミュートとは別に、全部の音を止める) */
+  globalMuted: boolean;
+  /** キャンバスに入った直後(約5秒)。音声のある動画があれば、ミュートボタンに「ミュートを解除」と出す */
+  muteLabel: boolean;
+  onToggleGlobalMute: () => void;
   /** 操作パネルから操作を実行するための入口 */
   runRef: Ref<CanvasRun>;
 };
@@ -165,6 +175,21 @@ export function Canvas(p: Props) {
   }, []);
 
   const ws = p.windows;
+  /** 音声のある動画のウィンドウ(全体のミュートボタンに「ミュートを解除」と出すかに使う) */
+  const [withAudio, setWithAudio] = useState<Set<number>>(new Set());
+  const hasAudio = ws.some((w) => withAudio.has(w.id));
+  // ウィンドウの読み込み処理をやり直させないよう、変わらない関数にしてウィンドウの ID と一緒に呼んでもらう
+  const onHasAudio = useCallback(
+    (id: number, has: boolean) =>
+      setWithAudio((s) => {
+        if (s.has(id) === has) return s;
+        const n = new Set(s);
+        if (has) n.add(id);
+        else n.delete(id);
+        return n;
+      }),
+    [],
+  );
   // 閉じたウィンドウの状態を捨てる
   const ids = ws.map((w) => w.id).join(',');
   const [lastIds, setLastIds] = useState(ids);
@@ -267,6 +292,7 @@ export function Canvas(p: Props) {
       case 'history': return p.onHistory();
       case 'windowMode': return setWindowMode(true);
       case 'sync': return setSynced((s) => !s);
+      case 'globalMute': return p.onToggleGlobalMute();
       case 'compareMode': return focusedApi()?.cycleMode?.();
       case 'escape': return;
       default: return runPlay(a);
@@ -359,7 +385,11 @@ export function Canvas(p: Props) {
     window.addEventListener('pointerup', up);
   };
 
-  useImperativeHandle(p.runRef, () => ({ normal: runNormal, window: runWindow }));
+  useImperativeHandle(p.runRef, () => ({
+    normal: runNormal,
+    window: runWindow,
+    pauseAll: () => apis.current.forEach((a) => a?.setPlaying(false)),
+  }));
 
   const windowMap = new KeySequence(windowKeys);
   useKeys((k, e) => {
@@ -461,9 +491,22 @@ export function Canvas(p: Props) {
             {mode === 'tile' ? ja.layoutTile : ja.layoutFree}
           </button>
         )}
+        {/* 全体のミュート。キャンバスに入った直後は、音声のある動画があれば文字でも知らせる */}
+        <button
+          type="button"
+          className={`global-mute${p.globalMuted ? ' muted' : ''}${p.globalMuted && p.muteLabel && hasAudio ? ' labeled' : ''}`}
+          data-testid="global-mute"
+          aria-pressed={p.globalMuted}
+          aria-label={p.globalMuted ? ja.globalUnmute : ja.globalMute}
+          title={`${p.globalMuted ? ja.globalUnmute : ja.globalMute}(M)`}
+          onClick={p.onToggleGlobalMute}
+        >
+          <Icon name={p.globalMuted ? 'volumeOff' : 'volume'} />
+          {p.globalMuted && p.muteLabel && hasAudio && <span>{ja.globalUnmute}</span>}
+        </button>
         <Toolbar {...p.toolbar} />
       </header>
-      <div ref={area} className="canvas-area" data-testid="canvas-area">
+      <div ref={area} className={`canvas-area${mode === 'free' ? ' free' : ''}`} data-testid="canvas-area">
         {ws.length === 0 && <div className="canvas-empty">{ja.canvasEmpty}</div>}
         {ws.map((w, i) => {
           // 枠と配置は1ファイルのウィンドウと比較ウィンドウで共通
@@ -485,14 +528,15 @@ export function Canvas(p: Props) {
             onMove: (dx: number, dy: number) => updateFree(w.id, (r) => ({ ...r, x: r.x + dx, y: r.y + dy })),
             onResize: (dw: number, dh: number) => updateFree(w.id, (r) => ({ ...r, w: Math.max(240, r.w + dw), h: Math.max(180, r.h + dh) })),
           };
-          const audible = p.visible && !minimized.has(w.id) && (shown.length === 1 || w.id === p.focused || (synced && p.syncAudio));
+          const audible =
+            p.visible && !p.globalMuted && !minimized.has(w.id) && (shown.length === 1 || w.id === p.focused || (synced && p.syncAudio));
           const register = (x: PlayerApi | null) => {
             apis.current.set(w.id, x);
           };
           return w.members ? (
-            <CompareWindow key={w.id} {...frame} members={w.members} audible={audible} api={register} onError={p.onError} />
+            <CompareWindow key={w.id} {...frame} id={w.id} members={w.members} audible={audible} onHasAudio={onHasAudio} api={register} onError={p.onError} />
           ) : (
-            <PlayerWindow key={w.id} {...frame} id={w.id} path={w.path} media={w.media} audible={audible} api={register} />
+            <PlayerWindow key={w.id} {...frame} id={w.id} path={w.path} media={w.media} audible={audible} onHasAudio={onHasAudio} api={register} />
           );
         })}
       </div>

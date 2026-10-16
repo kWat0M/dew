@@ -66,7 +66,7 @@ export function WindowFrame({ sectionRef, ...p }: Props) {
   return (
     <section
       ref={sectionRef}
-      className={`window${p.focused ? ' focused' : ''}${p.selected ? ' selected' : ''}${p.dropTarget ? ' drop-target' : ''}`}
+      className={`window${p.focused ? ' focused' : ''}${p.selected ? ' selected' : ''}${p.maximized ? ' maximized' : ''}${p.dropTarget ? ' drop-target' : ''}`}
       style={{ left: p.rect.x, top: p.rect.y, width: p.rect.w, height: p.rect.h }}
       hidden={p.minimized}
       data-testid={p.testId}

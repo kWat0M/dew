@@ -18,6 +18,9 @@ import './App.css';
 
 type Screen = 'home' | 'canvas';
 
+/** キャンバスに入ってから「ミュートを解除」と文字で出しておく時間 */
+const MUTE_LABEL_MS = 5000;
+
 /** 操作したことをサーバへ伝える間隔(dew <ファイル> の送り先を決めるのに使う) */
 const ACTIVE_INTERVAL_MS = 1000;
 
@@ -26,6 +29,32 @@ export function App() {
   const [started, setStarted] = useState(false);
   const startedRef = useRef(false);
   const [screen, setScreen] = useState<Screen>('home');
+  const screenRef = useRef<Screen>('home');
+  /** 全体のミュート。Home からキャンバスへ入るたびにオンにする(意図せず音が出ないように) */
+  const [globalMuted, setGlobalMuted] = useState(true);
+  /** キャンバスに入ってから約5秒は、ミュートボタンに「ミュートを解除」と出す */
+  const [muteLabel, setMuteLabel] = useState(false);
+  const muteLabelTimer = useRef<number | null>(null);
+  const canvasRun = useRef<CanvasRun | null>(null);
+
+  /** キャンバスへ。Home から入るときは全体のミュートをオンにする */
+  const goCanvas = useCallback(() => {
+    if (screenRef.current !== 'canvas') {
+      setGlobalMuted(true);
+      setMuteLabel(true);
+      if (muteLabelTimer.current !== null) clearTimeout(muteLabelTimer.current);
+      muteLabelTimer.current = window.setTimeout(() => setMuteLabel(false), MUTE_LABEL_MS);
+    }
+    screenRef.current = 'canvas';
+    setScreen('canvas');
+  }, []);
+
+  /** Home へ。キャンバスの動画は止める */
+  const goHome = useCallback(() => {
+    if (screenRef.current === 'canvas') canvasRun.current?.pauseAll();
+    screenRef.current = 'home';
+    setScreen('home');
+  }, []);
   /** Home の初期位置(最初に dew を起動したディレクトリ) */
   const [startDir, setStartDir] = useState<string | null>(null);
   /** Home に表示を求めるディレクトリ。seq を変えると同じ場所でも開き直す */
@@ -44,7 +73,6 @@ export function App() {
   const [showHidden, setShowHidden] = useState(false);
   const [follow, setFollow] = useState(false);
   const homeRun = useRef<((a: HomeAction) => void) | null>(null);
-  const canvasRun = useRef<CanvasRun | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const nextId = useRef(1);
   const lastActive = useRef(0);
@@ -66,8 +94,8 @@ export function App() {
     api.addHistory(files.map((f) => f.path));
     setWindows((ws) => [...ws, ...added]);
     setFocused(added.at(-1)!.id);
-    setScreen('canvas');
-  }, []);
+    goCanvas();
+  }, [goCanvas]);
 
   // 比較ウィンドウ(F7)。1つのウィンドウに複数のファイルを入れる
   const openCompare = useCallback((files: Omit<Win, 'id'>[]) => {
@@ -75,8 +103,8 @@ export function App() {
     api.addHistory(files.map((f) => f.path));
     setWindows((ws) => [...ws, { id, path: files[0]!.path, media: files[0]!.media, members: files }]);
     setFocused(id);
-    setScreen('canvas');
-  }, []);
+    goCanvas();
+  }, [goCanvas]);
 
   // CLI からの表示指示(F10)
   useEffect(
@@ -85,12 +113,12 @@ export function App() {
         if (ev.type !== 'open') return;
         if (ev.kind === 'dir') {
           setHomeRequest({ path: ev.path, seq: seq.current++ });
-          setScreen('home');
+          goHome();
         } else {
           open([{ path: ev.path, media: ev.media }]);
         }
       }),
-    [events, open],
+    [events, open, goHome],
   );
 
   // 最初の操作で開始の表示を消す。以降は自動再生できる(7.6)。IME の状態も見る
@@ -203,7 +231,7 @@ export function App() {
           liveCount={0}
           onOpen={open}
           onCompare={openCompare}
-          onCanvas={() => setScreen('canvas')}
+          onCanvas={goCanvas}
           onInitial={toInitial}
           onHistory={() => setHistoryOpen(true)}
           onHelp={() => setHelpOpen(true)}
@@ -232,7 +260,7 @@ export function App() {
             if (focused !== null && ids.includes(focused)) setFocused(rest.at(-1)?.id ?? null);
           }}
           onReorder={(ids) => setWindows((ws) => ids.map((id) => ws.find((w) => w.id === id)!))}
-          onHome={() => setScreen('home')}
+          onHome={goHome}
           onHistory={() => setHistoryOpen(true)}
           onHelp={() => setHelpOpen(true)}
           toolbar={toolbar}
@@ -241,11 +269,14 @@ export function App() {
           tabbar={settings.tabbar}
           onError={onError}
           syncAudio={settings.syncAudio}
+          globalMuted={globalMuted}
+          muteLabel={muteLabel}
+          onToggleGlobalMute={() => setGlobalMuted((m) => !m)}
           onMessage={onError}
           runRef={canvasRun}
           onHomeInitial={() => {
             toInitial();
-            setScreen('home');
+            goHome();
           }}
         />
       </div>

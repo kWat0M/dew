@@ -155,3 +155,17 @@ test('比較ウィンドウの再生コントロールは1ファイルのウィ�
   await expect.poll(() => win.locator('video').evaluateAll((vs: HTMLVideoElement[]) => vs.map((v) => v.playbackRate))).toEqual([2, 2]);
   expect(await master.evaluate((v: HTMLVideoElement) => v.playbackRate)).toBe(2);
 });
+
+test('比較ウィンドウも全体のミュートに従い、解除すると1つ目だけ音を出す', async ({ page, dew }) => {
+  await start(page, dew);
+  await pick(page, ['h264_aac.mp4', 'mp4v.mp4']);
+  await page.keyboard.press('c');
+  const win = page.getByTestId('compare-window');
+  const first = win.locator('video').first();
+  await expect.poll(() => first.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(0.3);
+  await expect(page.getByTestId('global-mute')).toContainText('ミュートを解除');
+  expect(await win.locator('video').evaluateAll((vs: HTMLVideoElement[]) => vs.map((v) => v.muted))).toEqual([true, true]);
+  await page.getByTestId('global-mute').click();
+  // 音を出すのは1つ目だけ(2つ目は重ならないようミュートのまま)
+  await expect.poll(() => win.locator('video').evaluateAll((vs: HTMLVideoElement[]) => vs.map((v) => v.muted))).toEqual([false, true]);
+});

@@ -22,6 +22,9 @@ export type Member = { path: string; media: MediaKind };
 type Props = FrameProps & {
   members: Member[];
   audible: boolean;
+  id: number;
+  /** 1つ目に音声があるか分かったとき(変わらない関数を渡す) */
+  onHasAudio: (id: number, has: boolean) => void;
   api: Ref<PlayerApi | null>;
   onError: (m: string) => void;
 };
@@ -88,7 +91,7 @@ function MemberMedia(p: {
   );
 }
 
-export function CompareWindow({ api: apiRef, ...p }: Props) {
+export function CompareWindow({ api: apiRef, onHasAudio, id, ...p }: Props) {
   const stage = useRef<HTMLDivElement>(null);
   const win = useRef<HTMLElement>(null);
   const videos = useRef(new Map<number, HTMLVideoElement>());
@@ -101,7 +104,7 @@ export function CompareWindow({ api: apiRef, ...p }: Props) {
   const [playing, setPlaying] = useState(false);
   const [time, setTime] = useState(0);
   const [frame, setFrame] = useState(0);
-  const [muted, setMuted] = useState(true);
+  const [muted, setMuted] = useState(false);
   const [volume, setVolume] = useState(1);
   const [rate, setRate] = useState(1);
   const [ab, setAb] = useState<{ a: number | null; b: number | null }>({ a: null, b: null });
@@ -167,7 +170,14 @@ export function CompareWindow({ api: apiRef, ...p }: Props) {
     else videos.current.delete(i);
     setVideoCount(videos.current.size);
   }, []);
-  const onFirstProbe = useCallback((pr: Probe) => setProbe(pr), []);
+  const onFirstProbe = useCallback(
+    (pr: Probe) => {
+      setProbe(pr);
+      // 音を出すのは1つ目だけなので、1つ目に音声があるかを知らせる
+      onHasAudio(id, !!pr.audioCodec);
+    },
+    [onHasAudio, id],
+  );
   const noProbe = useCallback(() => {}, []);
 
   const seek = useCallback((t: number) => {

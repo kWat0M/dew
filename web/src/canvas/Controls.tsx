@@ -9,6 +9,7 @@ import { SeekBar } from './SeekBar';
 
 export const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 
+
 function IconButton({ icon, label, title, size = 22, onClick }: { icon: IconName; label: string; title: string; size?: number; onClick: () => void }) {
   return (
     <button type="button" className="icon-button" aria-label={label} title={title} onClick={onClick}>
