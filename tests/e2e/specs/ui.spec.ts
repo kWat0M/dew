@@ -9,10 +9,10 @@ test('操作パネルのボタンだけで Home とキャンバスを操作で�
   await start(page, dew);
   await openPanel(page);
   await expect(panel(page)).toBeVisible();
-  await panel(page).getByRole('button', { name: /^下へ/ }).click();
+  await panel(page).getByTestId('ops-all').getByRole('button', { name: /^下へ/ }).click();
   expect(await selected(page)).toBe('broken.mp4');
-  await panel(page).getByRole('button', { name: /^下へ/ }).click();
-  await panel(page).getByRole('button', { name: /^開く/ }).click();
+  await panel(page).getByTestId('ops-all').getByRole('button', { name: /^下へ/ }).click();
+  await panel(page).getByTestId('ops-all').getByRole('button', { name: /^開く/ }).click();
   const video = page.getByTestId('player-window').locator('video');
   await expect(video).toHaveCount(1);
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(0.2);
@@ -20,12 +20,12 @@ test('操作パネルのボタンだけで Home とキャンバスを操作で�
   // キャンバスでは再生とウィンドウ操作が並ぶ
   await panel(page).getByRole('button', { name: /^再生 \/ 一時停止/ }).click();
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
-  await panel(page).getByRole('button', { name: /^Home へ戻る/ }).click();
+  await panel(page).getByTestId('ops-all').getByRole('button', { name: /^Home へ戻る/ }).click();
   await expect(current(page)).toBeVisible();
-  await panel(page).getByRole('button', { name: /^キャンバスへ/ }).click();
-  await panel(page).getByRole('button', { name: /^全部閉じる/ }).click();
+  await panel(page).getByTestId('ops-all').getByRole('button', { name: /^キャンバスへ/ }).click();
+  await panel(page).getByTestId('ops-all').getByRole('button', { name: /^全部閉じる/ }).click();
   await expect(page.getByTestId('player-window')).toHaveCount(0);
-  await panel(page).getByRole('button', { name: /^履歴/ }).click();
+  await panel(page).getByTestId('ops-all').getByRole('button', { name: /^履歴/ }).click();
   await expect(page.getByTestId('history')).toBeVisible();
   await page.getByTestId('history').getByRole('button', { name: '閉じる' }).click();
 
@@ -88,4 +88,32 @@ test('タブバーを左端の縦並びにすると普段は隠れ、左端に�
   await page.mouse.move(1, 400);
   await expect(bar).toBeInViewport();
   await expect(bar.getByRole('tab', { name: /h264_aac\.mp4/ })).toBeVisible();
+});
+
+test('操作パネルの上部に設定があり、キーで変えてもチェックボックスに反映される', async ({ page, dew }) => {
+  await start(page, dew);
+  await openPanel(page);
+  await expect(panel(page).getByRole('heading', { level: 3 }).first()).toHaveText('設定');
+  const hidden = panel(page).getByRole('checkbox', { name: '隠しファイルを表示' });
+  const follow = panel(page).getByRole('checkbox', { name: '最新ファイルに追従' });
+  await expect(hidden).not.toBeChecked();
+  await page.keyboard.press('.');
+  await expect(hidden).toBeChecked();
+  await expect(current(page).getByRole('option', { name: '.hidden.png' })).toBeVisible();
+  await hidden.uncheck();
+  await expect(current(page).getByRole('option', { name: '.hidden.png' })).toBeHidden();
+  await page.keyboard.press('n');
+  await expect(follow).toBeChecked();
+  await follow.uncheck();
+  await expect(follow).not.toBeChecked();
+});
+
+test('キャンバスの操作パネルは設定と拡大・縮小・均等に並べるが上にある', async ({ page, dew }) => {
+  await start(page, dew);
+  await open(page, 'h264_aac.mp4');
+  await openPanel(page);
+  const headings = panel(page).getByRole('heading', { level: 3 });
+  await expect(headings.first()).toHaveText('設定');
+  const quick = panel(page).getByTestId('ops-quick');
+  for (const name of ['拡大', '縮小', '均等に並べる']) await expect(quick.getByRole('button', { name: new RegExp(`^${name}`) })).toBeVisible();
 });

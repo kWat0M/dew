@@ -85,6 +85,17 @@ export const windowCommands: CommandDef<WindowAction>[] = [
   { id: { do: 'closeAll' }, key: 'w X', label: '全部閉じる' },
 ];
 
+/** 操作パネルの上に出す、画面にボタンがない操作 */
+export const quickWindowCommands: CommandDef<WindowAction>[] = [
+  { id: { do: 'grow', f: 1.1 }, key: 'w +', label: '拡大' }, { id: { do: 'grow', f: 1 / 1.1 }, key: 'w -', label: '縮小' },
+  { id: { do: 'equalize' }, key: 'w =', label: '均等に並べる' }, { id: { do: 'selectAll' }, key: 'w a', label: '全選択 / 解除' },
+  { id: { do: 'only' }, key: 'w o', label: 'ほかを閉じる' }, { id: { do: 'closeAll' }, key: 'w X', label: '全部閉じる' },
+];
+export const quickPlayCommands: CommandDef<NormalAction>[] = [
+  { id: { do: 'speed', dir: -1 }, key: '[', label: '遅く' }, { id: { do: 'speed', dir: 1 }, key: ']', label: '速く' },
+  { id: { do: 'ab' }, key: 'b', label: 'A-B ループ' }, { id: { do: 'all' }, key: 'K', label: '全ウィンドウ再生 / 停止' },
+];
+
 /** which-key 風の候補表示とキー一覧に出す行(キー、説明) */
 export const windowHelp: [string, string][] = [
   ['1–9', ja.wFocusN], ['h/j/k/l', ja.wFocusDir], ['H/J/K/L', ja.wMoveDir], ['Space', ja.wSelect], ['a', ja.wSelectAll],
@@ -269,9 +280,17 @@ export function Canvas(p: Props) {
       }
       case 'select': return f !== null && toggleSelect(f);
       case 'selectAll': return setSelected((s) => (s.size === ws.length ? new Set() : new Set(ws.map((w) => w.id))));
-      case 'grow':
-        if (mode !== 'free' || f === null) return;
-        return updateFree(f, (r) => ({ ...r, w: r.w * a.f, h: r.h * a.f }));
+      case 'grow': {
+        if (f === null) return;
+        const scale = (r: Rect) => ({ ...r, w: r.w * a.f, h: r.h * a.f });
+        if (mode === 'free') return updateFree(f, scale);
+        // タイル配置では大きさを変えられないので、今の位置のまま自由配置に切り替えてから変える
+        const base = new Map(shown.map((w, i) => [w.id, tiles[i]!]));
+        const r = base.get(f);
+        if (r) base.set(f, scale(r));
+        setFree(base);
+        return setMode('free');
+      }
       case 'equalize':
         setMaximized(null);
         setMinimized(new Set());

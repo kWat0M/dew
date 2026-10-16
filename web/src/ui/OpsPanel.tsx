@@ -1,16 +1,34 @@
-// 操作パネル(4.4): キーでできるすべての操作をボタンで並べる。右端のサイドシートで、開いたまま操作できる
-import type { Section } from '../commands';
+// 操作パネル(4.4): 上から、設定 → 画面にボタンがない操作 → キーでできるすべての操作。右端のサイドシートで、開いたまま操作できる
+import type { Command, Section } from '../commands';
 import { ja } from '../i18n/ja';
 import { Icon } from '../icons';
 import type { Settings } from '../settings';
 import './OpsPanel.css';
 
+/** 設定のチェックボックス。キーで変えたときも同じ状態を示す */
+export type Toggle = { label: string; checked: boolean; onChange: (v: boolean) => void };
+
 type Props = {
-  sections: Section[];
+  toggles: Toggle[];
   settings: Settings;
   onSettings: (patch: Partial<Settings>) => void;
+  quick: Command[];
+  sections: Section[];
   onClose: () => void;
 };
+
+function Grid({ items }: { items: Command[] }) {
+  return (
+    <div className="ops-grid">
+      {items.map((c) => (
+        <button key={c.key + c.label} type="button" className="ops-item" onClick={c.run}>
+          <span>{c.label}</span>
+          <kbd>{c.key}</kbd>
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export function OpsPanel(p: Props) {
   return (
@@ -22,25 +40,14 @@ export function OpsPanel(p: Props) {
         </button>
       </header>
       <div className="ops-body">
-        {p.sections.map((s) => (
-          <section key={s.title}>
-            <h3>{s.title}</h3>
-            <div className="ops-grid">
-              {s.items.map((c) => (
-                <button key={c.key + c.label} type="button" className="ops-item" onClick={c.run}>
-                  <span>{c.label}</span>
-                  <kbd>{c.key}</kbd>
-                </button>
-              ))}
-            </div>
-          </section>
-        ))}
         <section>
           <h3>{ja.settings}</h3>
-          <label className="ops-switch">
-            <input type="checkbox" checked={p.settings.hints} onChange={(e) => p.onSettings({ hints: e.target.checked })} />
-            {ja.showHints}
-          </label>
+          {p.toggles.map((t) => (
+            <label key={t.label} className="ops-switch">
+              <input type="checkbox" checked={t.checked} onChange={(e) => t.onChange(e.target.checked)} />
+              {t.label}
+            </label>
+          ))}
           <fieldset className="ops-radio">
             <legend>{ja.tabbarStyle}</legend>
             {(['top', 'side'] as const).map((v) => (
@@ -51,6 +58,20 @@ export function OpsPanel(p: Props) {
             ))}
           </fieldset>
         </section>
+        {p.quick.length > 0 && (
+          <section data-testid="ops-quick">
+            <h3>{ja.secQuick}</h3>
+            <Grid items={p.quick} />
+          </section>
+        )}
+        <div data-testid="ops-all">
+          {p.sections.map((s) => (
+            <section key={s.title}>
+              <h3>{s.title}</h3>
+              <Grid items={s.items} />
+            </section>
+          ))}
+        </div>
       </div>
     </aside>
   );

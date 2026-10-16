@@ -2,14 +2,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api/http';
 import { Events } from './api/events';
-import { canvasCommands, playCommands, windowCommands, windowHelp, Canvas, type CanvasRun, type NormalAction, type WindowAction, type Win } from './canvas/Canvas';
-import type { Section } from './commands';
+import { canvasCommands, playCommands, quickPlayCommands, quickWindowCommands, windowCommands, windowHelp, Canvas, type CanvasRun, type NormalAction, type WindowAction, type Win } from './canvas/Canvas';
+import type { Command, Section } from './commands';
 import { useSettings } from './settings';
 import { Dialog } from './ui/Dialog';
 import { OpsPanel } from './ui/OpsPanel';
 import { Toolbar } from './ui/Toolbar';
 import { HistoryWindow } from './history/HistoryWindow';
-import { Home, homeCommands, type DirRequest, type HomeAction } from './home/Home';
+import { Home, homeCommands, homeQuick, type DirRequest, type HomeAction } from './home/Home';
 import { ja } from './i18n/ja';
 import { readKey } from './keys';
 import { Snackbar } from './ui/Snackbar';
@@ -40,6 +40,9 @@ export function App() {
   const [confirmStop, setConfirmStop] = useState(false);
   const [stopped, setStopped] = useState(false);
   const [settings, updateSettings] = useSettings();
+  // 隠しファイルの表示と最新ファイルへの追従。キーと操作パネルのチェックボックスで共有する
+  const [showHidden, setShowHidden] = useState(false);
+  const [follow, setFollow] = useState(false);
   const homeRun = useRef<((a: HomeAction) => void) | null>(null);
   const canvasRun = useRef<CanvasRun | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -152,6 +155,22 @@ export function App() {
           { title: ja.secCanvas, items: canvasCommands.map((d) => ({ key: d.key, label: d.label, run: () => runNormal(d.id) })) },
           { title: ja.secWindow, items: windowCommands.map((d) => ({ key: d.key, label: d.label, run: () => runWindow(d.id) })) },
         ];
+  const quick: Command[] =
+    screen === 'home'
+      ? homeQuick.map((d) => ({ key: d.key, label: d.label, run: () => runHome(d.id) }))
+      : [
+          ...quickWindowCommands.map((d) => ({ key: d.key, label: d.label, run: () => runWindow(d.id) })),
+          ...quickPlayCommands.map((d) => ({ key: d.key, label: d.label, run: () => runNormal(d.id) })),
+        ];
+  const toggles = [
+    { label: ja.showHints, checked: settings.hints, onChange: (v: boolean) => updateSettings({ hints: v }) },
+    ...(screen === 'home'
+      ? [
+          { label: ja.followLatest, checked: follow, onChange: setFollow },
+          { label: ja.showHidden, checked: showHidden, onChange: setShowHidden },
+        ]
+      : []),
+  ];
   sections.push({
     title: ja.secCommon,
     items: [
@@ -183,6 +202,10 @@ export function App() {
           toolbar={toolbar}
           hints={settings.hints}
           onHideHints={hideHints}
+          showHidden={showHidden}
+          onShowHidden={setShowHidden}
+          follow={follow}
+          onFollow={setFollow}
           runRef={homeRun}
           onError={onError}
         />
@@ -216,7 +239,14 @@ export function App() {
       </div>
       {historyOpen && started && <HistoryWindow onOpen={open} onClose={() => setHistoryOpen(false)} onError={onError} />}
       {panelOpen && (
-        <OpsPanel sections={sections} settings={settings} onSettings={updateSettings} onClose={() => setPanelOpen(false)} />
+        <OpsPanel
+          toggles={toggles}
+          settings={settings}
+          onSettings={updateSettings}
+          quick={quick}
+          sections={sections}
+          onClose={() => setPanelOpen(false)}
+        />
       )}
       {helpOpen && (
         <Dialog title={ja.keyHelp} onClose={() => setHelpOpen(false)}>

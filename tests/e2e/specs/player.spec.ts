@@ -9,6 +9,9 @@ test('H.264 の MP4 を変換なしで音声付き再生する', async ({ page, 
   const video = await open(page, 'h264_aac.mp4');
 
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(0.5);
+  // 音声のある動画はミュートで始め、大きめのミュート解除ボタンを出す(7.6)
+  expect(await video.evaluate((v: HTMLVideoElement) => v.muted)).toBe(true);
+  await page.getByRole('button', { name: 'ミュート解除', exact: true }).click();
   expect(await video.evaluate((v: HTMLVideoElement) => v.muted)).toBe(false);
   await expect.poll(() => audioDecoded(video)).toBe(true);
   expect(transcodes).toEqual([]);
@@ -88,4 +91,37 @@ test('dew <ファイル> で開いているタブに表示する', async ({ page
   const win = page.getByTestId('player-window').filter({ hasText: 'h264_aac.mp4' });
   await expect(win).toBeVisible();
   await expect.poll(() => win.locator('video').evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(0.3);
+});
+
+test('ミュート解除ボタンは再生開始から約5秒で消える', async ({ page, dew }) => {
+  await start(page, dew);
+  await open(page, 'mp4v.mp4');
+  const unmute = page.getByRole('button', { name: 'ミュート解除', exact: true });
+  await expect(unmute).toBeVisible();
+  await expect(unmute).toBeHidden({ timeout: 8000 });
+});
+
+test('再生ボタン群: 再生 / 停止のアイコンが切り替わり、コマ送りは一時停止中だけ出る', async ({ page, dew }) => {
+  await start(page, dew);
+  const video = await open(page, 'h264_aac.mp4');
+  const win = page.getByTestId('player-window');
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(false);
+  await expect(win.getByRole('button', { name: '1フレーム進む' })).toBeHidden();
+
+  await win.getByRole('button', { name: '一時停止' }).click();
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
+  await expect(win.getByRole('button', { name: '再生', exact: true })).toBeVisible();
+  await expect(win.getByRole('button', { name: '1フレーム戻る' })).toBeVisible();
+
+  const t0 = await video.evaluate((v: HTMLVideoElement) => v.currentTime);
+  await win.getByRole('button', { name: '5秒送り' }).click();
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeCloseTo(t0 + 5, 0);
+  await win.getByRole('button', { name: '5秒戻り' }).click();
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeCloseTo(t0, 0);
+
+  // フォーカス中のウィンドウは、動画の表示部分のクリックで再生 / 一時停止
+  await video.click();
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(false);
+  await video.click();
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
 });

@@ -5,7 +5,7 @@ import type { MediaKind } from '../protocol/MediaKind';
 import type { Probe } from '../protocol/Probe';
 import { basename, formatTime } from '../format';
 import { ja } from '../i18n/ja';
-import { Icon } from '../icons';
+import { Icon, type IconName } from '../icons';
 import { frameAt, frameFrom, seekTimeFor } from './frames';
 import type { Rect } from './layout';
 import { TranscodeSource } from './mse';
@@ -57,6 +57,27 @@ type Props = {
   onResize: (dw: number, dh: number) => void;
 };
 
+/** 再生開始からミュート解除ボタンを出しておく時間 */
+const UNMUTE_HINT_MS = 5000;
+
+function IconButton({ icon, label, title, onClick }: { icon: IconName; label: string; title: string; onClick: () => void }) {
+  return (
+    <button type="button" className="icon-button small" aria-label={label} title={title} onClick={onClick}>
+      <Icon name={icon} size={22} />
+    </button>
+  );
+}
+
+/** 5秒 / 30秒の戻り・送り。円い矢印に秒数を重ねる(送りは左右反転) */
+function SeekButton({ sec, back, label, onClick }: { sec: number; back?: boolean; label: string; onClick: () => void }) {
+  return (
+    <button type="button" className={`icon-button small seek-button${back ? '' : ' forward'}`} aria-label={label} title={label} onClick={onClick}>
+      <Icon name="replay" size={32} />
+      <span className="seek-sec">{sec}</span>
+    </button>
+  );
+}
+
 type Status = { kind: 'loading' } | { kind: 'ready' } | { kind: 'error'; message: string };
 
 /** 範囲 [s, e) を秒で(読み込み済みのセグメント) */
@@ -81,6 +102,11 @@ export function PlayerWindow(p: Props) {
   const [rate, setRate] = useState(1);
   const [volume, setVolume] = useState(1);
   const [muted, setMuted] = useState(false);
+  /** 音声のある動画をミュートで始めたときに出す、大きめのミュート解除ボタン(7.6) */
+  const [showUnmute, setShowUnmute] = useState(false);
+  const unmuteTimer = useRef<number | null>(null);
+  /** 本体を押し始めたときにフォーカス中だったか(クリックで再生 / 停止するのはフォーカス中だけ) */
+  const wasFocused = useRef(false);
   const [zoom, setZoom] = useState<'fit' | 'actual'>('fit');
   const [ab, setAb] = useState<{ a: number | null; b: number | null }>({ a: null, b: null });
   const [ranges, setRanges] = useState<[number, number][]>([]);
@@ -101,6 +127,11 @@ export function PlayerWindow(p: Props) {
       (pr) => {
         if (!alive) return;
         setProbe(pr);
+        // 複数を一度に開いても音が重ならないよう、音声のある動画はミュートで始める
+        if (pr.audioCodec) {
+          setMuted(true);
+          setShowUnmute(true);
+        }
         const v = video.current!;
         if (pr.needsTranscode) {
           source.current = new TranscodeSource(
@@ -119,6 +150,7 @@ export function PlayerWindow(p: Props) {
     );
     return () => {
       alive = false;
+      if (unmuteTimer.current !== null) clearTimeout(unmuteTimer.current);
       source.current?.dispose();
       source.current = null;
     };
@@ -156,23 +188,31 @@ export function PlayerWindow(p: Props) {
     v.currentTime = to;
   }, [probe]);
 
-  useImperativeHandle(p.api, () => ({
-    toggle: () => {
-      const v = video.current;
-      if (v) void (v.paused ? v.play() : Promise.resolve(v.pause())).catch(() => {});
-    },
-    isPaused: () => video.current?.paused ?? true,
-    setPlaying: (on) => {
-      const v = video.current;
-      if (v) void (on ? v.play() : Promise.resolve(v.pause())).catch(() => {});
-    },
-    seekBy: (sec) => seek((video.current?.currentTime ?? 0) + sec),
-    step: (dir) => {
+  const togglePlay = useCallback(() => {
+    const v = video.current;
+    if (v) void (v.paused ? v.play() : Promise.resolve(v.pause())).catch(() => {});
+  }, []);
+  const seekBy = useCallback((sec: number) => seek((video.current?.currentTime ?? 0) + sec), [seek]);
+  const stepFrame = useCallback(
+    (dir: 1 | -1) => {
       const v = video.current;
       if (!v || !probe || probe.frameTimes.length === 0) return;
       v.pause();
       seek(seekTimeFor(probe.frameTimes, shown.current + dir, probe.duration));
     },
+    [probe, seek],
+  );
+  const stepable = (probe?.frameTimes.length ?? 0) > 0;
+
+  useImperativeHandle(p.api, () => ({
+    toggle: togglePlay,
+    isPaused: () => video.current?.paused ?? true,
+    setPlaying: (on) => {
+      const v = video.current;
+      if (v) void (on ? v.play() : Promise.resolve(v.pause())).catch(() => {});
+    },
+    seekBy,
+    step: stepFrame,
     seekFraction: (f) => {
       if (!probe) return;
       const t = probe.duration * f;
@@ -196,7 +236,7 @@ export function PlayerWindow(p: Props) {
       if (document.fullscreenElement) void document.exitFullscreen();
       else void win.current?.requestFullscreen();
     },
-  }), [probe, seek]);
+  }), [probe, seek, togglePlay, seekBy, stepFrame]);
 
   // 自由配置ではタイトルバーで移動、右下の角で大きさを変える
   const drag = (kind: 'move' | 'resize') => (e: React.PointerEvent) => {
@@ -269,7 +309,15 @@ export function PlayerWindow(p: Props) {
           </button>
         </span>
       </header>
-      <div className={`window-body ${zoom}`}>
+      <div
+        className={`window-body ${zoom}`}
+        onPointerDown={() => {
+          wasFocused.current = p.focused;
+        }}
+        onClick={() => {
+          if (timed && wasFocused.current) togglePlay();
+        }}
+      >
         {p.media === 'image' ? (
           <img
             src={api.mediaUrl(p.path)}
@@ -287,12 +335,31 @@ export function PlayerWindow(p: Props) {
             playsInline
             onLoadedData={() => setStatus({ kind: 'ready' })}
             onPlay={() => setPlaying(true)}
+            onPlaying={() => {
+              // 再生が始まってから約5秒でミュート解除ボタンを消す
+              if (unmuteTimer.current === null) unmuteTimer.current = window.setTimeout(() => setShowUnmute(false), UNMUTE_HINT_MS);
+            }}
             onPause={() => setPlaying(false)}
             onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
             onSeeked={(e) => setTime(e.currentTarget.currentTime)}
             onError={() => status.kind !== 'error' && fail(ja.playFailed)}
             style={probe ? actualSize(probe.width, probe.height) : undefined}
           />
+        )}
+        {showUnmute && muted && (
+          <button
+            type="button"
+            className="unmute-button"
+            aria-label={ja.unmute}
+            onClick={(e) => {
+              e.stopPropagation();
+              setMuted(false);
+              setShowUnmute(false);
+            }}
+          >
+            <Icon name="volumeOff" size={22} />
+            {ja.unmute}
+          </button>
         )}
         {status.kind === 'loading' && <div className="window-overlay">{ja.loading}</div>}
         {status.kind === 'error' && (
@@ -314,19 +381,36 @@ export function PlayerWindow(p: Props) {
             onSeek={seek}
           />
           <div className="control-row">
-            <button type="button" className="icon-button small" title={playing ? ja.pause : ja.play} onClick={() => video.current && (video.current.paused ? void video.current.play() : video.current.pause())}>
-              <Icon name={playing ? 'pause' : 'play'} size={20} />
-            </button>
-            <span className="time">
-              {formatTime(time)} / {formatTime(probe?.duration ?? 0)}
-            </span>
-            {probe && probe.frameTimes.length > 0 && (
-              <span className="frame" data-testid="frame-number">
-                {ja.frame(frame, probe.frameTimes.length)}
+            <div className="control-side">
+              <span className="time">
+                {formatTime(time)} / {formatTime(probe?.duration ?? 0)}
               </span>
-            )}
-            {ab.a !== null && <span className="chip small">{ja.abLoop(ab.a, ab.b)}</span>}
-            <span className="spacer" />
+              {probe && probe.frameTimes.length > 0 && (
+                <span className="frame" data-testid="frame-number">
+                  {ja.frame(frame, probe.frameTimes.length)}
+                </span>
+              )}
+              {ab.a !== null && <span className="chip small">{ja.abLoop(ab.a, ab.b)}</span>}
+            </div>
+            <div className="transport">
+              {/* コマ戻り / コマ送りは使える一時停止中だけ出す */}
+              {!playing && stepable && <IconButton icon="frameBack" label={ja.frameBack} title={ja.frameBackKey} onClick={() => stepFrame(-1)} />}
+              <SeekButton sec={5} back label={ja.back5} onClick={() => seekBy(-5)} />
+              <SeekButton sec={30} back label={ja.back30} onClick={() => seekBy(-30)} />
+              <button
+                type="button"
+                className="play-button"
+                aria-label={playing ? ja.pauseLabel : ja.playLabel}
+                title={playing ? ja.pause : ja.play}
+                onClick={togglePlay}
+              >
+                <Icon name={playing ? 'pause' : 'play'} size={30} />
+              </button>
+              <SeekButton sec={30} label={ja.fwd30} onClick={() => seekBy(30)} />
+              <SeekButton sec={5} label={ja.fwd5} onClick={() => seekBy(5)} />
+              {!playing && stepable && <IconButton icon="frameNext" label={ja.frameNext} title={ja.frameNextKey} onClick={() => stepFrame(1)} />}
+            </div>
+            <div className="control-side end">
             <span className="rate" title={ja.speed}>
               {rate}x
             </span>
@@ -352,6 +436,7 @@ export function PlayerWindow(p: Props) {
             <button type="button" className="icon-button small" title={ja.fullscreen} onClick={() => (document.fullscreenElement ? void document.exitFullscreen() : void win.current?.requestFullscreen())}>
               <Icon name="fullscreen" size={20} />
             </button>
+            </div>
           </div>
         </footer>
       )}

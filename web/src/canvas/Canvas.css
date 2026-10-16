@@ -417,3 +417,82 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* 再生コントロール: 左に時刻、中央に再生ボタン群、右に音量など */
+.control-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  height: 48px;
+}
+
+.control-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.control-side.end {
+  justify-content: flex-end;
+}
+
+.transport {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.play-button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  cursor: pointer;
+}
+
+.seek-button {
+  position: relative;
+  width: 40px;
+  height: 40px;
+}
+
+.seek-button.forward svg {
+  transform: scaleX(-1);
+}
+
+.seek-sec {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -34%);
+  font: var(--md-sys-typescale-label-small);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  line-height: 1;
+  pointer-events: none;
+}
+
+/* ミュートで始めた動画に出す、大きめのミュート解除ボタン */
+.unmute-button {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  padding: 0 20px;
+  border: none;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-inverse-surface);
+  color: var(--md-sys-color-inverse-on-surface);
+  box-shadow: var(--md-sys-elevation-level2);
+  font: var(--md-sys-typescale-label-large);
+  cursor: pointer;
+}

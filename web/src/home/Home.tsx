@@ -33,6 +33,13 @@ export const homeCommands: CommandDef<HomeAction>[] = [
   { id: 'initial', key: 'H', label: '初期位置へ' }, { id: 'canvas', key: 'Tab', label: 'キャンバスへ' },
 ];
 
+/** 操作パネルの上に出す、画面にボタンがない操作 */
+export const homeQuick: CommandDef<HomeAction>[] = [
+  { id: 'mark', key: 'Space', label: '選択' }, { id: 'open', key: 'Enter', label: '選択をまとめて開く' },
+  { id: 'top', key: 'gg', label: '先頭' }, { id: 'bottom', key: 'G', label: '末尾' },
+  { id: 'initial', key: 'H', label: '初期位置へ' },
+];
+
 const keymap = new KeySequence<Action>({
   j: 'down', ArrowDown: 'down', k: 'up', ArrowUp: 'up',
   h: 'parent', ArrowLeft: 'parent', l: 'enter', ArrowRight: 'enter',
@@ -58,6 +65,11 @@ type Props = {
   toolbar: ReactNode;
   hints: boolean;
   onHideHints: () => void;
+  /** 隠しファイルの表示と、最新ファイルへの追従(操作パネルのチェックボックスと共有する) */
+  showHidden: boolean;
+  onShowHidden: (v: boolean) => void;
+  follow: boolean;
+  onFollow: (v: boolean) => void;
   /** 操作パネルから操作を実行するための入口 */
   runRef: Ref<(a: HomeAction) => void>;
   onError: (message: string) => void;
@@ -76,17 +88,17 @@ export function Home(p: Props) {
   const [parent, setParent] = useState<Tree | null>(null);
   const [reload, setReload] = useState(0);
   const [selectedName, setSelectedName] = useState<string | null>(null);
-  const [showHidden, setShowHidden] = useState(false);
+
   const [view, setView] = useState<View>('list');
   const [filter, setFilter] = useState('');
   const [filtering, setFiltering] = useState(false);
-  const [follow, setFollow] = useState(false);
+
   const [marked, setMarked] = useState<Set<string>>(new Set());
   const [changed, setChanged] = useState<Set<string>>(new Set());
   /** ディレクトリごとに最後に選んでいた名前(戻ったときに同じ位置にする) */
   const remembered = useRef(new Map<string, string>());
   const followTarget = useRef<string | null>(null);
-  const { onError, onOpen } = p;
+  const { onError, onOpen, showHidden, follow } = p;
 
   // 外から表示先が変わった(初期位置の取得、dew <ディレクトリ>)
   const [lastRequest, setLastRequest] = useState(p.dir);
@@ -99,13 +111,22 @@ export function Home(p: Props) {
     }
   }
 
-  const go = useCallback((dir: string, select?: string) => {
-    setCwd(dir);
-    setSelectedName(select ?? remembered.current.get(dir) ?? null);
-    setFilter('');
-    setMarked(new Set());
-    setChanged(new Set());
-  }, []);
+  // 先に一覧を読めるか確かめ、読めたときだけ移る(閲覧範囲の外などは、メッセージだけ出して今の場所に留まる)
+  const go = useCallback(
+    (dir: string, select?: string) => {
+      api.tree(dir).then(
+        () => {
+          setCwd(dir);
+          setSelectedName(select ?? remembered.current.get(dir) ?? null);
+          setFilter('');
+          setMarked(new Set());
+          setChanged(new Set());
+        },
+        (err: unknown) => onError(err instanceof ApiError ? err.message : String(err)),
+      );
+    },
+    [onError],
+  );
 
   useEffect(() => {
     if (!cwd) return;
@@ -229,9 +250,9 @@ export function Home(p: Props) {
         });
         return select(selected + 1);
       case 'filter': return setFiltering(true);
-      case 'follow': return setFollow((f) => !f);
+      case 'follow': return p.onFollow(!follow);
       case 'view': return setView((v) => (v === 'list' ? 'grid' : 'list'));
-      case 'hidden': return setShowHidden((h) => !h);
+      case 'hidden': return p.onShowHidden(!showHidden);
       case 'canvas': return p.onCanvas();
       case 'initial': return p.onInitial();
       case 'history': return p.onHistory();
@@ -281,8 +302,14 @@ export function Home(p: Props) {
           {marked.size > 0 && <span className="chip">{ja.selectedCount(marked.size)}</span>}
           {follow && <span className="chip">{ja.following}</span>}
           {showHidden && <span className="chip">{ja.hiddenShown}</span>}
+          <button type="button" className="icon-button" title={ja.filter} aria-label={ja.filter} onClick={() => setFiltering(true)}>
+            <Icon name="search" />
+          </button>
           <button type="button" className="icon-button" title={view === 'list' ? ja.viewGrid : ja.viewList} aria-label={view === 'list' ? ja.viewGrid : ja.viewList} onClick={() => run('view')}>
             <Icon name={view === 'list' ? 'grid' : 'list'} />
+          </button>
+          <button type="button" className="icon-button" title={ja.toCanvas} aria-label={ja.canvasButton} onClick={p.onCanvas}>
+            <Icon name="canvas" />
           </button>
           {p.toolbar}
         </div>

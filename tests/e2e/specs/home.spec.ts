@@ -24,9 +24,9 @@ test('Home のキー操作と3カラム・サムネイル', async ({ page, dew }
   await page.keyboard.press('l');
   await expect(current(page).getByRole('option')).toHaveText(['nested.webp']);
   await expect(page.getByTestId('col-parent').getByRole('option', { selected: true })).toHaveText('sub');
-  // h で戻ると、出てきたディレクトリが選ばれている
+  // h で戻ると、出てきたディレクトリが選ばれている(移動は一覧を読めてから)
   await page.keyboard.press('h');
-  expect(await selected(page)).toBe('sub');
+  await expect.poll(() => selected(page)).toBe('sub');
 
   // 画像を選ぶと、右カラムにサムネイルが出る
   for (let i = 0; i < 4; i++) await page.keyboard.press('j');
@@ -103,4 +103,24 @@ test('履歴ウィンドウから開き直せる', async ({ page, dew }) => {
   await page.keyboard.press('Enter');
   await expect(history).toBeHidden();
   await expect(page.getByTestId('player-window').filter({ hasText: 'h264_aac.mp4' })).toHaveCount(2);
+});
+
+test('Home のバーの絞り込み・キャンバスへのボタン', async ({ page, dew }) => {
+  await start(page, dew);
+  await page.getByRole('button', { name: '絞り込み', exact: true }).click();
+  await page.keyboard.type('mp4');
+  await expect(current(page).getByRole('option')).toHaveText(['broken.mp4', 'h264_aac.mp4', 'mp4v.mp4']);
+  await page.keyboard.press('Enter');
+  await page.getByRole('button', { name: 'キャンバスへ', exact: true }).click();
+  await expect(page.getByTestId('canvas-area')).toBeVisible();
+});
+
+test('パンくずで閲覧範囲の外を押すとメッセージだけ出て移動しない', async ({ page, dew }) => {
+  await start(page, dew);
+  await expect(current(page).getByRole('option', { name: 'sub' })).toBeVisible();
+  await page.getByRole('navigation', { name: 'path' }).getByRole('button', { name: '/', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('閲覧範囲の外');
+  await expect(current(page).getByRole('option', { name: 'sub' })).toBeVisible();
+  await page.keyboard.press('j');
+  expect(await selected(page)).toBe('broken.mp4');
 });
