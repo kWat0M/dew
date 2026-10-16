@@ -324,8 +324,8 @@ Ubuntu サーバ / WSL2(Docker コンテナ内も可)
 ### 6.1 ライブ描画の流れ(プログラム無改変)
 
 1. `dew run python main.py` が専用の Xvfb と PipeWire(または PulseAudio)を起動し、`DISPLAY`、`PULSE_SERVER` を設定してコマンドを実行
-2. サーバは X11 の新規ウィンドウを監視し、XComposite でウィンドウごとの画像を取り出す(Xpra と同じ手法)
-3. 変化のあったウィンドウだけを H.264 にエンコード(低遅延設定、NVENC があれば使用)。音声は Opus
+2. サーバは X11 の新規ウィンドウを監視し(x11rb)、ウィンドウごとに ffmpeg の `x11grab -window_id` で画像を取り出す。隠れた部分が欠けないよう、ウィンドウは仮想ディスプレイ上で重ならない位置に置く(ADR 0009)
+3. 同じ ffmpeg で H.264 にエンコード(低遅延設定、NVENC があれば使用)。音声は Opus
 4. WebSocket でブラウザへ送り、ブラウザは WebCodecs で復号してウィンドウごとの canvas に描画。音声は Web Audio で映像と同期
 5. 入力モード中のキー・マウスは WebSocket で戻し、XTest でアプリへ注入
 6. 未処理フレームが溜まったら古いものを捨て、遅延を積み上げない
@@ -352,7 +352,7 @@ Ubuntu サーバ / WSL2(Docker コンテナ内も可)
 | --- | --- | --- |
 | サーバ | Rust + tokio + axum | HTTP / WebSocket、静的ファイル同梱(rust-embed) |
 | X11 | x11rb | ウィンドウ監視、XComposite、XTest |
-| 映像エンコード | openh264(同梱)。NVENC は ffmpeg CLI 経由 | H.264、NVENC |
+| 映像の取り込みとエンコード | ffmpeg CLI(`x11grab -window_id` で取り込み、libx264 か NVENC で H.264。ADR 0009) | H.264、NVENC |
 | 音声 | PipeWire / PulseAudio のバインディング + opus | 取り込みとエンコード |
 | 変換・サムネイル | ffmpeg / ffprobe(サブプロセス)、image クレート | F3、サムネイル、スプライト |
 | 監視 | notify クレート | inotify |
@@ -506,7 +506,7 @@ Rust だけ(Leptos 等)でも書けるが、(1) 動画のデコードと描画�
 | 入力モードを抜けるキー | `Ctrl+]` | 決定 |
 | 利用形態 | 複数ユーザー・複数コンテナが同時に使う | 決定 |
 | WSL2 の扱い | 特別扱いしない。どの環境でも URL をワンクリックで開く | 決定 |
-| ffmpeg の扱い | ライブラリとしてリンクせず、CLI(ffmpeg / ffprobe)をサブプロセスで呼ぶ。ライブ描画のエンコードは同梱の openh264 | 既定 |
+| ffmpeg の扱い | ライブラリとしてリンクせず、CLI(ffmpeg / ffprobe)をサブプロセスで呼ぶ。ライブ描画の取り込みとエンコードも ffmpeg(ADR 0009) | 既定 |
 | バイナリ | x86_64 Linux 1本。静的リンク(musl)を目標、無理なら Ubuntu 20.04 相当の glibc でビルド。フロントエンドを埋め込む | 既定 |
 | 実行時の外部依存 | ffmpeg、Xvfb、pulseaudio または pipewire。起動時に確認し、足りなければ導入コマンドを表示 | 既定 |
 | 待ち受けポート | 8765。使用中なら 8766 以降の空きを使う | 既定 |
@@ -648,7 +648,7 @@ dew/
 
 ### フェーズ3(ライブ描画)
 
-- [ ] `dew run python tests/apps/counter.py` で、コードを変えずにウィンドウがキャンバスに現れる
+- [ ] `dew run python3 tests/apps/counter.py` で、コードを変えずにウィンドウがキャンバスに現れる
 - [ ] アプリが2つの窓を開くと、キャンバスに2つのフローティングウィンドウが出る
 - [ ] 1080p 60fps のテストアプリで、受信 fps が 55 以上、遅延が 150 ms 以下(サーバと同じホストの Chrome で測定)
 - [ ] テストアプリの 440 Hz の音が、ブラウザ側で 440 Hz として検出される
@@ -660,7 +660,7 @@ dew/
 - [ ] 精度モードの cv2.imshow で、受信フレームが送信元の配列と画素単位で一致する
 - [ ] 録画した MP4 が再生でき、長さが録画時間と ±1秒以内
 - [ ] 直近30秒を巻き戻して再生できる
-- [ ] NVENC のある環境では自動で使われ、ない環境では openh264 に切り替わる
+- [ ] NVENC のある環境では自動で使われ、ない環境では libx264 に切り替わる(ADR 0009)
 
 ---
 
