@@ -200,6 +200,10 @@
   color: var(--md-sys-color-on-surface-variant);
 }
 
+.control-row .text-button {
+  white-space: nowrap;
+}
+
 .volume {
   width: 80px;
   accent-color: var(--md-sys-color-primary);

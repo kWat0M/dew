@@ -5,14 +5,12 @@ import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, u
 import { api } from '../api/http';
 import type { MediaKind } from '../protocol/MediaKind';
 import type { Probe } from '../protocol/Probe';
-import { basename, formatTime } from '../format';
+import { basename } from '../format';
 import { ja } from '../i18n/ja';
-import { Icon } from '../icons';
 import { frameAt, frameFrom, seekTimeFor } from './frames';
 import type { Rect } from './layout';
 import type { PlayerApi } from './PlayerWindow';
-import { SPEEDS } from './PlayerWindow';
-import { SeekBar } from './SeekBar';
+import { Controls, SPEEDS } from './Controls';
 import { useVideoSource } from './source';
 import { SyncGroup } from './sync';
 import { WindowFrame, type FrameProps } from './WindowFrame';
@@ -46,6 +44,7 @@ function MemberMedia(p: {
   /** ファイル名のラベルを出すか(並べる表示だけ) */
   label: boolean;
   muted: boolean;
+  volume: number;
   onVideo: (index: number, v: HTMLVideoElement | null) => void;
   onProbe: (pr: Probe) => void;
   onSize: (aspect: number) => void;
@@ -60,8 +59,11 @@ function MemberMedia(p: {
     return () => onVideo(index, null);
   }, [onVideo, index]);
   useEffect(() => {
-    if (video.current) video.current.muted = p.muted;
-  }, [p.muted]);
+    if (video.current) {
+      video.current.muted = p.muted;
+      video.current.volume = p.volume;
+    }
+  }, [p.muted, p.volume]);
 
   const style: React.CSSProperties = p.rect
     ? {
@@ -100,6 +102,13 @@ export function CompareWindow({ api: apiRef, ...p }: Props) {
   const [time, setTime] = useState(0);
   const [frame, setFrame] = useState(0);
   const [muted, setMuted] = useState(true);
+  const [volume, setVolume] = useState(1);
+  const [rate, setRate] = useState(1);
+  const [ab, setAb] = useState<{ a: number | null; b: number | null }>({ a: null, b: null });
+  const abRef = useRef(ab);
+  useEffect(() => {
+    abRef.current = ab;
+  }, [ab]);
   const hasVideo = p.members.some((m) => m.media === 'video');
   const n = p.members.length;
 
@@ -135,6 +144,9 @@ export function CompareWindow({ api: apiRef, ...p }: Props) {
     const onFrame: VideoFrameRequestCallback = (_, meta) => {
       setFrame(frameAt(probe.frameTimes, meta.mediaTime));
       setTime(meta.mediaTime);
+      // A-B ループ(ほかの動画は同期でついてくる)
+      const { a, b } = abRef.current;
+      if (a !== null && b !== null && meta.mediaTime >= b) v.currentTime = a;
       handle = v.requestVideoFrameCallback(onFrame);
     };
     handle = v.requestVideoFrameCallback(onFrame);
@@ -166,6 +178,28 @@ export function CompareWindow({ api: apiRef, ...p }: Props) {
     const v = videos.current.get(0);
     if (v) void (v.paused ? v.play() : Promise.resolve(v.pause())).catch(() => {});
   }, []);
+  const seekBy = useCallback((sec: number) => seek((videos.current.get(0)?.currentTime ?? 0) + sec), [seek]);
+  const step = useCallback(
+    (dir: 1 | -1) => {
+      const v = videos.current.get(0);
+      if (!v || !probe?.frameTimes.length) return;
+      v.pause();
+      seek(seekTimeFor(probe.frameTimes, frameAt(probe.frameTimes, v.currentTime) + dir, probe.duration));
+    },
+    [probe, seek],
+  );
+  const setSpeed = useCallback((r: number) => {
+    const v = videos.current.get(0);
+    if (v) {
+      v.defaultPlaybackRate = r;
+      v.playbackRate = r;
+    }
+    setRate(r);
+  }, []);
+  const fullscreen = useCallback(() => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void win.current?.requestFullscreen();
+  }, []);
   const cycleMode = useCallback(() => setMode((m) => COMPARE_MODES[(COMPARE_MODES.indexOf(m) + 1) % COMPARE_MODES.length]!), []);
 
   useImperativeHandle(apiRef, () => ({
@@ -176,35 +210,26 @@ export function CompareWindow({ api: apiRef, ...p }: Props) {
       const v = master();
       if (v) void (on ? v.play() : Promise.resolve(v.pause())).catch(() => {});
     },
-    seekBy: (sec) => seek((master()?.currentTime ?? 0) + sec),
-    step: (dir) => {
-      const v = master();
-      if (!v || !probe?.frameTimes.length) return;
-      v.pause();
-      seek(seekTimeFor(probe.frameTimes, frameAt(probe.frameTimes, v.currentTime) + dir, probe.duration));
-    },
+    seekBy,
+    step,
     seekFraction: (f) => {
       if (!probe) return;
       const t = probe.duration * f;
       seek(probe.frameTimes.length ? seekTimeFor(probe.frameTimes, frameFrom(probe.frameTimes, t), probe.duration) : t);
     },
     speed: (dir) => {
-      const v = master();
-      if (!v) return;
-      const i = SPEEDS.indexOf(v.playbackRate);
-      const r = SPEEDS[Math.max(0, Math.min(SPEEDS.length - 1, (i < 0 ? 3 : i) + dir))]!;
-      v.defaultPlaybackRate = r;
-      v.playbackRate = r;
+      const i = SPEEDS.indexOf(rate);
+      setSpeed(SPEEDS[Math.max(0, Math.min(SPEEDS.length - 1, (i < 0 ? 3 : i) + dir))]!);
     },
-    ab: () => {},
+    ab: () => {
+      const t = master()?.currentTime ?? 0;
+      setAb((s) => (s.a === null ? { a: t, b: null } : s.b === null ? (t > s.a ? { a: s.a, b: t } : { a: t, b: s.a }) : { a: null, b: null }));
+    },
     toggleMute: () => setMuted((m) => !m),
     toggleZoom: () => {},
-    fullscreen: () => {
-      if (document.fullscreenElement) void document.exitFullscreen();
-      else void win.current?.requestFullscreen();
-    },
+    fullscreen,
     cycleMode,
-  }), [togglePlay, seek, probe, cycleMode]);
+  }), [togglePlay, seek, probe, cycleMode, seekBy, step, rate, setSpeed, fullscreen]);
 
   // 各ファイルの配置
   const aspectOf = (i: number) => aspects[i] ?? aspects[0] ?? 16 / 9;
@@ -255,6 +280,7 @@ export function CompareWindow({ api: apiRef, ...p }: Props) {
             clip={mode === 'slider' && i === 1 ? split : null}
             label={mode === 'side'}
             muted={i !== 0 || muted || !p.audible}
+            volume={volume}
             index={i}
             onVideo={registerVideo}
             onProbe={i === 0 ? onFirstProbe : noProbe}
@@ -273,27 +299,29 @@ export function CompareWindow({ api: apiRef, ...p }: Props) {
         )}
       </div>
       {hasVideo && (
-        <footer className="controls">
-          <SeekBar path={p.members[0]!.path} time={time} duration={probe?.duration ?? 0} sprite={probe?.sprite ?? null} ranges={[]} ab={{ a: null, b: null }} onSeek={seek} />
-          <div className="control-row">
-            <div className="control-side">
-              <span className="time">
-                {formatTime(time)} / {formatTime(probe?.duration ?? 0)}
-              </span>
-              {probe && probe.frameTimes.length > 0 && <span className="frame">{ja.frame(frame, probe.frameTimes.length)}</span>}
-            </div>
-            <div className="transport">
-              <button type="button" className="play-button" aria-label={playing ? ja.pauseLabel : ja.playLabel} title={playing ? ja.pause : ja.play} onClick={togglePlay}>
-                <Icon name={playing ? 'pauseCircle' : 'playCircle'} size={44} />
-              </button>
-            </div>
-            <div className="control-side end">
-              <button type="button" className="icon-button small" title={ja.mute} aria-label={muted ? ja.unmute : ja.mute} onClick={() => setMuted((m) => !m)}>
-                <Icon name={muted ? 'volumeOff' : 'volume'} size={20} />
-              </button>
-            </div>
-          </div>
-        </footer>
+        <Controls
+          path={p.members[0]!.path}
+          probe={probe}
+          ranges={[]}
+          ab={ab}
+          time={time}
+          frame={frame}
+          playing={playing}
+          rate={rate}
+          muted={muted}
+          volume={volume}
+          onSeek={seek}
+          onSeekBy={seekBy}
+          onStep={step}
+          onToggle={togglePlay}
+          onSpeed={setSpeed}
+          onMute={() => setMuted((m) => !m)}
+          onVolume={(v) => {
+            setVolume(v);
+            setMuted(false);
+          }}
+          onFullscreen={fullscreen}
+        />
       )}
     </WindowFrame>
   );

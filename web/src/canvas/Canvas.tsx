@@ -37,7 +37,8 @@ export type WindowAction =
   | { do: 'select' } | { do: 'selectAll' } | { do: 'grow'; f: number } | { do: 'equalize' } | { do: 'layout' }
   | { do: 'minimize' } | { do: 'maximize' } | { do: 'only' } | { do: 'close' } | { do: 'closeAll' } | { do: 'exit' };
 
-const normal: Record<string, NormalAction> = {
+/** キャンバスのキーマップ(キー一覧・ヒントとの突き合わせのテストにも使う) */
+export const normal: Record<string, NormalAction> = {
   k: { do: 'toggle' }, ' ': { do: 'toggle' },
   j: { do: 'seek', sec: -5 }, l: { do: 'seek', sec: 5 }, ArrowLeft: { do: 'seek', sec: -5 }, ArrowRight: { do: 'seek', sec: 5 },
   J: { do: 'seek', sec: -30 }, L: { do: 'seek', sec: 30 },

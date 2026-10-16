@@ -2,16 +2,15 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import type { MediaKind } from '../protocol/MediaKind';
 import type { Probe } from '../protocol/Probe';
-import { basename, formatTime } from '../format';
+import { basename } from '../format';
 import { ja } from '../i18n/ja';
-import { Icon, type IconName } from '../icons';
+import { Icon } from '../icons';
 import { frameAt, frameFrom, seekTimeFor } from './frames';
 import { ImageView, type ImageApi } from './ImageView';
-import { SeekBar } from './SeekBar';
+import { Controls, SPEEDS } from './Controls';
 import { useVideoSource } from './source';
 import { WindowFrame, type FrameProps } from './WindowFrame';
 
-export const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 
 /** キャンバスのキー操作から呼ぶ操作 */
 export type PlayerApi = {
@@ -45,72 +44,6 @@ type Props = FrameProps & {
 
 /** 再生開始からミュート解除ボタンを出しておく時間 */
 const UNMUTE_HINT_MS = 5000;
-
-function IconButton({ icon, label, title, size = 22, onClick }: { icon: IconName; label: string; title: string; size?: number; onClick: () => void }) {
-  return (
-    <button type="button" className="icon-button" aria-label={label} title={title} onClick={onClick}>
-      <Icon name={icon} size={size} />
-    </button>
-  );
-}
-
-/** 5秒 / 30秒の戻り・送り(Material Symbols の replay_5 などを使う) */
-function SeekButton({ sec, back, label, onClick }: { sec: 5 | 30; back?: boolean; label: string; onClick: () => void }) {
-  const icon: IconName = back ? (sec === 5 ? 'back5' : 'back30') : sec === 5 ? 'fwd5' : 'fwd30';
-  return <IconButton icon={icon} label={label} title={label} size={26} onClick={onClick} />;
-}
-
-/** 再生速度の表示。押すと速度の一覧を出す */
-function SpeedMenu({ rate, onChange }: { rate: number; onChange: (r: number) => void }) {
-  const [at, setAt] = useState<{ left: number; bottom: number } | null>(null);
-  useEffect(() => {
-    if (!at) return;
-    const close = () => setAt(null);
-    window.addEventListener('pointerdown', close);
-    window.addEventListener('keydown', close);
-    return () => {
-      window.removeEventListener('pointerdown', close);
-      window.removeEventListener('keydown', close);
-    };
-  }, [at]);
-  return (
-    <>
-      <button
-        type="button"
-        className="rate-button"
-        aria-label={ja.speedLabel}
-        aria-haspopup="menu"
-        title={ja.speed}
-        onClick={(e) => {
-          // ウィンドウの外にはみ出しても切れないよう、画面に対して位置を決める
-          const r = e.currentTarget.getBoundingClientRect();
-          setAt(at ? null : { left: r.left + r.width / 2, bottom: window.innerHeight - r.top + 4 });
-        }}
-      >
-        {rate}x
-      </button>
-      {at && (
-        <div className="menu" role="menu" aria-label={ja.speedLabel} style={{ left: at.left, bottom: at.bottom }} onPointerDown={(e) => e.stopPropagation()}>
-          {[...SPEEDS].reverse().map((s) => (
-            <button
-              key={s}
-              type="button"
-              role="menuitemradio"
-              aria-checked={s === rate}
-              className="menu-item"
-              onClick={() => {
-                onChange(s);
-                setAt(null);
-              }}
-            >
-              {s}x
-            </button>
-          ))}
-        </div>
-      )}
-    </>
-  );
-}
 
 type Status = { kind: 'loading' } | { kind: 'ready' } | { kind: 'error'; message: string };
 
@@ -206,7 +139,6 @@ export function PlayerWindow({ api: apiRef, ...p }: Props) {
     },
     [probe, seek],
   );
-  const stepable = (probe?.frameTimes.length ?? 0) > 0;
   const setSpeed = useCallback((r: number) => {
     const v = video.current;
     if (v) {
@@ -315,73 +247,30 @@ export function PlayerWindow({ api: apiRef, ...p }: Props) {
         )}
       </div>
       {timed && (
-        <footer className="controls">
-          <SeekBar
-            path={p.path}
-            time={time}
-            duration={probe?.duration ?? 0}
-            sprite={probe?.sprite ?? null}
-            ranges={ranges}
-            ab={ab}
-            onSeek={seek}
-          />
-          <div className="control-row">
-            <div className="control-side">
-              <span className="time">
-                {formatTime(time)} / {formatTime(probe?.duration ?? 0)}
-              </span>
-              {probe && probe.frameTimes.length > 0 && (
-                <span className="frame" data-testid="frame-number">
-                  {ja.frame(frame, probe.frameTimes.length)}
-                </span>
-              )}
-              {ab.a !== null && <span className="chip small">{ja.abLoop(ab.a, ab.b)}</span>}
-            </div>
-            <div className="transport">
-              {/* コマ戻り / コマ送りは使える一時停止中だけ出す */}
-              {!playing && stepable && <IconButton icon="frameBack" label={ja.frameBack} title={ja.frameBackKey} onClick={() => stepFrame(-1)} />}
-              <SeekButton sec={5} back label={ja.back5} onClick={() => seekBy(-5)} />
-              <SeekButton sec={30} back label={ja.back30} onClick={() => seekBy(-30)} />
-              <button
-                type="button"
-                className="play-button"
-                aria-label={playing ? ja.pauseLabel : ja.playLabel}
-                title={playing ? ja.pause : ja.play}
-                onClick={togglePlay}
-              >
-                <Icon name={playing ? 'pauseCircle' : 'playCircle'} size={44} />
-              </button>
-              <SeekButton sec={30} label={ja.fwd30} onClick={() => seekBy(30)} />
-              <SeekButton sec={5} label={ja.fwd5} onClick={() => seekBy(5)} />
-              {!playing && stepable && <IconButton icon="frameNext" label={ja.frameNext} title={ja.frameNextKey} onClick={() => stepFrame(1)} />}
-            </div>
-            <div className="control-side end">
-            <SpeedMenu rate={rate} onChange={setSpeed} />
-            <button type="button" className="icon-button small" title={ja.mute} onClick={() => setMuted((m) => !m)}>
-              <Icon name={muted || volume === 0 ? 'volumeOff' : 'volume'} size={20} />
-            </button>
-            <input
-              className="volume"
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={muted ? 0 : volume}
-              aria-label={ja.volume}
-              onChange={(e) => {
-                setVolume(Number(e.target.value));
-                setMuted(false);
-              }}
-            />
-            <button type="button" className="text-button" title={ja.zoom} onClick={() => setZoom((z) => (z === 'fit' ? 'actual' : 'fit'))}>
-              {zoom === 'fit' ? ja.zoomFit : ja.zoomActual}
-            </button>
-            <button type="button" className="icon-button small" title={ja.fullscreen} onClick={() => (document.fullscreenElement ? void document.exitFullscreen() : void win.current?.requestFullscreen())}>
-              <Icon name="fullscreen" size={20} />
-            </button>
-            </div>
-          </div>
-        </footer>
+        <Controls
+          path={p.path}
+          probe={probe}
+          ranges={ranges}
+          ab={ab}
+          time={time}
+          frame={frame}
+          playing={playing}
+          rate={rate}
+          muted={muted}
+          volume={volume}
+          onSeek={seek}
+          onSeekBy={seekBy}
+          onStep={stepFrame}
+          onToggle={togglePlay}
+          onSpeed={setSpeed}
+          onMute={() => setMuted((m) => !m)}
+          onVolume={(v) => {
+            setVolume(v);
+            setMuted(false);
+          }}
+          onFullscreen={() => (document.fullscreenElement ? void document.exitFullscreen() : void win.current?.requestFullscreen())}
+          zoom={{ fit: zoom === 'fit', onToggle: () => setZoom((z) => (z === 'fit' ? 'actual' : 'fit')) }}
+        />
       )}
     </WindowFrame>
   );

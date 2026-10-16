@@ -139,3 +139,19 @@ test('16bit PNG と TIFF を表示し、16bit は元の値を出す', async ({ p
   const [r, g, b] = pixelOf(join(dew.root, 'image16.png'), 100, 50, 16);
   await expect(win.getByTestId('pixel-info')).toHaveText(`x 100, y 50  R ${r} G ${g} B ${b} A 65535`);
 });
+
+test('比較ウィンドウの再生コントロールは1ファイルのウィンドウと同じ', async ({ page, dew }) => {
+  await start(page, dew);
+  await pick(page, ['h264_aac.mp4', 'mp4v.mp4']);
+  await page.keyboard.press('c');
+  const win = page.getByTestId('compare-window');
+  for (const name of ['5秒戻り', '30秒戻り', '30秒送り', '5秒送り', '再生速度', '全画面']) {
+    await expect(win.getByRole('button', { name, exact: true })).toBeVisible();
+  }
+  await expect(win.getByRole('slider', { name: '音量' })).toBeVisible();
+  const master = win.locator('video').first();
+  await win.getByRole('button', { name: '再生速度' }).click();
+  await page.getByRole('menu', { name: '再生速度' }).getByRole('menuitemradio', { name: '2x' }).click();
+  await expect.poll(() => win.locator('video').evaluateAll((vs: HTMLVideoElement[]) => vs.map((v) => v.playbackRate))).toEqual([2, 2]);
+  expect(await master.evaluate((v: HTMLVideoElement) => v.playbackRate)).toBe(2);
+});

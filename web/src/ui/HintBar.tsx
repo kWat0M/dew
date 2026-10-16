@@ -6,13 +6,15 @@ import './HintBar.css';
 export function HintBar({ items, onHide }: { items: readonly (readonly [string, string])[]; onHide: () => void }) {
   return (
     <div className="hint-bar" data-testid="hint-bar" role="note" aria-label={ja.hints}>
-      {items.map(([k, label]) => (
-        <span key={k} className="hint">
-          <kbd>{k}</kbd>
-          {label}
-        </span>
-      ))}
-      <span className="spacer" />
+      {/* 収まらないときは横にスクロールする(閉じるボタンは右端に残す) */}
+      <div className="hint-items">
+        {items.map(([k, label]) => (
+          <span key={k} className="hint">
+            <kbd>{k}</kbd>
+            {label}
+          </span>
+        ))}
+      </div>
       <button type="button" className="icon-button small" title={ja.close} aria-label={ja.close} onClick={onHide}>
         <Icon name="close" size={16} />
       </button>

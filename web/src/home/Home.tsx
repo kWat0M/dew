@@ -38,12 +38,14 @@ export const homeCommands: CommandDef<HomeAction>[] = [
 /** 操作パネルの上に出す、画面にボタンがない操作 */
 export const homeQuick: CommandDef<HomeAction>[] = [{ id: 'open', key: 'Enter', label: '選択をまとめて開く' }];
 
-const keymap = new KeySequence<Action>({
+/** Home のキーマップ(キー一覧・ヒントとの突き合わせのテストにも使う) */
+export const homeBindings: Record<string, HomeAction> = {
   j: 'down', ArrowDown: 'down', k: 'up', ArrowUp: 'up',
   h: 'parent', ArrowLeft: 'parent', l: 'enter', ArrowRight: 'enter',
   Enter: 'open', ' ': 'mark', 'g g': 'top', G: 'bottom',
   '/': 'filter', n: 'follow', v: 'view', '.': 'hidden', Tab: 'canvas', H: 'initial', r: 'history', '?': 'help', c: 'compare', Escape: 'escape',
-});
+};
+const keymap = new KeySequence<Action>(homeBindings);
 
 export type DirRequest = { path: string; seq: number };
 
@@ -95,7 +97,8 @@ export function Home(p: Props) {
   const [filter, setFilter] = useState('');
   const [filtering, setFiltering] = useState(false);
 
-  const [marked, setMarked] = useState<Set<string>>(new Set());
+  /** Space・Ctrl+クリックなどで選んだファイル(フルパス → 項目)。別のディレクトリへ移っても残す */
+  const [marked, setMarked] = useState<Map<string, Entry>>(new Map());
   const [changed, setChanged] = useState<Set<string>>(new Set());
   /** ディレクトリごとに最後に選んでいた名前(戻ったときに同じ位置にする) */
   const remembered = useRef(new Map<string, string>());
@@ -121,7 +124,6 @@ export function Home(p: Props) {
           setCwd(dir);
           setSelectedName(select ?? remembered.current.get(dir) ?? null);
           setFilter('');
-          setMarked(new Set());
           setChanged(new Set());
         },
         (err: unknown) => onError(err instanceof ApiError ? err.message : String(err)),
@@ -206,30 +208,39 @@ export function Home(p: Props) {
     remembered.current.set(cwd, e.name);
   };
 
+  const pathOf = (e: Entry) => join(cwd ?? '', e.name);
+  /** 今のディレクトリで選ばれている名前(一覧の表示用) */
+  const markedHere = useMemo(() => new Set(entries.filter((e) => marked.has(join(cwd ?? '', e.name))).map((e) => e.name)), [entries, marked, cwd]);
+
+  const toggleMark = (e: Entry) =>
+    setMarked((m) => {
+      const n = new Map(m);
+      if (!n.delete(pathOf(e))) n.set(pathOf(e), e);
+      return n;
+    });
+
   /** クリック: Shift で今の位置からの範囲を、Ctrl で1つずつ複数選択に加える */
   const clickEntry = (i: number, e: React.MouseEvent) => {
     if (e.shiftKey && selected >= 0) {
       const [a, b] = selected < i ? [selected, i] : [i, selected];
-      setMarked((s) => new Set([...s, ...entries.slice(a, b + 1).map((x) => x.name)]));
+      setMarked((m) => {
+        const n = new Map(m);
+        for (const x of entries.slice(a, b + 1)) n.set(pathOf(x), x);
+        return n;
+      });
     } else if (e.ctrlKey || e.metaKey) {
-      const name = entries[i]?.name;
-      if (name)
-        setMarked((s) => {
-          const n = new Set(s);
-          if (!n.delete(name)) n.add(name);
-          return n;
-        });
+      const x = entries[i];
+      if (x) toggleMark(x);
     }
     select(i);
   };
 
-  const openEntries = (list: Entry[]) => {
-    if (!cwd) return;
+  const openEntries = (list: [string, Entry][]) => {
     const files: { path: string; media: MediaKind }[] = [];
-    for (const e of list) {
+    for (const [path, e] of list) {
       const reason = openable(e);
       if (reason) onError(reason);
-      else files.push({ path: join(cwd, e.name), media: e.media });
+      else files.push({ path, media: e.media });
     }
     if (files.length) onOpen(files);
   };
@@ -240,7 +251,7 @@ export function Home(p: Props) {
       if (!e.readable) onError(ja.unreadable);
       else go(join(cwd, e.name));
     } else {
-      openEntries([e]);
+      openEntries([[pathOf(e), e]]);
     }
   };
 
@@ -255,18 +266,15 @@ export function Home(p: Props) {
         return;
       case 'enter': return enter(current);
       case 'open': {
-        const list = marked.size ? entries.filter((e) => marked.has(e.name)) : current ? [current] : [];
-        if (list.length === 1 && list[0]!.kind === 'dir') return enter(list[0]);
-        setMarked(new Set());
-        return openEntries(list.filter((e) => e.kind === 'file'));
+        // 選んだものがあれば(別のディレクトリのものも含めて)まとめて開く
+        if (marked.size === 0) return enter(current);
+        const list = [...marked].filter(([, e]) => e.kind === 'file');
+        setMarked(new Map());
+        return openEntries(list);
       }
       case 'mark':
         if (!current) return;
-        setMarked((s) => {
-          const n = new Set(s);
-          if (!n.delete(current.name)) n.add(current.name);
-          return n;
-        });
+        toggleMark(current);
         return select(selected + 1);
       case 'filter': return setFiltering(true);
       case 'follow': return p.onFollow(!follow);
@@ -277,15 +285,15 @@ export function Home(p: Props) {
       case 'history': return p.onHistory();
       case 'help': return p.onHelp();
       case 'compare': {
-        const files = entries
-          .filter((e) => marked.has(e.name) && e.kind === 'file' && (e.media === 'video' || e.media === 'image') && e.readable)
-          .map((e) => ({ path: join(cwd ?? '', e.name), media: e.media }));
+        const files = [...marked]
+          .filter(([, e]) => e.kind === 'file' && (e.media === 'video' || e.media === 'image') && e.readable)
+          .map(([path, e]) => ({ path, media: e.media }));
         if (files.length < 2) return onError(ja.compareNeedTwo);
-        setMarked(new Set());
+        setMarked(new Map());
         return p.onCompare(files);
       }
       case 'escape':
-        setMarked(new Set());
+        setMarked(new Map());
         setFilter('');
         return;
     }
@@ -400,7 +408,7 @@ export function Home(p: Props) {
           selected={selected}
           view={view}
           changed={changed}
-          marked={marked}
+          marked={markedHere}
           thumbs
           onClick={clickEntry}
           onDoubleClick={(i) => enter(entries[i])}
