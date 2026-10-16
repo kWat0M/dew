@@ -1,5 +1,7 @@
 // キャンバス: 開いたファイルをフローティングウィンドウとして並べる(4.2、5.3、5.4)
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from 'react';
+import type { CommandDef } from '../commands';
+import { HintBar } from '../ui/HintBar';
 import type { MediaKind } from '../protocol/MediaKind';
 import { basename } from '../format';
 import { ja } from '../i18n/ja';
@@ -17,7 +19,10 @@ type PlayAction =
   | { do: 'toggle' } | { do: 'seek'; sec: number } | { do: 'step'; dir: 1 | -1 } | { do: 'percent'; n: number }
   | { do: 'speed'; dir: 1 | -1 } | { do: 'ab' } | { do: 'mute' } | { do: 'zoom' };
 
-type NormalAction =
+/** 操作パネルから操作を実行するための入口 */
+export type CanvasRun = { normal: (a: NormalAction) => void; window: (a: WindowAction) => void };
+
+export type NormalAction =
   | PlayAction
   | { do: 'maximize' } | { do: 'all' } | { do: 'home' } | { do: 'homeInitial' } | { do: 'help' } | { do: 'history' }
   | { do: 'windowMode' } | { do: 'escape' };
@@ -52,8 +57,36 @@ for (let n = 1; n <= 9; n++) windowKeys[String(n)] = { do: 'focusN', n };
 
 const normalMap = new KeySequence(normal);
 
-/** which-key 風の候補表示に出す行(キー、説明) */
-const windowHelp: [string, string][] = [
+/** 操作パネルに出すキャンバスの操作(4.4) */
+export const playCommands: CommandDef<NormalAction>[] = [
+  { id: { do: 'toggle' }, key: 'k', label: '再生 / 一時停止' },
+  { id: { do: 'seek', sec: -5 }, key: 'j', label: '5秒戻る' }, { id: { do: 'seek', sec: 5 }, key: 'l', label: '5秒進む' },
+  { id: { do: 'seek', sec: -30 }, key: 'J', label: '30秒戻る' }, { id: { do: 'seek', sec: 30 }, key: 'L', label: '30秒進む' },
+  { id: { do: 'step', dir: -1 }, key: ',', label: '1フレーム戻る' }, { id: { do: 'step', dir: 1 }, key: '.', label: '1フレーム進む' },
+  { id: { do: 'percent', n: 0 }, key: '0', label: '先頭へ' }, { id: { do: 'percent', n: 5 }, key: '5', label: '中央へ' },
+  { id: { do: 'speed', dir: -1 }, key: '[', label: '遅く' }, { id: { do: 'speed', dir: 1 }, key: ']', label: '速く' },
+  { id: { do: 'ab' }, key: 'b', label: 'A-B ループ' }, { id: { do: 'mute' }, key: 'm', label: 'ミュート' },
+  { id: { do: 'zoom' }, key: 'z', label: '等倍 / フィット' }, { id: { do: 'all' }, key: 'K', label: '全ウィンドウ再生 / 停止' },
+];
+export const canvasCommands: CommandDef<NormalAction>[] = [
+  { id: { do: 'home' }, key: 'h', label: 'Home へ戻る' }, { id: { do: 'homeInitial' }, key: 'H', label: 'Home の初期位置へ' },
+  { id: { do: 'maximize' }, key: 'f', label: 'ウィンドウ最大化' }, { id: { do: 'windowMode' }, key: 'w', label: 'ウィンドウ操作モード' },
+];
+export const windowCommands: CommandDef<WindowAction>[] = [
+  { id: { do: 'focusDir', dir: 'h' }, key: 'w h', label: '左のウィンドウへ' }, { id: { do: 'focusDir', dir: 'l' }, key: 'w l', label: '右のウィンドウへ' },
+  { id: { do: 'focusDir', dir: 'k' }, key: 'w k', label: '上のウィンドウへ' }, { id: { do: 'focusDir', dir: 'j' }, key: 'w j', label: '下のウィンドウへ' },
+  { id: { do: 'moveDir', dir: 'h' }, key: 'w H', label: '左へ移動' }, { id: { do: 'moveDir', dir: 'l' }, key: 'w L', label: '右へ移動' },
+  { id: { do: 'moveDir', dir: 'k' }, key: 'w K', label: '上へ移動' }, { id: { do: 'moveDir', dir: 'j' }, key: 'w J', label: '下へ移動' },
+  { id: { do: 'select' }, key: 'w Space', label: '選択を切替' }, { id: { do: 'selectAll' }, key: 'w a', label: '全選択 / 解除' },
+  { id: { do: 'grow', f: 1.1 }, key: 'w +', label: '拡大' }, { id: { do: 'grow', f: 1 / 1.1 }, key: 'w -', label: '縮小' },
+  { id: { do: 'equalize' }, key: 'w =', label: '均等に並べる' }, { id: { do: 'layout' }, key: 'w t', label: 'タイル / 自由配置' },
+  { id: { do: 'minimize' }, key: 'w m', label: '最小化' }, { id: { do: 'maximize' }, key: 'w f', label: '最大化 / 元に戻す' },
+  { id: { do: 'only' }, key: 'w o', label: 'ほかを閉じる' }, { id: { do: 'close' }, key: 'w x', label: 'ウィンドウを閉じる' },
+  { id: { do: 'closeAll' }, key: 'w X', label: '全部閉じる' },
+];
+
+/** which-key 風の候補表示とキー一覧に出す行(キー、説明) */
+export const windowHelp: [string, string][] = [
   ['1–9', ja.wFocusN], ['h/j/k/l', ja.wFocusDir], ['H/J/K/L', ja.wMoveDir], ['Space', ja.wSelect], ['a', ja.wSelectAll],
   ['+ / -', `${ja.wGrow} / ${ja.wShrink}`], ['=', ja.wEqualize], ['t', ja.wLayout], ['m', ja.minimize], ['f', ja.wMaximize],
   ['o', ja.wOnly], ['x', ja.wClose], ['X', ja.wCloseAll], ['q', ja.windowModeExit],
@@ -71,6 +104,14 @@ type Props = {
   onHome: () => void;
   onHomeInitial: () => void;
   onHistory: () => void;
+  onHelp: () => void;
+  /** 上部バーの右に並べる共通のボタン */
+  toolbar: ReactNode;
+  hints: boolean;
+  onHideHints: () => void;
+  tabbar: 'top' | 'side';
+  /** 操作パネルから操作を実行するための入口 */
+  runRef: Ref<CanvasRun>;
 };
 
 export function Canvas(p: Props) {
@@ -82,7 +123,8 @@ export function Canvas(p: Props) {
   const [minimized, setMinimized] = useState<Set<number>>(new Set());
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [windowMode, setWindowMode] = useState(false);
-  const [help, setHelp] = useState(false);
+  /** 左端の縦のタブバーを出しているか */
+  const [sideOpen, setSideOpen] = useState(false);
   /** タイル配置でドラッグ中のウィンドウと、落とす先の番号 */
   const [reorder, setReorder] = useState<{ id: number; target: number | null } | null>(null);
   const apis = useRef(new Map<number, PlayerApi | null>());
@@ -194,10 +236,10 @@ export function Canvas(p: Props) {
       }
       case 'home': return p.onHome();
       case 'homeInitial': return p.onHomeInitial();
-      case 'help': return setHelp((h) => !h);
+      case 'help': return p.onHelp();
       case 'history': return p.onHistory();
       case 'windowMode': return setWindowMode(true);
-      case 'escape': return setHelp(false);
+      case 'escape': return;
       default: return runPlay(a);
     }
   };
@@ -284,6 +326,8 @@ export function Canvas(p: Props) {
     window.addEventListener('pointerup', up);
   };
 
+  useImperativeHandle(p.runRef, () => ({ normal: runNormal, window: runWindow }));
+
   const windowMap = new KeySequence(windowKeys);
   useKeys((k, e) => {
     if (windowMode) {
@@ -303,13 +347,9 @@ export function Canvas(p: Props) {
     for (const id of apis.current.keys()) if (!ws.some((w) => w.id === id)) apis.current.delete(id);
   }, [ws]);
 
-  return (
-    <div className={`canvas${windowMode ? ' window-mode' : ''}`}>
-      <header className="canvas-bar">
-        <button type="button" className="icon-button" title={ja.toHome} aria-label={ja.toHome} onClick={p.onHome}>
-          <Icon name="home" />
-        </button>
-        <div className="chips" role="tablist" aria-label={ja.taskbar} data-testid="taskbar">
+  // タブバー(4.2)。上部に横並び、または左端に縦並びで普段は隠す
+  const taskbar = (
+        <div className={`chips ${p.tabbar}`} role="tablist" aria-label={ja.taskbar} data-testid="taskbar">
           {ws.map((w, i) => (
             <button
               key={w.id}
@@ -329,6 +369,23 @@ export function Canvas(p: Props) {
             </button>
           ))}
         </div>
+  );
+
+  return (
+    <div className={`canvas${windowMode ? ' window-mode' : ''}`}>
+      {p.tabbar === 'side' && (
+        <>
+          <div className="side-edge" onPointerEnter={() => setSideOpen(true)} />
+          <nav className={`side-tabs${sideOpen ? ' open' : ''}`} onPointerLeave={() => setSideOpen(false)}>
+            {taskbar}
+          </nav>
+        </>
+      )}
+      <header className="canvas-bar">
+        <button type="button" className="icon-button" title={ja.toHome} aria-label={ja.toHome} onClick={p.onHome}>
+          <Icon name="home" />
+        </button>
+        {p.tabbar === 'top' ? taskbar : <div className="chips" />}
         {ws.length > 1 && (
           <button
             type="button"
@@ -340,6 +397,7 @@ export function Canvas(p: Props) {
             {mode === 'tile' ? ja.layoutTile : ja.layoutFree}
           </button>
         )}
+        {p.toolbar}
       </header>
       <div ref={area} className="canvas-area" data-testid="canvas-area">
         {ws.length === 0 && <div className="canvas-empty">{ja.canvasEmpty}</div>}
@@ -388,23 +446,7 @@ export function Canvas(p: Props) {
           ))}
         </div>
       )}
-      {help && (
-        <div className="dialog-scrim" onClick={() => setHelp(false)}>
-          <div className="dialog" role="dialog" aria-label={ja.keyHelp} onClick={(e) => e.stopPropagation()}>
-            <h2>{ja.keyHelp}</h2>
-            <dl>
-              {ja.canvasKeys.map(([k, d]) => (
-                <div key={k} className="help-row">
-                  <dt>
-                    <kbd>{k}</kbd>
-                  </dt>
-                  <dd>{d}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-        </div>
-      )}
+      {p.hints && <HintBar items={windowMode ? ja.windowHints : ja.canvasHints} onHide={p.onHideHints} />}
     </div>
   );
 }

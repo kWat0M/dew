@@ -1,5 +1,7 @@
 // Home: yazi と同じ3カラム(親・現在・プレビュー)でファイルを選ぶ(4.1、5.2)
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode, type Ref } from 'react';
+import type { CommandDef } from '../commands';
+import { HintBar } from '../ui/HintBar';
 import { api, ApiError } from '../api/http';
 import type { Events } from '../api/events';
 import type { Entry } from '../protocol/Entry';
@@ -14,15 +16,28 @@ import { EntryList, type View } from './EntryList';
 import { Preview } from './Preview';
 import './Home.css';
 
-type Action =
+export type HomeAction =
   | 'down' | 'up' | 'parent' | 'enter' | 'open' | 'mark' | 'top' | 'bottom'
-  | 'filter' | 'follow' | 'view' | 'hidden' | 'canvas' | 'initial' | 'history' | 'escape';
+  | 'filter' | 'follow' | 'view' | 'hidden' | 'canvas' | 'initial' | 'history' | 'help' | 'escape';
+
+type Action = HomeAction;
+
+/** 操作パネルに出す Home の操作(4.4) */
+export const homeCommands: CommandDef<HomeAction>[] = [
+  { id: 'down', key: 'j', label: '下へ' }, { id: 'up', key: 'k', label: '上へ' },
+  { id: 'parent', key: 'h', label: '親へ' }, { id: 'enter', key: 'l', label: '中へ / 開く' },
+  { id: 'open', key: 'Enter', label: '開く' }, { id: 'mark', key: 'Space', label: '選択' },
+  { id: 'top', key: 'gg', label: '先頭' }, { id: 'bottom', key: 'G', label: '末尾' },
+  { id: 'filter', key: '/', label: '絞り込み' }, { id: 'follow', key: 'n', label: '最新に追従' },
+  { id: 'view', key: 'v', label: 'リスト / グリッド' }, { id: 'hidden', key: '.', label: '隠しファイル' },
+  { id: 'initial', key: 'H', label: '初期位置へ' }, { id: 'canvas', key: 'Tab', label: 'キャンバスへ' },
+];
 
 const keymap = new KeySequence<Action>({
   j: 'down', ArrowDown: 'down', k: 'up', ArrowUp: 'up',
   h: 'parent', ArrowLeft: 'parent', l: 'enter', ArrowRight: 'enter',
   Enter: 'open', ' ': 'mark', 'g g': 'top', G: 'bottom',
-  '/': 'filter', n: 'follow', v: 'view', '.': 'hidden', Tab: 'canvas', H: 'initial', r: 'history', Escape: 'escape',
+  '/': 'filter', n: 'follow', v: 'view', '.': 'hidden', Tab: 'canvas', H: 'initial', r: 'history', '?': 'help', Escape: 'escape',
 });
 
 export type DirRequest = { path: string; seq: number };
@@ -38,6 +53,13 @@ type Props = {
   /** 初期位置へ戻る(H) */
   onInitial: () => void;
   onHistory: () => void;
+  onHelp: () => void;
+  /** 上部バーの右に並べる共通のボタン */
+  toolbar: ReactNode;
+  hints: boolean;
+  onHideHints: () => void;
+  /** 操作パネルから操作を実行するための入口 */
+  runRef: Ref<(a: HomeAction) => void>;
   onError: (message: string) => void;
 };
 
@@ -213,12 +235,15 @@ export function Home(p: Props) {
       case 'canvas': return p.onCanvas();
       case 'initial': return p.onInitial();
       case 'history': return p.onHistory();
+      case 'help': return p.onHelp();
       case 'escape':
         setMarked(new Set());
         setFilter('');
         return;
     }
   };
+
+  useImperativeHandle(p.runRef, () => run);
 
   useKeys((k, e) => {
     const a = keymap.push(k.key);
@@ -256,9 +281,10 @@ export function Home(p: Props) {
           {marked.size > 0 && <span className="chip">{ja.selectedCount(marked.size)}</span>}
           {follow && <span className="chip">{ja.following}</span>}
           {showHidden && <span className="chip">{ja.hiddenShown}</span>}
-          <button type="button" className="icon-button" title={view === 'list' ? ja.viewGrid : ja.viewList} onClick={() => run('view')}>
+          <button type="button" className="icon-button" title={view === 'list' ? ja.viewGrid : ja.viewList} aria-label={view === 'list' ? ja.viewGrid : ja.viewList} onClick={() => run('view')}>
             <Icon name={view === 'list' ? 'grid' : 'list'} />
           </button>
+          {p.toolbar}
         </div>
       </header>
       {filtering && (
@@ -306,6 +332,7 @@ export function Home(p: Props) {
         />
         <Preview dir={cwd ?? ''} entry={current} showHidden={showHidden} />
       </div>
+      {p.hints && <HintBar items={ja.homeHints} onHide={p.onHideHints} />}
       <button type="button" className="fab" title={ja.toCanvas} onClick={p.onCanvas}>
         <Icon name="canvas" size={24} />
         {p.liveCount > 0 && (

@@ -28,3 +28,122 @@ button {
   outline: 2px solid var(--md-sys-color-primary);
   outline-offset: 2px;
 }
+
+/* 画面をまたいで使う部品 */
+.chip {
+  padding: 6px 12px;
+  border-radius: var(--md-sys-shape-corner-small);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  font: var(--md-sys-typescale-label-large);
+}
+
+.icon-button {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: none;
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface-variant) var(--md-sys-state-hover-opacity), transparent);
+}
+
+.icon-button.small {
+  width: 32px;
+  height: 32px;
+}
+
+.text-button {
+  height: 32px;
+  padding: 0 12px;
+  border: none;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: none;
+  color: var(--md-sys-color-primary);
+  font: var(--md-sys-typescale-label-large);
+  cursor: pointer;
+}
+
+kbd {
+  display: inline-block;
+  min-width: 64px;
+  font: var(--md-sys-typescale-label-medium);
+  font-family: var(--md-ref-typeface-mono);
+  color: var(--md-sys-color-primary);
+}
+
+.dialog-scrim {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--md-sys-color-scrim) 32%, transparent);
+  z-index: 90;
+}
+
+.dialog {
+  min-width: 360px;
+  max-height: 80vh;
+  overflow: auto;
+  padding: 24px;
+  border-radius: var(--md-sys-shape-corner-extra-large);
+  background: var(--md-sys-color-surface-container-high);
+  box-shadow: var(--md-sys-elevation-level3);
+}
+
+.dialog h2 {
+  margin: 0 0 16px;
+  font: var(--md-sys-typescale-title-large);
+}
+
+.dialog dl,
+.dialog dd {
+  margin: 0;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.dialog-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.dialog-title h2 {
+  margin: 0;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.filled-button {
+  height: 40px;
+  padding: 0 24px;
+  border: none;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-error);
+  color: var(--md-sys-color-on-error);
+  font: var(--md-sys-typescale-label-large);
+  cursor: pointer;
+}
+
+.help-section h3 {
+  margin: 16px 0 8px;
+  color: var(--md-sys-color-primary);
+  font: var(--md-sys-typescale-title-small);
+}

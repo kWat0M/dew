@@ -2,9 +2,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api/http';
 import { Events } from './api/events';
-import { Canvas, type Win } from './canvas/Canvas';
+import { canvasCommands, playCommands, windowCommands, windowHelp, Canvas, type CanvasRun, type NormalAction, type WindowAction, type Win } from './canvas/Canvas';
+import type { Section } from './commands';
+import { useSettings } from './settings';
+import { Dialog } from './ui/Dialog';
+import { OpsPanel } from './ui/OpsPanel';
+import { Toolbar } from './ui/Toolbar';
 import { HistoryWindow } from './history/HistoryWindow';
-import { Home, type DirRequest } from './home/Home';
+import { Home, homeCommands, type DirRequest, type HomeAction } from './home/Home';
 import { ja } from './i18n/ja';
 import { readKey } from './keys';
 import { Snackbar } from './ui/Snackbar';
@@ -30,6 +35,13 @@ export function App() {
   const [focused, setFocused] = useState<number | null>(null);
   const [ime, setIme] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [confirmStop, setConfirmStop] = useState(false);
+  const [stopped, setStopped] = useState(false);
+  const [settings, updateSettings] = useSettings();
+  const homeRun = useRef<((a: HomeAction) => void) | null>(null);
+  const canvasRun = useRef<CanvasRun | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const nextId = useRef(1);
   const lastActive = useRef(0);
@@ -109,6 +121,46 @@ export function App() {
   }, [events]);
 
   const onError = useCallback((m: string) => setMessage(m), []);
+  const stop = () => {
+    setConfirmStop(false);
+    void fetch('/api/shutdown', { method: 'POST' }).finally(() => {
+      events.close();
+      setStopped(true);
+    });
+  };
+
+  const toolbar = (
+    <Toolbar
+      onHistory={() => setHistoryOpen(true)}
+      onHelp={() => setHelpOpen(true)}
+      onPanel={() => setPanelOpen((o) => !o)}
+      onShutdown={() => setConfirmStop(true)}
+    />
+  );
+  const hideHints = () => updateSettings({ hints: false });
+
+  const runHome = useCallback((a: HomeAction) => homeRun.current?.(a), []);
+  const runNormal = useCallback((a: NormalAction) => canvasRun.current?.normal(a), []);
+  const runWindow = useCallback((a: WindowAction) => canvasRun.current?.window(a), []);
+
+  // 操作パネルに出す操作。今の画面のものと共通のもの(4.4)
+  const sections: Section[] =
+    screen === 'home'
+      ? [{ title: ja.secHome, items: homeCommands.map((d) => ({ key: d.key, label: d.label, run: () => runHome(d.id) })) }]
+      : [
+          { title: ja.secPlay, items: playCommands.map((d) => ({ key: d.key, label: d.label, run: () => runNormal(d.id) })) },
+          { title: ja.secCanvas, items: canvasCommands.map((d) => ({ key: d.key, label: d.label, run: () => runNormal(d.id) })) },
+          { title: ja.secWindow, items: windowCommands.map((d) => ({ key: d.key, label: d.label, run: () => runWindow(d.id) })) },
+        ];
+  sections.push({
+    title: ja.secCommon,
+    items: [
+      { key: 'r', label: ja.history, run: () => setHistoryOpen(true) },
+      { key: '?', label: ja.keyHelp, run: () => setHelpOpen(true) },
+      { key: '', label: ja.shutdown, run: () => setConfirmStop(true) },
+    ],
+  });
+
   const toInitial = useCallback(() => {
     if (startDir) setHomeRequest({ path: startDir, seq: seq.current++ });
   }, [startDir]);
@@ -127,6 +179,11 @@ export function App() {
           onCanvas={() => setScreen('canvas')}
           onInitial={toInitial}
           onHistory={() => setHistoryOpen(true)}
+          onHelp={() => setHelpOpen(true)}
+          toolbar={toolbar}
+          hints={settings.hints}
+          onHideHints={hideHints}
+          runRef={homeRun}
           onError={onError}
         />
       </div>
@@ -145,6 +202,12 @@ export function App() {
           onReorder={(ids) => setWindows((ws) => ids.map((id) => ws.find((w) => w.id === id)!))}
           onHome={() => setScreen('home')}
           onHistory={() => setHistoryOpen(true)}
+          onHelp={() => setHelpOpen(true)}
+          toolbar={toolbar}
+          hints={settings.hints}
+          onHideHints={hideHints}
+          tabbar={settings.tabbar}
+          runRef={canvasRun}
           onHomeInitial={() => {
             toInitial();
             setScreen('home');
@@ -152,6 +215,60 @@ export function App() {
         />
       </div>
       {historyOpen && started && <HistoryWindow onOpen={open} onClose={() => setHistoryOpen(false)} onError={onError} />}
+      {panelOpen && (
+        <OpsPanel sections={sections} settings={settings} onSettings={updateSettings} onClose={() => setPanelOpen(false)} />
+      )}
+      {helpOpen && (
+        <Dialog title={ja.keyHelp} onClose={() => setHelpOpen(false)}>
+          {(
+            [
+              [ja.secHome, ja.homeKeys],
+              [ja.secCanvas, ja.canvasKeys],
+              [ja.windowMode, windowHelp],
+            ] as const
+          ).map(([title, rows]) => (
+            <section key={title} className="help-section">
+              <h3>{title}</h3>
+              <dl>
+                {rows.map(([k, d]) => (
+                  <div key={k} className="help-row">
+                    <dt>
+                      <kbd>{k}</kbd>
+                    </dt>
+                    <dd>{d}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          ))}
+        </Dialog>
+      )}
+      {confirmStop && (
+        <Dialog
+          title={ja.shutdown}
+          onClose={() => setConfirmStop(false)}
+          actions={
+            <>
+              <button type="button" className="text-button" onClick={() => setConfirmStop(false)}>
+                {ja.cancel}
+              </button>
+              <button type="button" className="filled-button" onClick={stop}>
+                {ja.shutdownDo}
+              </button>
+            </>
+          }
+        >
+          <p>{ja.shutdownConfirm}</p>
+        </Dialog>
+      )}
+      {stopped && (
+        <div className="start-overlay stopped" data-testid="stopped">
+          <div className="start-card">
+            <h1>{ja.appTitle}</h1>
+            <p className="start-prompt">{ja.stopped}</p>
+          </div>
+        </div>
+      )}
       {ime && <div className="ime">{ja.imeOn}</div>}
       {!started && (
         <div className="start-overlay" data-testid="start-overlay">

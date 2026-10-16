@@ -1,0 +1,35 @@
+// 見た目の設定。ブラウザごとに覚える(localStorage。使えない環境では既定値のまま動く)
+import { useState } from 'react';
+
+export type Settings = {
+  /** 画面下のヒントの帯 */
+  hints: boolean;
+  /** タブバーの形: 上部に横並び / 左端に縦並び(普段は隠す) */
+  tabbar: 'top' | 'side';
+};
+
+const DEFAULTS: Settings = { hints: true, tabbar: 'top' };
+const KEY = 'dew.settings';
+
+function load(): Settings {
+  try {
+    return { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<Settings>) };
+  } catch {
+    return DEFAULTS;
+  }
+}
+
+export function useSettings(): [Settings, (patch: Partial<Settings>) => void] {
+  const [settings, setSettings] = useState(load);
+  const update = (patch: Partial<Settings>) =>
+    setSettings((s) => {
+      const next = { ...s, ...patch };
+      try {
+        localStorage.setItem(KEY, JSON.stringify(next));
+      } catch {
+        // 覚えられなくても、このタブの間は効く
+      }
+      return next;
+    });
+  return [settings, update];
+}
