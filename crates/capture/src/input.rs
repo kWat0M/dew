@@ -7,8 +7,8 @@ use std::collections::HashMap;
 use anyhow::Context;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{
-    BUTTON_PRESS_EVENT, BUTTON_RELEASE_EVENT, ConnectionExt, InputFocus, KEY_PRESS_EVENT,
-    KEY_RELEASE_EVENT, Keycode, Keysym, MOTION_NOTIFY_EVENT, Window,
+    BUTTON_PRESS_EVENT, BUTTON_RELEASE_EVENT, ConfigureWindowAux, ConnectionExt, InputFocus,
+    KEY_PRESS_EVENT, KEY_RELEASE_EVENT, Keycode, Keysym, MOTION_NOTIFY_EVENT, Window,
 };
 use x11rb::protocol::xtest::ConnectionExt as _;
 use x11rb::rust_connection::RustConnection;
@@ -152,6 +152,18 @@ impl Injector {
             0,
             0,
         )?;
+        self.conn.flush()?;
+        Ok(())
+    }
+
+    /// アプリのウィンドウの大きさを変える(w r)。アプリには ConfigureNotify が届き、取り込みも作り直される
+    pub fn resize(&mut self, window: Window, width: u32, height: u32) -> anyhow::Result<()> {
+        let (w, h) = (
+            width.clamp(64, crate::session::SCREEN.0),
+            height.clamp(64, crate::session::SCREEN.1),
+        );
+        self.conn
+            .configure_window(window, &ConfigureWindowAux::new().width(w).height(h))?;
         self.conn.flush()?;
         Ok(())
     }

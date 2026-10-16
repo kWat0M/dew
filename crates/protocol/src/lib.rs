@@ -235,6 +235,11 @@ pub enum LiveInput {
     },
     /// 入力モードを抜けた。押したままのキーを離す
     Release,
+    /// アプリのウィンドウの大きさを変える(w r。ブラウザ側の大きさに合わせる。7.9)
+    Resize {
+        width: u32,
+        height: u32,
+    },
 }
 
 /// `WS /ws/events` でブラウザから送る通知
