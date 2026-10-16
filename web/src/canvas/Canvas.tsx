@@ -15,7 +15,7 @@ export type Win = { id: number; path: string; media: MediaKind };
 type Action =
   | { do: 'toggle' } | { do: 'seek'; sec: number } | { do: 'step'; dir: 1 | -1 } | { do: 'percent'; n: number }
   | { do: 'speed'; dir: 1 | -1 } | { do: 'ab' } | { do: 'mute' } | { do: 'zoom' } | { do: 'maximize' }
-  | { do: 'all' } | { do: 'home' } | { do: 'next' } | { do: 'help' } | { do: 'escape' }
+  | { do: 'all' } | { do: 'home' } | { do: 'homeInitial' } | { do: 'help' } | { do: 'escape' }
   | { do: 'focusN'; n: number } | { do: 'focusDir'; dir: Dir } | { do: 'moveDir'; dir: Dir }
   | { do: 'grow'; f: number } | { do: 'equalize' } | { do: 'layout' } | { do: 'only' } | { do: 'close' };
 
@@ -26,7 +26,7 @@ const bindings: Record<string, Action> = {
   ',': { do: 'step', dir: -1 }, '.': { do: 'step', dir: 1 },
   '[': { do: 'speed', dir: -1 }, ']': { do: 'speed', dir: 1 },
   b: { do: 'ab' }, m: { do: 'mute' }, z: { do: 'zoom' }, f: { do: 'maximize' }, K: { do: 'all' },
-  h: { do: 'home' }, Tab: { do: 'next' }, '?': { do: 'help' }, Escape: { do: 'escape' },
+  h: { do: 'home' }, H: { do: 'homeInitial' }, Tab: { do: 'home' }, '?': { do: 'help' }, Escape: { do: 'escape' },
   'w h': { do: 'focusDir', dir: 'h' }, 'w j': { do: 'focusDir', dir: 'j' }, 'w k': { do: 'focusDir', dir: 'k' }, 'w l': { do: 'focusDir', dir: 'l' },
   'w H': { do: 'moveDir', dir: 'h' }, 'w J': { do: 'moveDir', dir: 'j' }, 'w K': { do: 'moveDir', dir: 'k' }, 'w L': { do: 'moveDir', dir: 'l' },
   'w +': { do: 'grow', f: 1.1 }, 'w -': { do: 'grow', f: 1 / 1.1 }, 'w =': { do: 'equalize' },
@@ -53,12 +53,15 @@ function describe(a: Action): string {
 
 type Props = {
   active: boolean;
+  /** 画面に出ているか。隠れている間は音を出さない */
+  visible: boolean;
   windows: Win[];
   focused: number | null;
   onFocus: (id: number) => void;
   onClose: (ids: number[]) => void;
   onReorder: (ids: number[]) => void;
   onHome: () => void;
+  onHomeInitial: () => void;
 };
 
 export function Canvas(p: Props) {
@@ -108,7 +111,7 @@ export function Canvas(p: Props) {
     });
   };
 
-  const run = (a: Action, shift: boolean) => {
+  const run = (a: Action) => {
     const api = focusedApi();
     switch (a.do) {
       case 'toggle': return api?.toggle();
@@ -127,11 +130,7 @@ export function Canvas(p: Props) {
         return list.forEach((x) => x.setPlaying(anyPaused));
       }
       case 'home': return p.onHome();
-      case 'next': {
-        if (ws.length === 0) return;
-        const n = (index + (shift ? -1 : 1) + ws.length) % ws.length;
-        return p.onFocus(ws[n]!.id);
-      }
+      case 'homeInitial': return p.onHomeInitial();
       case 'help': return setHelp((h) => !h);
       case 'escape':
         setHelp(false);
@@ -174,7 +173,7 @@ export function Canvas(p: Props) {
     setPending(a === 'pending');
     if (a === null) return;
     e.preventDefault();
-    if (a !== 'pending') run(a, e.shiftKey);
+    if (a !== 'pending') run(a);
   }, p.active);
 
   // 閉じたウィンドウの操作を捨てる
@@ -214,7 +213,7 @@ export function Canvas(p: Props) {
             media={w.media}
             rect={rects[i]!}
             focused={w.id === p.focused}
-            audible={ws.length === 1 || w.id === p.focused}
+            audible={p.visible && (ws.length === 1 || w.id === p.focused)}
             free={mode === 'free' && ws.length > 1 && maximized !== w.id}
             api={(x) => {
               apis.current.set(w.id, x);

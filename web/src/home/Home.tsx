@@ -16,23 +16,27 @@ import './Home.css';
 
 type Action =
   | 'down' | 'up' | 'parent' | 'enter' | 'open' | 'mark' | 'top' | 'bottom'
-  | 'filter' | 'follow' | 'view' | 'hidden' | 'canvas' | 'escape';
+  | 'filter' | 'follow' | 'view' | 'hidden' | 'canvas' | 'initial' | 'escape';
 
 const keymap = new KeySequence<Action>({
   j: 'down', ArrowDown: 'down', k: 'up', ArrowUp: 'up',
   h: 'parent', ArrowLeft: 'parent', l: 'enter', ArrowRight: 'enter',
   Enter: 'open', ' ': 'mark', 'g g': 'top', G: 'bottom',
-  '/': 'filter', n: 'follow', v: 'view', '.': 'hidden', Tab: 'canvas', Escape: 'escape',
+  '/': 'filter', n: 'follow', v: 'view', '.': 'hidden', Tab: 'canvas', H: 'initial', Escape: 'escape',
 });
+
+export type DirRequest = { path: string; seq: number };
 
 type Props = {
   events: Events;
   active: boolean;
-  /** 表示するディレクトリ(初期位置、または dew <ディレクトリ> の指示) */
-  dir: string | null;
+  /** 表示を求めるディレクトリ(初期位置、H、dew <ディレクトリ> の指示) */
+  dir: DirRequest | null;
   liveCount: number;
   onOpen: (files: { path: string; media: MediaKind }[]) => void;
   onCanvas: () => void;
+  /** 初期位置へ戻る(H) */
+  onInitial: () => void;
   onError: (message: string) => void;
 };
 
@@ -44,7 +48,7 @@ function openable(e: Entry): string | null {
 }
 
 export function Home(p: Props) {
-  const [cwd, setCwd] = useState<string | null>(p.dir);
+  const [cwd, setCwd] = useState<string | null>(p.dir?.path ?? null);
   const [tree, setTree] = useState<Tree | null>(null);
   const [parent, setParent] = useState<Tree | null>(null);
   const [reload, setReload] = useState(0);
@@ -62,10 +66,14 @@ export function Home(p: Props) {
   const { onError, onOpen } = p;
 
   // 外から表示先が変わった(初期位置の取得、dew <ディレクトリ>)
-  const [lastDir, setLastDir] = useState(p.dir);
-  if (p.dir !== lastDir) {
-    setLastDir(p.dir);
-    setCwd(p.dir);
+  const [lastRequest, setLastRequest] = useState(p.dir);
+  if (p.dir !== lastRequest) {
+    setLastRequest(p.dir);
+    if (p.dir) {
+      setCwd(p.dir.path);
+      setSelectedName(null);
+      setFilter('');
+    }
   }
 
   const go = useCallback((dir: string, select?: string) => {
@@ -202,6 +210,7 @@ export function Home(p: Props) {
       case 'view': return setView((v) => (v === 'list' ? 'grid' : 'list'));
       case 'hidden': return setShowHidden((h) => !h);
       case 'canvas': return p.onCanvas();
+      case 'initial': return p.onInitial();
       case 'escape':
         setMarked(new Set());
         setFilter('');

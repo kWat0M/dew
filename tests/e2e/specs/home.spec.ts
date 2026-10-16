@@ -49,3 +49,28 @@ test('新しいファイルが1秒以内に現れる', async ({ page, dew }) => 
   copyFileSync(join(dew.root, 'image.png'), join(dew.root, 'new.png'));
   await expect(current(page).getByRole('option', { name: 'new.png' })).toBeVisible({ timeout: 1000 });
 });
+
+// キャンバスから h / Tab で戻ると Enter を押したときのまま。H では初期位置(4.1、5.3)
+test('キャンバスから戻ると Home の状態が残っている', async ({ page, dew }) => {
+  await start(page, dew);
+  await current(page).getByRole('option', { name: 'sub' }).click();
+  await page.keyboard.press('l');
+  await expect(current(page).getByRole('option')).toHaveText(['nested.webp']);
+  await open(page, 'nested.webp');
+
+  await page.keyboard.press('h');
+  await expect(current(page).getByRole('option')).toHaveText(['nested.webp']);
+  expect(await selected(page)).toBe('nested.webp');
+
+  // Tab は Home ⇄ キャンバスの切替。ウィンドウは残っている
+  await page.keyboard.press('Tab');
+  await expect(page.getByTestId('player-window')).toHaveCount(1);
+  await page.keyboard.press('Tab');
+  await expect(current(page).getByRole('option')).toHaveText(['nested.webp']);
+
+  // H は初期位置へ
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('H');
+  await expect(current(page).getByRole('option', { name: 'sub' })).toBeVisible();
+  await expect(page.getByTestId('player-window')).toBeHidden();
+});

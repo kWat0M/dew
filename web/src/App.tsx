@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api/http';
 import { Events } from './api/events';
 import { Canvas, type Win } from './canvas/Canvas';
-import { Home } from './home/Home';
+import { Home, type DirRequest } from './home/Home';
 import { ja } from './i18n/ja';
 import { readKey } from './keys';
 import { Snackbar } from './ui/Snackbar';
@@ -19,7 +19,11 @@ export function App() {
   const [started, setStarted] = useState(false);
   const startedRef = useRef(false);
   const [screen, setScreen] = useState<Screen>('home');
-  const [homeDir, setHomeDir] = useState<string | null>(null);
+  /** Home の初期位置(最初に dew を起動したディレクトリ) */
+  const [startDir, setStartDir] = useState<string | null>(null);
+  /** Home に表示を求めるディレクトリ。seq を変えると同じ場所でも開き直す */
+  const [homeRequest, setHomeRequest] = useState<DirRequest | null>(null);
+  const seq = useRef(0);
   const [windows, setWindows] = useState<Win[]>([]);
   const [focused, setFocused] = useState<number | null>(null);
   const [ime, setIme] = useState(false);
@@ -30,7 +34,10 @@ export function App() {
   useEffect(() => {
     events.start();
     api.info().then(
-      (info) => setHomeDir((d) => d ?? info.home),
+      (info) => {
+        setStartDir(info.home);
+        setHomeRequest((r) => r ?? { path: info.home, seq: seq.current++ });
+      },
       (e: unknown) => setMessage(String(e)),
     );
     return () => events.close();
@@ -49,7 +56,7 @@ export function App() {
       events.subscribe((ev) => {
         if (ev.type !== 'open') return;
         if (ev.kind === 'dir') {
-          setHomeDir(ev.path);
+          setHomeRequest({ path: ev.path, seq: seq.current++ });
           setScreen('home');
         } else {
           open([{ path: ev.path, media: ev.media }]);
@@ -89,24 +96,30 @@ export function App() {
   }, [events]);
 
   const onError = useCallback((m: string) => setMessage(m), []);
+  const toInitial = useCallback(() => {
+    if (startDir) setHomeRequest({ path: startDir, seq: seq.current++ });
+  }, [startDir]);
   const clearMessage = useCallback(() => setMessage(null), []);
 
   return (
     <div className="app">
-      {screen === 'home' && (
+      {/* 両方の画面を作ったまま残し、見えていない方を隠す(Home の状態と再生を保つため。4.1) */}
+      <div className="screen" hidden={screen !== 'home'}>
         <Home
           events={events}
-          active={started}
-          dir={homeDir}
+          active={started && screen === 'home'}
+          dir={homeRequest}
           liveCount={0}
           onOpen={open}
           onCanvas={() => setScreen('canvas')}
+          onInitial={toInitial}
           onError={onError}
         />
-      )}
-      {screen === 'canvas' && (
+      </div>
+      <div className="screen" hidden={screen !== 'canvas'}>
         <Canvas
-          active={started}
+          active={started && screen === 'canvas'}
+          visible={screen === 'canvas'}
           windows={windows}
           focused={focused}
           onFocus={setFocused}
@@ -117,8 +130,12 @@ export function App() {
           }}
           onReorder={(ids) => setWindows((ws) => ids.map((id) => ws.find((w) => w.id === id)!))}
           onHome={() => setScreen('home')}
+          onHomeInitial={() => {
+            toInitial();
+            setScreen('home');
+          }}
         />
-      )}
+      </div>
       {ime && <div className="ime">{ja.imeOn}</div>}
       {!started && (
         <div className="start-overlay" data-testid="start-overlay">
