@@ -151,3 +151,17 @@ test('Shift+クリックで範囲を、Ctrl+クリックで1つずつ複数選�
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('player-window')).toHaveCount(3);
 });
+
+test('別のディレクトリへ移っても複数選択は残り、まとめて開ける', async ({ page, dew }) => {
+  await start(page, dew);
+  await current(page).getByRole('option', { name: 'h264_aac.mp4' }).click({ modifiers: ['Control'] });
+  await current(page).getByRole('option', { name: 'sub' }).click();
+  await page.keyboard.press('l');
+  await expect(current(page).getByRole('option')).toHaveText(['nested.webp']);
+  await page.keyboard.press(' ');
+  await expect(page.locator('.home-status')).toContainText('2 件を選択中');
+  await page.keyboard.press('h');
+  await expect(current(page).locator('[data-marked="true"]')).toHaveText(['h264_aac.mp4']);
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('player-window')).toHaveCount(2);
+});

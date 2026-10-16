@@ -66,6 +66,26 @@ pub(crate) async fn sprite(
     send(&out, "image/webp", None).await
 }
 
+/// `GET /api/image?path=`: ブラウザで正確に表示できない画像を 8bit の PNG にしたもの
+pub(crate) async fn image(
+    State(app): State<Arc<App>>,
+    Query(q): Query<PathQuery>,
+) -> Result<Response, ApiError> {
+    let p = file(&app, &q.path)?;
+    let out = app.media.display_png(&p).await.map_err(failed)?;
+    send(&out, "image/png", None).await
+}
+
+/// `GET /api/pixels?path=`: 画像の元の画素値(16bit RGBA、リトルエンディアン)
+pub(crate) async fn pixels(
+    State(app): State<Arc<App>>,
+    Query(q): Query<PathQuery>,
+) -> Result<Response, ApiError> {
+    let p = file(&app, &q.path)?;
+    let out = app.media.pixels16(&p).await.map_err(failed)?;
+    send(&out, "application/octet-stream", None).await
+}
+
 /// `GET /api/media?path=&transcode=1&seg=N`
 pub(crate) async fn segment(app: &App, path: &str, index: u32) -> Result<Response, ApiError> {
     let p = file(app, path)?;

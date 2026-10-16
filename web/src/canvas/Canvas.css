@@ -88,10 +88,19 @@
 }
 
 /* フォーカス中は primary の枠 */
+/* フォーカスは枠の色だけで示す。影や重なり順を変えると、Firefox 系(Zen)で GPU 合成の動画が
+   黒くなることがあったため。重なりのある自由配置と最大化のときだけ、手前に出す */
 .window.focused {
   border-color: var(--md-sys-color-primary);
+}
+
+.canvas-area.free .window.focused {
   box-shadow: var(--md-sys-elevation-level3);
   z-index: 1;
+}
+
+.window.maximized {
+  z-index: 2;
 }
 
 .window:fullscreen {
@@ -198,6 +207,10 @@
 .frame,
 .rate {
   color: var(--md-sys-color-on-surface-variant);
+}
+
+.control-row .text-button {
+  white-space: nowrap;
 }
 
 .volume {
@@ -507,21 +520,190 @@
 }
 
 
-/* ミュートで始めた動画に出す、大きめのミュート解除ボタン */
-.unmute-button {
+
+.icon-button.toggled {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+.chip.sync-chip {
+  border-color: transparent;
+  background: var(--md-sys-color-tertiary-container);
+  color: var(--md-sys-color-on-tertiary-container);
+  white-space: nowrap;
+}
+
+/* 比較ウィンドウ(F7) */
+.cmp-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 8px;
+}
+
+/* MD3 の Segmented button */
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-full);
+  overflow: hidden;
+}
+
+.segmented button {
+  height: 32px;
+  padding: 0 16px;
+  border: none;
+  border-left: 1px solid var(--md-sys-color-outline);
+  background: none;
+  font: var(--md-sys-typescale-label-large);
+  cursor: pointer;
+}
+
+.segmented button:first-child {
+  border-left: none;
+}
+
+.segmented button.on {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+/* 差分の重ね合わせが外へ漏れないよう、ここで合成を閉じる */
+.cmp-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  isolation: isolate;
+  background: var(--md-sys-color-scrim);
+}
+
+.cmp-layer {
   position: absolute;
-  left: 16px;
-  bottom: 16px;
+}
+
+.cmp-layer video,
+.cmp-layer img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.cmp-label {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  padding: 2px 8px;
+  border-radius: var(--md-sys-shape-corner-small);
+  background: color-mix(in srgb, var(--md-sys-color-inverse-surface) 70%, transparent);
+  color: var(--md-sys-color-inverse-on-surface);
+  font: var(--md-sys-typescale-label-medium);
+}
+
+.cmp-media {
+  position: absolute;
+  pointer-events: none;
+}
+
+.cmp-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--md-sys-color-primary);
+  pointer-events: auto;
+  cursor: ew-resize;
+}
+
+/* 細い線でもつかみやすいよう、当たり判定を広げる */
+.cmp-handle::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -10px;
+  right: -10px;
+}
+
+.cmp-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-primary);
+  box-shadow: var(--md-sys-elevation-level2);
+  transform: translate(-50%, -50%);
+}
+
+/* 画像の表示(F8) */
+.image-view {
+  position: absolute;
+  inset: 0 0 40px 0;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+}
+
+.image-view img {
+  position: absolute;
+  max-width: none;
+}
+
+.image-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 48px;
-  padding: 0 20px;
+  height: 40px;
+  padding: 0 8px;
+  background: var(--md-sys-color-surface-container);
+}
+
+.image-bar .spacer {
+  flex: 1;
+}
+
+.pixel-info,
+.zoom-level {
+  font: var(--md-sys-typescale-label-medium);
+  font-family: var(--md-ref-typeface-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: pre;
+}
+
+.zoom-level {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+/* 全体のミュート。キャンバスに入った直後は「ミュートを解除」と文字でも出す */
+.global-mute {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  min-width: 40px;
+  padding: 0 8px;
   border: none;
   border-radius: var(--md-sys-shape-corner-full);
-  background: var(--md-sys-color-inverse-surface);
-  color: var(--md-sys-color-inverse-on-surface);
-  box-shadow: var(--md-sys-elevation-level2);
-  font: var(--md-sys-typescale-label-large);
+  background: none;
+  color: var(--md-sys-color-on-surface-variant);
+  white-space: nowrap;
   cursor: pointer;
+}
+
+.global-mute.muted {
+  color: var(--md-sys-color-error);
+}
+
+.global-mute.labeled {
+  padding: 0 16px 0 12px;
+  background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container);
+  font: var(--md-sys-typescale-label-large);
 }

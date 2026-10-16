@@ -1,5 +1,5 @@
 // キャンバス: 開いたファイルをフローティングウィンドウとして並べる(4.2、5.3、5.4)
-import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref } from 'react';
+import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref } from 'react';
 import type { CommandDef } from '../commands';
 import { HintBar } from '../ui/HintBar';
 import { Toolbar, type ToolbarActions } from '../ui/Toolbar';
@@ -10,23 +10,31 @@ import { Icon } from '../icons';
 import { KeySequence } from '../keys';
 import { useKeys } from '../useKeys';
 import { cascade, neighbor, tile, type Dir, type Rect } from './layout';
+import { CompareWindow, type Member } from './CompareWindow';
 import { PlayerWindow, type PlayerApi } from './PlayerWindow';
+import { SyncGroup } from './sync';
 import './Canvas.css';
 
-export type Win = { id: number; path: string; media: MediaKind };
+/** キャンバスのウィンドウ。members があれば比較ウィンドウ */
+export type Win = { id: number; path: string; media: MediaKind; members?: Member[] };
 
 /** 再生のキー(選択中のウィンドウ、なければフォーカス中のウィンドウに効く) */
 type PlayAction =
   | { do: 'toggle' } | { do: 'seek'; sec: number } | { do: 'step'; dir: 1 | -1 } | { do: 'percent'; n: number }
-  | { do: 'speed'; dir: 1 | -1 } | { do: 'ab' } | { do: 'mute' } | { do: 'zoom' };
+  | { do: 'speed'; dir: 1 | -1 } | { do: 'ab' } | { do: 'mute' } | { do: 'zoom' } | { do: 'zoomBy'; f: number };
 
 /** 操作パネルから操作を実行するための入口 */
-export type CanvasRun = { normal: (a: NormalAction) => void; window: (a: WindowAction) => void };
+export type CanvasRun = {
+  normal: (a: NormalAction) => void;
+  window: (a: WindowAction) => void;
+  /** Home へ戻るときに全ウィンドウを止める */
+  pauseAll: () => void;
+};
 
 export type NormalAction =
   | PlayAction
   | { do: 'maximize' } | { do: 'all' } | { do: 'home' } | { do: 'homeInitial' } | { do: 'help' } | { do: 'history' }
-  | { do: 'windowMode' } | { do: 'escape' };
+  | { do: 'windowMode' } | { do: 'sync' } | { do: 'compareMode' } | { do: 'globalMute' } | { do: 'escape' };
 
 /** ウィンドウ操作モードのキー */
 export type WindowAction =
@@ -34,15 +42,16 @@ export type WindowAction =
   | { do: 'select' } | { do: 'selectAll' } | { do: 'grow'; f: number } | { do: 'equalize' } | { do: 'layout' }
   | { do: 'minimize' } | { do: 'maximize' } | { do: 'only' } | { do: 'close' } | { do: 'closeAll' } | { do: 'exit' };
 
-const normal: Record<string, NormalAction> = {
+/** キャンバスのキーマップ(キー一覧・ヒントとの突き合わせのテストにも使う) */
+export const normal: Record<string, NormalAction> = {
   k: { do: 'toggle' }, ' ': { do: 'toggle' },
   j: { do: 'seek', sec: -5 }, l: { do: 'seek', sec: 5 }, ArrowLeft: { do: 'seek', sec: -5 }, ArrowRight: { do: 'seek', sec: 5 },
   J: { do: 'seek', sec: -30 }, L: { do: 'seek', sec: 30 },
   ',': { do: 'step', dir: -1 }, '.': { do: 'step', dir: 1 },
   '[': { do: 'speed', dir: -1 }, ']': { do: 'speed', dir: 1 },
-  b: { do: 'ab' }, m: { do: 'mute' }, z: { do: 'zoom' }, f: { do: 'maximize' }, K: { do: 'all' },
+  b: { do: 'ab' }, m: { do: 'mute' }, z: { do: 'zoom' }, '+': { do: 'zoomBy', f: 1.25 }, '-': { do: 'zoomBy', f: 0.8 }, f: { do: 'maximize' }, K: { do: 'all' },
   h: { do: 'home' }, H: { do: 'homeInitial' }, Tab: { do: 'home' }, '?': { do: 'help' },
-  w: { do: 'windowMode' }, r: { do: 'history' }, Escape: { do: 'escape' },
+  w: { do: 'windowMode' }, r: { do: 'history' }, s: { do: 'sync' }, c: { do: 'compareMode' }, M: { do: 'globalMute' }, Escape: { do: 'escape' },
 };
 for (let n = 0; n <= 9; n++) normal[String(n)] = { do: 'percent', n };
 
@@ -67,11 +76,13 @@ export const playCommands: CommandDef<NormalAction>[] = [
   { id: { do: 'percent', n: 0 }, key: '0', label: '先頭へ' }, { id: { do: 'percent', n: 5 }, key: '5', label: '中央へ' },
   { id: { do: 'speed', dir: -1 }, key: '[', label: '遅く' }, { id: { do: 'speed', dir: 1 }, key: ']', label: '速く' },
   { id: { do: 'ab' }, key: 'b', label: 'A-B ループ' }, { id: { do: 'mute' }, key: 'm', label: 'ミュート' },
-  { id: { do: 'zoom' }, key: 'z', label: '等倍 / フィット' }, { id: { do: 'all' }, key: 'K', label: '全ウィンドウ再生 / 停止' },
+  { id: { do: 'zoom' }, key: 'z', label: '等倍 / フィット' },
+  { id: { do: 'zoomBy', f: 1.25 }, key: '+', label: '画像を拡大' }, { id: { do: 'zoomBy', f: 0.8 }, key: '-', label: '画像を縮小' }, { id: { do: 'all' }, key: 'K', label: '全ウィンドウ再生 / 停止' },
 ];
 export const canvasCommands: CommandDef<NormalAction>[] = [
   { id: { do: 'home' }, key: 'h', label: 'Home へ戻る' }, { id: { do: 'homeInitial' }, key: 'H', label: 'Home の初期位置へ' },
   { id: { do: 'maximize' }, key: 'f', label: 'ウィンドウ最大化' }, { id: { do: 'windowMode' }, key: 'w', label: 'ウィンドウ操作モード' },
+  { id: { do: 'globalMute' }, key: 'M', label: '全体のミュート' }, { id: { do: 'sync' }, key: 's', label: '同期再生' }, { id: { do: 'compareMode' }, key: 'c', label: '比較の表示を切替' },
 ];
 export const windowCommands: CommandDef<WindowAction>[] = [
   { id: { do: 'focusDir', dir: 'h' }, key: 'w h', label: '左のウィンドウへ' }, { id: { do: 'focusDir', dir: 'l' }, key: 'w l', label: '右のウィンドウへ' },
@@ -116,6 +127,7 @@ type Props = {
   onHomeInitial: () => void;
   onHistory: () => void;
   onHelp: () => void;
+  onError: (m: string) => void;
   /** 上部バーの右に並べる共通のボタンの操作 */
   toolbar: ToolbarActions;
   /** Snackbar で伝えるメッセージ */
@@ -123,6 +135,13 @@ type Props = {
   hints: boolean;
   onHideHints: () => void;
   tabbar: 'top' | 'side';
+  /** 同期再生中は全ウィンドウの音を出す */
+  syncAudio: boolean;
+  /** 全体のミュート(各ウィンドウの音量・ミュートとは別に、全部の音を止める) */
+  globalMuted: boolean;
+  /** キャンバスに入った直後(約5秒)。音声のある動画があれば、ミュートボタンに「ミュートを解除」と出す */
+  muteLabel: boolean;
+  onToggleGlobalMute: () => void;
   /** 操作パネルから操作を実行するための入口 */
   runRef: Ref<CanvasRun>;
 };
@@ -136,6 +155,8 @@ export function Canvas(p: Props) {
   const [minimized, setMinimized] = useState<Set<number>>(new Set());
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [windowMode, setWindowMode] = useState(false);
+  /** 全ウィンドウの同期再生(s)。フォーカス中のウィンドウが基準 */
+  const [synced, setSynced] = useState(false);
   /** 左端の縦のタブバーを出しているか */
   const [sideOpen, setSideOpen] = useState(false);
   /** タイル配置でドラッグ中のウィンドウと、落とす先の番号 */
@@ -154,6 +175,21 @@ export function Canvas(p: Props) {
   }, []);
 
   const ws = p.windows;
+  /** 音声のある動画のウィンドウ(全体のミュートボタンに「ミュートを解除」と出すかに使う) */
+  const [withAudio, setWithAudio] = useState<Set<number>>(new Set());
+  const hasAudio = ws.some((w) => withAudio.has(w.id));
+  // ウィンドウの読み込み処理をやり直させないよう、変わらない関数にしてウィンドウの ID と一緒に呼んでもらう
+  const onHasAudio = useCallback(
+    (id: number, has: boolean) =>
+      setWithAudio((s) => {
+        if (s.has(id) === has) return s;
+        const n = new Set(s);
+        if (has) n.add(id);
+        else n.delete(id);
+        return n;
+      }),
+    [],
+  );
   // 閉じたウィンドウの状態を捨てる
   const ids = ws.map((w) => w.id).join(',');
   const [lastIds, setLastIds] = useState(ids);
@@ -176,6 +212,8 @@ export function Canvas(p: Props) {
   });
   const shownRects = shown.map((w) => rectOf.get(w.id)!);
   const shownIndex = shown.findIndex((w) => w.id === p.focused);
+
+  const focusedApi = () => (p.focused === null ? null : (apis.current.get(p.focused) ?? null));
 
   /** 再生のキーの対象: 選択中があればそれら、なければフォーカス中 */
   const targets = (): PlayerApi[] => {
@@ -234,6 +272,7 @@ export function Canvas(p: Props) {
         case 'ab': t.ab(); break;
         case 'mute': t.toggleMute(); break;
         case 'zoom': t.toggleZoom(); break;
+        case 'zoomBy': t.zoomBy?.(a.f); break;
       }
     }
   };
@@ -252,6 +291,9 @@ export function Canvas(p: Props) {
       case 'help': return p.onHelp();
       case 'history': return p.onHistory();
       case 'windowMode': return setWindowMode(true);
+      case 'sync': return setSynced((s) => !s);
+      case 'globalMute': return p.onToggleGlobalMute();
+      case 'compareMode': return focusedApi()?.cycleMode?.();
       case 'escape': return;
       default: return runPlay(a);
     }
@@ -343,7 +385,11 @@ export function Canvas(p: Props) {
     window.addEventListener('pointerup', up);
   };
 
-  useImperativeHandle(p.runRef, () => ({ normal: runNormal, window: runWindow }));
+  useImperativeHandle(p.runRef, () => ({
+    normal: runNormal,
+    window: runWindow,
+    pauseAll: () => apis.current.forEach((a) => a?.setPlaying(false)),
+  }));
 
   const windowMap = new KeySequence(windowKeys);
   useKeys((k, e) => {
@@ -358,6 +404,20 @@ export function Canvas(p: Props) {
     e.preventDefault();
     if (a !== 'pending') runNormal(a);
   }, p.active);
+
+  // 同期再生: フォーカス中のウィンドウを基準に、ほかの動画を合わせる。ウィンドウや基準が変わったら組み直す
+  useEffect(() => {
+    if (!synced || p.focused === null) return;
+    const master = apis.current.get(p.focused)?.video();
+    if (!master) return;
+    const followers = ws
+      .filter((w) => w.id !== p.focused)
+      .map((w) => apis.current.get(w.id)?.video())
+      .filter((v): v is HTMLVideoElement => !!v);
+    const group = new SyncGroup(master, followers);
+    group.start();
+    return () => group.stop();
+  }, [synced, p.focused, ids, ws]);
 
   // 閉じたウィンドウの操作を捨てる
   useEffect(() => {
@@ -382,7 +442,7 @@ export function Canvas(p: Props) {
               }}
             >
               <span className="chip-number">{i + 1}</span>
-              {basename(w.path)}
+              {w.members ? ja.compareTitle(w.members.map((m) => basename(m.path))) : basename(w.path)}
             </button>
           ))}
         </div>
@@ -403,6 +463,23 @@ export function Canvas(p: Props) {
           <Icon name="home" />
         </button>
         {p.tabbar === 'top' ? taskbar : <div className="chips" />}
+        {synced && (
+          <span className="chip sync-chip" data-testid="sync-indicator">
+            {ja.syncing}
+          </span>
+        )}
+        {ws.length > 1 && (
+          <button
+            type="button"
+            className={`icon-button${synced ? ' toggled' : ''}`}
+            title={ja.syncKey}
+            aria-label={ja.sync}
+            aria-pressed={synced}
+            onClick={() => setSynced((s) => !s)}
+          >
+            <Icon name="sync" />
+          </button>
+        )}
         {ws.length > 1 && (
           <button
             type="button"
@@ -414,38 +491,54 @@ export function Canvas(p: Props) {
             {mode === 'tile' ? ja.layoutTile : ja.layoutFree}
           </button>
         )}
+        {/* 全体のミュート。キャンバスに入った直後は、音声のある動画があれば文字でも知らせる */}
+        <button
+          type="button"
+          className={`global-mute${p.globalMuted ? ' muted' : ''}${p.globalMuted && p.muteLabel && hasAudio ? ' labeled' : ''}`}
+          data-testid="global-mute"
+          aria-pressed={p.globalMuted}
+          aria-label={p.globalMuted ? ja.globalUnmute : ja.globalMute}
+          title={`${p.globalMuted ? ja.globalUnmute : ja.globalMute}(M)`}
+          onClick={p.onToggleGlobalMute}
+        >
+          <Icon name={p.globalMuted ? 'volumeOff' : 'volume'} />
+          {p.globalMuted && p.muteLabel && hasAudio && <span>{ja.globalUnmute}</span>}
+        </button>
         <Toolbar {...p.toolbar} />
       </header>
-      <div ref={area} className="canvas-area" data-testid="canvas-area">
+      <div ref={area} className={`canvas-area${mode === 'free' ? ' free' : ''}`} data-testid="canvas-area">
         {ws.length === 0 && <div className="canvas-empty">{ja.canvasEmpty}</div>}
-        {ws.map((w, i) => (
-          <PlayerWindow
-            key={w.id}
-            id={w.id}
-            number={i + 1}
-            path={w.path}
-            media={w.media}
-            rect={rectOf.get(w.id) ?? full}
-            focused={w.id === p.focused}
-            selected={selected.has(w.id)}
-            maximized={maximized === w.id}
-            minimized={minimized.has(w.id)}
-            audible={p.visible && !minimized.has(w.id) && (shown.length === 1 || w.id === p.focused)}
-            free={mode === 'free' && shown.length > 1 && maximized !== w.id}
-            dropTarget={reorder?.target === w.id}
-            api={(x) => {
-              apis.current.set(w.id, x);
-            }}
-            onFocus={() => p.onFocus(w.id)}
-            onClose={() => p.onClose([w.id])}
-            onToggleSelect={() => toggleSelect(w.id)}
-            onMinimize={() => minimize(w.id)}
-            onToggleMaximize={() => toggleMaximize(w.id)}
-            onReorderStart={(e) => startReorder(w.id, e)}
-            onMove={(dx, dy) => updateFree(w.id, (r) => ({ ...r, x: r.x + dx, y: r.y + dy }))}
-            onResize={(dw, dh) => updateFree(w.id, (r) => ({ ...r, w: Math.max(240, r.w + dw), h: Math.max(180, r.h + dh) }))}
-          />
-        ))}
+        {ws.map((w, i) => {
+          // 枠と配置は1ファイルのウィンドウと比較ウィンドウで共通
+          const frame = {
+            number: i + 1,
+            rect: rectOf.get(w.id) ?? full,
+            focused: w.id === p.focused,
+            selected: selected.has(w.id),
+            maximized: maximized === w.id,
+            minimized: minimized.has(w.id),
+            free: mode === 'free' && shown.length > 1 && maximized !== w.id,
+            dropTarget: reorder?.target === w.id,
+            onFocus: () => p.onFocus(w.id),
+            onClose: () => p.onClose([w.id]),
+            onToggleSelect: () => toggleSelect(w.id),
+            onMinimize: () => minimize(w.id),
+            onToggleMaximize: () => toggleMaximize(w.id),
+            onReorderStart: (e: React.PointerEvent) => startReorder(w.id, e),
+            onMove: (dx: number, dy: number) => updateFree(w.id, (r) => ({ ...r, x: r.x + dx, y: r.y + dy })),
+            onResize: (dw: number, dh: number) => updateFree(w.id, (r) => ({ ...r, w: Math.max(240, r.w + dw), h: Math.max(180, r.h + dh) })),
+          };
+          const audible =
+            p.visible && !p.globalMuted && !minimized.has(w.id) && (shown.length === 1 || w.id === p.focused || (synced && p.syncAudio));
+          const register = (x: PlayerApi | null) => {
+            apis.current.set(w.id, x);
+          };
+          return w.members ? (
+            <CompareWindow key={w.id} {...frame} id={w.id} members={w.members} audible={audible} onHasAudio={onHasAudio} api={register} onError={p.onError} />
+          ) : (
+            <PlayerWindow key={w.id} {...frame} id={w.id} path={w.path} media={w.media} audible={audible} onHasAudio={onHasAudio} api={register} />
+          );
+        })}
       </div>
       {windowMode && (
         <div className="which-key" role="dialog" aria-label={ja.windowMode} data-testid="window-mode">

@@ -23,6 +23,11 @@
   min-width: 0;
 }
 
-.hint-bar .spacer {
+.hint-items {
+  display: flex;
   flex: 1;
+  gap: 4px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
 }

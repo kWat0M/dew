@@ -26,6 +26,9 @@ const SPRITE_COLS: u32 = 10;
 const WEBP_MAX: u32 = 16_383;
 /// キャッシュの形式を変えたら上げる(古いキャッシュを使わないため)
 const CACHE_VERSION: u32 = 1;
+/// 調査結果(Probe)のキャッシュの名前。Probe の項目を変えたら上げる(読めない古いものは作り直すが、
+/// 項目の意味を変えたときは読めてしまうので、名前を変えて使わないようにする)
+const PROBE_KIND: &str = "probe2";
 
 pub struct Media {
     dir: PathBuf,
@@ -53,16 +56,26 @@ impl Media {
         }
     }
 
-    /// 長さ・コーデック・フレームごとの時刻など(7.5)
+    /// 長さ・コーデック・フレームごとの時刻など(7.5)。
+    /// キャッシュが読めないとき(Probe に項目を足す前に作った古いもの、壊れたもの)は消して作り直す
     pub async fn probe(&self, src: &Path) -> anyhow::Result<Probe> {
-        let (path, _) = self
-            .cached(src, "probe", "json", |out| async move {
-                let probe = run_probe(src).await?;
-                tokio::fs::write(&out, serde_json::to_vec(&probe)?).await?;
-                Ok(())
-            })
-            .await?;
-        Ok(serde_json::from_slice(&tokio::fs::read(path).await?)?)
+        for _ in 0..2 {
+            let (path, _) = self
+                .cached(src, PROBE_KIND, "json", |out| async move {
+                    let probe = run_probe(src).await?;
+                    tokio::fs::write(&out, serde_json::to_vec(&probe)?).await?;
+                    Ok(())
+                })
+                .await?;
+            match serde_json::from_slice(&tokio::fs::read(&path).await?) {
+                Ok(probe) => return Ok(probe),
+                Err(e) => {
+                    tracing::warn!(cache = %path.display(), "調査結果のキャッシュを読めないので作り直します: {e}");
+                    let _ = tokio::fs::remove_file(&path).await;
+                }
+            }
+        }
+        bail!("{} を調べられません", src.display())
     }
 
     /// 幅 320px の WebP。動画は 10% の位置の画面
@@ -138,6 +151,52 @@ impl Media {
                 .map(str::to_owned)
                 .collect::<Vec<_>>();
                 self.ffmpeg(&args, true).await
+            })
+            .await?;
+        Ok(path)
+    }
+
+    /// ブラウザで正確に表示できない画像(TIFF、16bit など)を、表示用の 8bit RGBA の PNG にする
+    pub async fn display_png(&self, src: &Path) -> anyhow::Result<PathBuf> {
+        let (path, _) = self
+            .cached(src, "display", "png", |out| async move {
+                let args = [
+                    "-i",
+                    &path_arg(src),
+                    "-frames:v",
+                    "1",
+                    "-pix_fmt",
+                    "rgba",
+                    "-c:v",
+                    "png",
+                    "-f",
+                    "image2",
+                    &path_arg(&out),
+                ]
+                .map(str::to_owned);
+                self.ffmpeg(&args, false).await
+            })
+            .await?;
+        Ok(path)
+    }
+
+    /// 画像の元の画素値(16bit RGBA、リトルエンディアン、左上から行ごと)。ピクセル値の表示に使う(F8)
+    pub async fn pixels16(&self, src: &Path) -> anyhow::Result<PathBuf> {
+        let (path, _) = self
+            .cached(src, "rgba64", "raw", |out| async move {
+                let args = [
+                    "-i",
+                    &path_arg(src),
+                    "-frames:v",
+                    "1",
+                    "-f",
+                    "rawvideo",
+                    "-pix_fmt",
+                    "rgba64le",
+                    &path_arg(&out),
+                ]
+                .map(str::to_owned);
+                self.ffmpeg(&args, false).await
             })
             .await?;
         Ok(path)
@@ -300,6 +359,24 @@ async fn run_probe(src: &Path) -> anyhow::Result<Probe> {
     let pix_fmt = video.and_then(|v| v["pix_fmt"].as_str()).unwrap_or("");
     let format = info["format"]["format_name"].as_str().unwrap_or("");
 
+    let bit_depth = bit_depth(pix_fmt);
+    // 画像: ブラウザで正確に表示できない形式だけを変換の対象にする(F8、2.6)
+    if is_image(src) {
+        return Ok(Probe {
+            duration: 0.0,
+            fps: 0.0,
+            width,
+            height,
+            video_codec,
+            audio_codec: None,
+            needs_transcode: bit_depth > 8 || !browser_image(src),
+            bit_depth,
+            segment_secs: SEGMENT_SECS,
+            segment_count: 0,
+            frame_times: Vec::new(),
+            sprite: None,
+        });
+    }
     let needs_transcode = !playable(
         format,
         src,
@@ -340,11 +417,46 @@ async fn run_probe(src: &Path) -> anyhow::Result<Probe> {
         video_codec,
         audio_codec,
         needs_transcode,
+        bit_depth,
         segment_secs: SEGMENT_SECS,
         segment_count: (duration / SEGMENT_SECS).ceil().max(1.0) as u32,
         frame_times,
         sprite,
     })
+}
+
+fn ext(src: &Path) -> String {
+    src.extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase()
+}
+
+fn is_image(src: &Path) -> bool {
+    matches!(
+        ext(src).as_str(),
+        "png" | "jpg" | "jpeg" | "webp" | "gif" | "avif" | "bmp" | "tif" | "tiff"
+    )
+}
+
+/// ブラウザがそのまま表示できる画像の形式(2.6)
+fn browser_image(src: &Path) -> bool {
+    matches!(
+        ext(src).as_str(),
+        "png" | "jpg" | "jpeg" | "webp" | "gif" | "avif" | "bmp"
+    )
+}
+
+/// ffmpeg の画素形式から、1色あたりのビット数
+fn bit_depth(pix_fmt: &str) -> u32 {
+    let deep = [
+        "48", "64", "gray16", "ya16", "p10", "p12", "p14", "p16", "f32", "gbrpf",
+    ];
+    if deep.iter().any(|d| pix_fmt.contains(d)) {
+        16
+    } else {
+        8
+    }
 }
 
 /// Windows の Chrome / Edge がそのまま再生できるか(2.6)
@@ -532,6 +644,35 @@ mod tests {
             "yuv420p",
             Some("ac3")
         ));
+    }
+
+    /// 古い形式や壊れた調査結果のキャッシュが残っていても、作り直して読める
+    #[tokio::test]
+    async fn stale_probe_cache_is_rebuilt() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let media = Media::new(dir.path().to_path_buf(), u64::MAX, 1);
+        let src = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/h264_aac.mp4")
+            .canonicalize()
+            .unwrap();
+        let cache = dir
+            .path()
+            .join(format!("{}.json", cache_key(&src, PROBE_KIND).unwrap()));
+        std::fs::write(&cache, br#"{"duration":10.0}"#).unwrap();
+
+        let probe = media.probe(&src).await.unwrap();
+        assert_eq!(probe.frame_times.len(), 300);
+        assert_eq!(probe.bit_depth, 8);
+    }
+
+    #[test]
+    fn bit_depth_from_pix_fmt() {
+        assert_eq!(bit_depth("rgb24"), 8);
+        assert_eq!(bit_depth("rgba"), 8);
+        assert_eq!(bit_depth("rgb48be"), 16);
+        assert_eq!(bit_depth("rgba64le"), 16);
+        assert_eq!(bit_depth("gray16be"), 16);
+        assert_eq!(bit_depth("yuv420p10le"), 16);
     }
 
     #[test]

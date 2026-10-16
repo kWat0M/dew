@@ -6,9 +6,11 @@ export type Settings = {
   hints: boolean;
   /** タブバーの形: 上部に横並び / 左端に縦並び(普段は隠す) */
   tabbar: 'top' | 'side';
+  /** 同期再生中は全ウィンドウの音を出す(7.6) */
+  syncAudio: boolean;
 };
 
-const DEFAULTS: Settings = { hints: true, tabbar: 'top' };
+const DEFAULTS: Settings = { hints: true, tabbar: 'top', syncAudio: false };
 const KEY = 'dew.settings';
 
 function load(): Settings {

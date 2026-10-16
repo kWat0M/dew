@@ -9,9 +9,9 @@ test('H.264 の MP4 を変換なしで音声付き再生する', async ({ page, 
   const video = await open(page, 'h264_aac.mp4');
 
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(0.5);
-  // 音声のある動画はミュートで始め、大きめのミュート解除ボタンを出す(7.6)
+  // キャンバスに入ると全体のミュートがオンになる。解除すると音が出る(7.6)
   expect(await video.evaluate((v: HTMLVideoElement) => v.muted)).toBe(true);
-  await page.getByRole('button', { name: 'ミュート解除', exact: true }).click();
+  await page.getByTestId('global-mute').click();
   expect(await video.evaluate((v: HTMLVideoElement) => v.muted)).toBe(false);
   await expect.poll(() => audioDecoded(video)).toBe(true);
   expect(transcodes).toEqual([]);
@@ -93,12 +93,36 @@ test('dew <ファイル> で開いているタブに表示する', async ({ page
   await expect.poll(() => win.locator('video').evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(0.3);
 });
 
-test('ミュート解除ボタンは再生開始から約5秒で消える', async ({ page, dew }) => {
+test('全体のミュート: キャンバスに入るとオンになり、約5秒で文字が消えてアイコンだけになる', async ({ page, dew }) => {
   await start(page, dew);
   await open(page, 'mp4v.mp4');
-  const unmute = page.getByRole('button', { name: 'ミュート解除', exact: true });
-  await expect(unmute).toBeVisible();
-  await expect(unmute).toBeHidden({ timeout: 8000 });
+  const button = page.getByTestId('global-mute');
+  await expect(button).toHaveAttribute('aria-pressed', 'true');
+  await expect(button).toContainText('ミュートを解除');
+  await expect(button).not.toContainText('ミュートを解除', { timeout: 8000 });
+  await expect(button).toHaveAttribute('aria-pressed', 'true');
+  // M キーでも切り替わる
+  await page.keyboard.press('M');
+  await expect(button).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('全体のミュートは各ウィンドウの音量を変えず、Home へ戻ると止まり、また入るとミュートに戻る', async ({ page, dew }) => {
+  await start(page, dew);
+  const video = await open(page, 'h264_aac.mp4');
+  const win = page.getByTestId('player-window');
+  await win.getByRole('slider', { name: '音量' }).fill('0.3');
+  await page.getByTestId('global-mute').click();
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => [v.muted, v.volume])).toEqual([false, 0.3]);
+  await page.getByTestId('global-mute').click();
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => [v.muted, v.volume])).toEqual([true, 0.3]);
+  await page.getByTestId('global-mute').click();
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(false);
+
+  await page.keyboard.press('h');
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
+  await page.keyboard.press('Tab');
+  await expect(page.getByTestId('global-mute')).toHaveAttribute('aria-pressed', 'true');
+  expect(await video.evaluate((v: HTMLVideoElement) => [v.muted, v.volume])).toEqual([true, 0.3]);
 });
 
 test('再生ボタン群: 再生 / 停止のアイコンが切り替わり、コマ送りは一時停止中だけ出る', async ({ page, dew }) => {

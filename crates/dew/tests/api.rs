@@ -28,7 +28,19 @@ fn tree_lists_dirs_first_with_media_kind() {
         .iter()
         .map(|e| e["name"].as_str().unwrap())
         .collect();
-    assert_eq!(names[0], "sub");
+    // ディレクトリが先(p2/ と sub/)、続いてファイルが名前順
+    let kinds: Vec<_> = tree["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["kind"].as_str().unwrap())
+        .collect();
+    let first_file = kinds.iter().position(|k| *k == "file").unwrap();
+    assert!(
+        kinds[..first_file].iter().all(|k| *k == "dir")
+            && kinds[first_file..].iter().all(|k| *k == "file")
+    );
+    assert!(names[..first_file].contains(&"sub"));
     assert!(
         names.contains(&".hidden.png"),
         "隠しファイルの扱いはブラウザ側で決める"
@@ -148,4 +160,48 @@ fn probe_thumb_sprite_and_segment_times() {
         assert!((t - i as f64 / 30.0).abs() < 0.002, "{i} 番目 {t}");
     }
     assert_eq!(times.len(), 120, "6〜10 秒の 120 フレーム");
+}
+
+#[test]
+fn deep_images_are_converted_for_display_and_raw_values_are_kept() {
+    let a = Instance::new();
+    a.dew(&["--port", &free_port().to_string()]);
+    let p2 = common::fixtures().join("p2");
+
+    let probe: serde_json::Value = serde_json::from_str(
+        &a.get(&format!("/api/probe?path={}", q(&p2.join("image16.png"))))
+            .text()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(probe["bitDepth"], 16);
+    assert_eq!(probe["needsTranscode"], true);
+    assert_eq!(probe["width"], 640);
+    let probe: serde_json::Value = serde_json::from_str(
+        &a.get(&format!(
+            "/api/probe?path={}",
+            q(&common::fixtures().join("image.png"))
+        ))
+        .text()
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        (
+            probe["bitDepth"].as_u64(),
+            probe["needsTranscode"].as_bool()
+        ),
+        (Some(8), Some(false))
+    );
+
+    for name in ["image16.png", "image.tif"] {
+        let res = a.get(&format!("/api/image?path={}", q(&p2.join(name))));
+        assert_eq!(res.status(), 200, "{name}");
+        assert_eq!(&res.bytes().unwrap()[1..4], b"PNG", "{name}");
+    }
+    let raw = a
+        .get(&format!("/api/pixels?path={}", q(&p2.join("image16.png"))))
+        .bytes()
+        .unwrap();
+    assert_eq!(raw.len(), 640 * 360 * 8);
 }
