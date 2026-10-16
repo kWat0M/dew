@@ -1,4 +1,5 @@
 // サーバの HTTP API。型は crates/protocol から ts-rs で生成したもの
+import type { History } from '../protocol/History';
 import type { Info } from '../protocol/Info';
 import type { Probe } from '../protocol/Probe';
 import type { Tree } from '../protocol/Tree';
@@ -24,6 +25,14 @@ export const api = {
   info: () => getJson<Info>('/api/info'),
   tree: (path: string) => getJson<Tree>(`/api/tree?${q(path)}`),
   probe: (path: string) => getJson<Probe>(`/api/probe?${q(path)}`),
+  history: () => getJson<History>('/api/history'),
+  /** 開いたファイルを履歴に加える。失敗しても表示には響かないので待たない */
+  addHistory: (paths: string[]) =>
+    void fetch('/api/history', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ paths }),
+    }).catch(() => {}),
   /** 更新時刻を付けて、ファイルが変わったらブラウザのキャッシュを使わないようにする */
   thumbUrl: (path: string, mtime: number) => `/api/thumb?${q(path)}&v=${mtime}`,
   spriteUrl: (path: string) => `/api/sprite?${q(path)}`,

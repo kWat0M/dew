@@ -1,5 +1,8 @@
 // Home: yazi と同じ3カラム(親・現在・プレビュー)でファイルを選ぶ(4.1、5.2)
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref } from 'react';
+import type { CommandDef } from '../commands';
+import { HintBar } from '../ui/HintBar';
+import { Toolbar, type ToolbarActions } from '../ui/Toolbar';
 import { api, ApiError } from '../api/http';
 import type { Events } from '../api/events';
 import type { Entry } from '../protocol/Entry';
@@ -14,25 +17,60 @@ import { EntryList, type View } from './EntryList';
 import { Preview } from './Preview';
 import './Home.css';
 
-type Action =
+export type HomeAction =
   | 'down' | 'up' | 'parent' | 'enter' | 'open' | 'mark' | 'top' | 'bottom'
-  | 'filter' | 'follow' | 'view' | 'hidden' | 'canvas' | 'escape';
+  | 'filter' | 'follow' | 'view' | 'hidden' | 'canvas' | 'initial' | 'history' | 'help' | 'escape';
+
+type Action = HomeAction;
+
+/** 操作パネルに出す Home の操作(4.4) */
+export const homeCommands: CommandDef<HomeAction>[] = [
+  { id: 'down', key: 'j', label: '下へ' }, { id: 'up', key: 'k', label: '上へ' },
+  { id: 'parent', key: 'h', label: '親へ' }, { id: 'enter', key: 'l', label: '中へ / 開く' },
+  { id: 'open', key: 'Enter', label: '開く' }, { id: 'mark', key: 'Space', label: '選択' },
+  { id: 'top', key: 'gg', label: '先頭' }, { id: 'bottom', key: 'G', label: '末尾' },
+  { id: 'filter', key: '/', label: '絞り込み' }, { id: 'follow', key: 'n', label: '最新に追従' },
+  { id: 'view', key: 'v', label: 'リスト / グリッド' }, { id: 'hidden', key: '.', label: '隠しファイル' },
+  { id: 'initial', key: 'H', label: '初期位置へ' }, { id: 'canvas', key: 'Tab', label: 'キャンバスへ' },
+];
+
+/** 操作パネルの上に出す、画面にボタンがない操作 */
+export const homeQuick: CommandDef<HomeAction>[] = [{ id: 'open', key: 'Enter', label: '選択をまとめて開く' }];
 
 const keymap = new KeySequence<Action>({
   j: 'down', ArrowDown: 'down', k: 'up', ArrowUp: 'up',
   h: 'parent', ArrowLeft: 'parent', l: 'enter', ArrowRight: 'enter',
   Enter: 'open', ' ': 'mark', 'g g': 'top', G: 'bottom',
-  '/': 'filter', n: 'follow', v: 'view', '.': 'hidden', Tab: 'canvas', Escape: 'escape',
+  '/': 'filter', n: 'follow', v: 'view', '.': 'hidden', Tab: 'canvas', H: 'initial', r: 'history', '?': 'help', Escape: 'escape',
 });
+
+export type DirRequest = { path: string; seq: number };
 
 type Props = {
   events: Events;
   active: boolean;
-  /** 表示するディレクトリ(初期位置、または dew <ディレクトリ> の指示) */
-  dir: string | null;
+  /** 表示を求めるディレクトリ(初期位置、H、dew <ディレクトリ> の指示) */
+  dir: DirRequest | null;
   liveCount: number;
   onOpen: (files: { path: string; media: MediaKind }[]) => void;
   onCanvas: () => void;
+  /** 初期位置へ戻る(H) */
+  onInitial: () => void;
+  onHistory: () => void;
+  onHelp: () => void;
+  /** 上部バーの右に並べる共通のボタンの操作 */
+  toolbar: ToolbarActions;
+  /** 初期位置(パンくずに印を付ける) */
+  initialDir: string | null;
+  hints: boolean;
+  onHideHints: () => void;
+  /** 隠しファイルの表示と、最新ファイルへの追従(操作パネルのチェックボックスと共有する) */
+  showHidden: boolean;
+  onShowHidden: (v: boolean) => void;
+  follow: boolean;
+  onFollow: (v: boolean) => void;
+  /** 操作パネルから操作を実行するための入口 */
+  runRef: Ref<(a: HomeAction) => void>;
   onError: (message: string) => void;
 };
 
@@ -44,37 +82,50 @@ function openable(e: Entry): string | null {
 }
 
 export function Home(p: Props) {
-  const [cwd, setCwd] = useState<string | null>(p.dir);
+  const [cwd, setCwd] = useState<string | null>(p.dir?.path ?? null);
   const [tree, setTree] = useState<Tree | null>(null);
   const [parent, setParent] = useState<Tree | null>(null);
   const [reload, setReload] = useState(0);
   const [selectedName, setSelectedName] = useState<string | null>(null);
-  const [showHidden, setShowHidden] = useState(false);
+
   const [view, setView] = useState<View>('list');
   const [filter, setFilter] = useState('');
   const [filtering, setFiltering] = useState(false);
-  const [follow, setFollow] = useState(false);
+
   const [marked, setMarked] = useState<Set<string>>(new Set());
   const [changed, setChanged] = useState<Set<string>>(new Set());
   /** ディレクトリごとに最後に選んでいた名前(戻ったときに同じ位置にする) */
   const remembered = useRef(new Map<string, string>());
   const followTarget = useRef<string | null>(null);
-  const { onError, onOpen } = p;
+  const { onError, onOpen, showHidden, follow } = p;
 
   // 外から表示先が変わった(初期位置の取得、dew <ディレクトリ>)
-  const [lastDir, setLastDir] = useState(p.dir);
-  if (p.dir !== lastDir) {
-    setLastDir(p.dir);
-    setCwd(p.dir);
+  const [lastRequest, setLastRequest] = useState(p.dir);
+  if (p.dir !== lastRequest) {
+    setLastRequest(p.dir);
+    if (p.dir) {
+      setCwd(p.dir.path);
+      setSelectedName(null);
+      setFilter('');
+    }
   }
 
-  const go = useCallback((dir: string, select?: string) => {
-    setCwd(dir);
-    setSelectedName(select ?? remembered.current.get(dir) ?? null);
-    setFilter('');
-    setMarked(new Set());
-    setChanged(new Set());
-  }, []);
+  // 先に一覧を読めるか確かめ、読めたときだけ移る(閲覧範囲の外などは、メッセージだけ出して今の場所に留まる)
+  const go = useCallback(
+    (dir: string, select?: string) => {
+      api.tree(dir).then(
+        () => {
+          setCwd(dir);
+          setSelectedName(select ?? remembered.current.get(dir) ?? null);
+          setFilter('');
+          setMarked(new Set());
+          setChanged(new Set());
+        },
+        (err: unknown) => onError(err instanceof ApiError ? err.message : String(err)),
+      );
+    },
+    [onError],
+  );
 
   useEffect(() => {
     if (!cwd) return;
@@ -152,6 +203,23 @@ export function Home(p: Props) {
     remembered.current.set(cwd, e.name);
   };
 
+  /** クリック: Shift で今の位置からの範囲を、Ctrl で1つずつ複数選択に加える */
+  const clickEntry = (i: number, e: React.MouseEvent) => {
+    if (e.shiftKey && selected >= 0) {
+      const [a, b] = selected < i ? [selected, i] : [i, selected];
+      setMarked((s) => new Set([...s, ...entries.slice(a, b + 1).map((x) => x.name)]));
+    } else if (e.ctrlKey || e.metaKey) {
+      const name = entries[i]?.name;
+      if (name)
+        setMarked((s) => {
+          const n = new Set(s);
+          if (!n.delete(name)) n.add(name);
+          return n;
+        });
+    }
+    select(i);
+  };
+
   const openEntries = (list: Entry[]) => {
     if (!cwd) return;
     const files: { path: string; media: MediaKind }[] = [];
@@ -198,16 +266,21 @@ export function Home(p: Props) {
         });
         return select(selected + 1);
       case 'filter': return setFiltering(true);
-      case 'follow': return setFollow((f) => !f);
+      case 'follow': return p.onFollow(!follow);
       case 'view': return setView((v) => (v === 'list' ? 'grid' : 'list'));
-      case 'hidden': return setShowHidden((h) => !h);
+      case 'hidden': return p.onShowHidden(!showHidden);
       case 'canvas': return p.onCanvas();
+      case 'initial': return p.onInitial();
+      case 'history': return p.onHistory();
+      case 'help': return p.onHelp();
       case 'escape':
         setMarked(new Set());
         setFilter('');
         return;
     }
   };
+
+  useImperativeHandle(p.runRef, () => run);
 
   useKeys((k, e) => {
     const a = keymap.push(k.key);
@@ -225,15 +298,28 @@ export function Home(p: Props) {
   return (
     <div className="home">
       <header className="home-bar">
+        {/* キャンバスの Home ボタンと同じ位置に置く */}
+        <button type="button" className="icon-button" title={ja.toCanvas} aria-label={ja.canvasButton} onClick={p.onCanvas}>
+          <Icon name="canvas" />
+        </button>
         <nav className="crumbs" aria-label="path">
-          {crumbs.map((c, i) => (
-            <span key={c.path}>
-              {i > 1 && <span className="crumb-sep">/</span>}
-              <button type="button" className="crumb" onClick={() => go(c.path)}>
-                {c.name}
-              </button>
-            </span>
-          ))}
+          {crumbs.map((c, i) => {
+            const initial = c.path === p.initialDir;
+            return (
+              <span key={c.path}>
+                {i > 1 && <span className="crumb-sep">/</span>}
+                <button
+                  type="button"
+                  className={`crumb${initial ? ' initial' : ''}`}
+                  title={initial ? ja.initialDir : undefined}
+                  data-testid={initial ? 'crumb-initial' : undefined}
+                  onClick={() => go(c.path)}
+                >
+                  {c.name}
+                </button>
+              </span>
+            );
+          })}
           {current && (
             <span className="crumb-current">
               {crumbs.length > 1 && <span className="crumb-sep">/</span>}
@@ -245,9 +331,19 @@ export function Home(p: Props) {
           {marked.size > 0 && <span className="chip">{ja.selectedCount(marked.size)}</span>}
           {follow && <span className="chip">{ja.following}</span>}
           {showHidden && <span className="chip">{ja.hiddenShown}</span>}
-          <button type="button" className="icon-button" title={view === 'list' ? ja.viewGrid : ja.viewList} onClick={() => run('view')}>
-            <Icon name={view === 'list' ? 'grid' : 'list'} />
-          </button>
+          <Toolbar
+            {...p.toolbar}
+            lead={
+              <button type="button" className="icon-button" title={ja.filter} aria-label={ja.filter} onClick={() => setFiltering(true)}>
+                <Icon name="search" />
+              </button>
+            }
+            middle={
+              <button type="button" className="icon-button" title={view === 'list' ? ja.viewGrid : ja.viewList} aria-label={view === 'list' ? ja.viewGrid : ja.viewList} onClick={() => run('view')}>
+                <Icon name={view === 'list' ? 'grid' : 'list'} />
+              </button>
+            }
+          />
         </div>
       </header>
       {filtering && (
@@ -289,12 +385,13 @@ export function Home(p: Props) {
           changed={changed}
           marked={marked}
           thumbs
-          onClick={select}
+          onClick={clickEntry}
           onDoubleClick={(i) => enter(entries[i])}
           empty={tree ? ja.emptyDir : ja.loading}
         />
         <Preview dir={cwd ?? ''} entry={current} showHidden={showHidden} />
       </div>
+      {p.hints && <HintBar items={ja.homeHints} onHide={p.onHideHints} />}
       <button type="button" className="fab" title={ja.toCanvas} onClick={p.onCanvas}>
         <Icon name="canvas" size={24} />
         {p.liveCount > 0 && (

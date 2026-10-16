@@ -2,11 +2,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api/http';
 import { Events } from './api/events';
-import { Canvas, type Win } from './canvas/Canvas';
-import { Home } from './home/Home';
+import { canvasCommands, playCommands, quickPlayCommands, quickWindowCommands, windowCommands, windowHelp, Canvas, type CanvasRun, type NormalAction, type WindowAction, type Win } from './canvas/Canvas';
+import type { Command, Section } from './commands';
+import { useSettings } from './settings';
+import { Dialog } from './ui/Dialog';
+import { OpsPanel } from './ui/OpsPanel';
+import type { ToolbarActions } from './ui/Toolbar';
+import { HistoryWindow } from './history/HistoryWindow';
+import { Home, homeCommands, homeQuick, type DirRequest, type HomeAction } from './home/Home';
 import { ja } from './i18n/ja';
 import { readKey } from './keys';
 import { Snackbar } from './ui/Snackbar';
+import { isTyping } from './useKeys';
 import './App.css';
 
 type Screen = 'home' | 'canvas';
@@ -19,10 +26,25 @@ export function App() {
   const [started, setStarted] = useState(false);
   const startedRef = useRef(false);
   const [screen, setScreen] = useState<Screen>('home');
-  const [homeDir, setHomeDir] = useState<string | null>(null);
+  /** Home の初期位置(最初に dew を起動したディレクトリ) */
+  const [startDir, setStartDir] = useState<string | null>(null);
+  /** Home に表示を求めるディレクトリ。seq を変えると同じ場所でも開き直す */
+  const [homeRequest, setHomeRequest] = useState<DirRequest | null>(null);
+  const seq = useRef(0);
   const [windows, setWindows] = useState<Win[]>([]);
   const [focused, setFocused] = useState<number | null>(null);
   const [ime, setIme] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [confirmStop, setConfirmStop] = useState(false);
+  const [stopped, setStopped] = useState(false);
+  const [settings, updateSettings] = useSettings();
+  // 隠しファイルの表示と最新ファイルへの追従。キーと操作パネルのチェックボックスで共有する
+  const [showHidden, setShowHidden] = useState(false);
+  const [follow, setFollow] = useState(false);
+  const homeRun = useRef<((a: HomeAction) => void) | null>(null);
+  const canvasRun = useRef<CanvasRun | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const nextId = useRef(1);
   const lastActive = useRef(0);
@@ -30,7 +52,10 @@ export function App() {
   useEffect(() => {
     events.start();
     api.info().then(
-      (info) => setHomeDir((d) => d ?? info.home),
+      (info) => {
+        setStartDir(info.home);
+        setHomeRequest((r) => r ?? { path: info.home, seq: seq.current++ });
+      },
       (e: unknown) => setMessage(String(e)),
     );
     return () => events.close();
@@ -38,6 +63,7 @@ export function App() {
 
   const open = useCallback((files: Omit<Win, 'id'>[]) => {
     const added = files.map((f) => ({ ...f, id: nextId.current++ }));
+    api.addHistory(files.map((f) => f.path));
     setWindows((ws) => [...ws, ...added]);
     setFocused(added.at(-1)!.id);
     setScreen('canvas');
@@ -49,7 +75,7 @@ export function App() {
       events.subscribe((ev) => {
         if (ev.type !== 'open') return;
         if (ev.kind === 'dir') {
-          setHomeDir(ev.path);
+          setHomeRequest({ path: ev.path, seq: seq.current++ });
           setScreen('home');
         } else {
           open([{ path: ev.path, media: ev.media }]);
@@ -78,10 +104,19 @@ export function App() {
         events.active();
       }
     };
+    // マウスで押したボタンやチェックボックスにフォーカスを残さない(Space や Enter で押し直されないように)
+    const onClick = (e: MouseEvent) => {
+      const t = e.target;
+      if (t instanceof HTMLElement && !isTyping(t) && t.closest('button, input')) {
+        (document.activeElement as HTMLElement | null)?.blur();
+      }
+    };
+    window.addEventListener('click', onClick);
     window.addEventListener('keydown', onKey);
     window.addEventListener('keydown', onAny, { capture: true });
     window.addEventListener('pointerdown', onAny, { capture: true });
     return () => {
+      window.removeEventListener('click', onClick);
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keydown', onAny, { capture: true });
       window.removeEventListener('pointerdown', onAny, { capture: true });
@@ -89,24 +124,95 @@ export function App() {
   }, [events]);
 
   const onError = useCallback((m: string) => setMessage(m), []);
+  const stop = () => {
+    setConfirmStop(false);
+    void fetch('/api/shutdown', { method: 'POST' }).finally(() => {
+      events.close();
+      setStopped(true);
+    });
+  };
+
+  const toolbar: ToolbarActions = {
+    onHistory: () => setHistoryOpen(true),
+    onHelp: () => setHelpOpen(true),
+    onPanel: () => setPanelOpen((o) => !o),
+    onShutdown: () => setConfirmStop(true),
+  };
+  const hideHints = () => updateSettings({ hints: false });
+
+  const runHome = useCallback((a: HomeAction) => homeRun.current?.(a), []);
+  const runNormal = useCallback((a: NormalAction) => canvasRun.current?.normal(a), []);
+  const runWindow = useCallback((a: WindowAction) => canvasRun.current?.window(a), []);
+
+  // 操作パネルに出す操作。今の画面のものと共通のもの(4.4)
+  const sections: Section[] =
+    screen === 'home'
+      ? [{ title: ja.secHome, items: homeCommands.map((d) => ({ key: d.key, label: d.label, run: () => runHome(d.id) })) }]
+      : [
+          { title: ja.secPlay, items: playCommands.map((d) => ({ key: d.key, label: d.label, run: () => runNormal(d.id) })) },
+          { title: ja.secCanvas, items: canvasCommands.map((d) => ({ key: d.key, label: d.label, run: () => runNormal(d.id) })) },
+          { title: ja.secWindow, items: windowCommands.map((d) => ({ key: d.key, label: d.label, run: () => runWindow(d.id) })) },
+        ];
+  const quick: Command[] =
+    screen === 'home'
+      ? homeQuick.map((d) => ({ key: d.key, label: d.label, run: () => runHome(d.id) }))
+      : [
+          ...quickWindowCommands.map((d) => ({ key: d.key, label: d.label, run: () => runWindow(d.id) })),
+          ...quickPlayCommands.map((d) => ({ key: d.key, label: d.label, run: () => runNormal(d.id) })),
+        ];
+  const toggles = [
+    { label: ja.showHints, checked: settings.hints, onChange: (v: boolean) => updateSettings({ hints: v }) },
+    ...(screen === 'home'
+      ? [
+          { label: ja.followLatest, checked: follow, onChange: setFollow },
+          { label: ja.showHidden, checked: showHidden, onChange: setShowHidden },
+        ]
+      : []),
+  ];
+  sections.push({
+    title: ja.secCommon,
+    items: [
+      { key: 'r', label: ja.history, run: () => setHistoryOpen(true) },
+      { key: '?', label: ja.keyHelp, run: () => setHelpOpen(true) },
+      { key: '', label: ja.shutdown, run: () => setConfirmStop(true) },
+    ],
+  });
+
+  const toInitial = useCallback(() => {
+    if (startDir) setHomeRequest({ path: startDir, seq: seq.current++ });
+  }, [startDir]);
   const clearMessage = useCallback(() => setMessage(null), []);
 
   return (
     <div className="app">
-      {screen === 'home' && (
+      {/* 両方の画面を作ったまま残し、見えていない方を隠す(Home の状態と再生を保つため。4.1) */}
+      <div className="screen" hidden={screen !== 'home'}>
         <Home
           events={events}
-          active={started}
-          dir={homeDir}
+          active={started && screen === 'home' && !historyOpen}
+          dir={homeRequest}
           liveCount={0}
           onOpen={open}
           onCanvas={() => setScreen('canvas')}
+          onInitial={toInitial}
+          onHistory={() => setHistoryOpen(true)}
+          onHelp={() => setHelpOpen(true)}
+          toolbar={toolbar}
+          initialDir={startDir}
+          hints={settings.hints}
+          onHideHints={hideHints}
+          showHidden={showHidden}
+          onShowHidden={setShowHidden}
+          follow={follow}
+          onFollow={setFollow}
+          runRef={homeRun}
           onError={onError}
         />
-      )}
-      {screen === 'canvas' && (
+      </div>
+      <div className="screen" hidden={screen !== 'canvas'}>
         <Canvas
-          active={started}
+          active={started && screen === 'canvas' && !historyOpen}
+          visible={screen === 'canvas'}
           windows={windows}
           focused={focused}
           onFocus={setFocused}
@@ -117,7 +223,82 @@ export function App() {
           }}
           onReorder={(ids) => setWindows((ws) => ids.map((id) => ws.find((w) => w.id === id)!))}
           onHome={() => setScreen('home')}
+          onHistory={() => setHistoryOpen(true)}
+          onHelp={() => setHelpOpen(true)}
+          toolbar={toolbar}
+          hints={settings.hints}
+          onHideHints={hideHints}
+          tabbar={settings.tabbar}
+          onMessage={onError}
+          runRef={canvasRun}
+          onHomeInitial={() => {
+            toInitial();
+            setScreen('home');
+          }}
         />
+      </div>
+      {historyOpen && started && <HistoryWindow onOpen={open} onClose={() => setHistoryOpen(false)} onError={onError} />}
+      {panelOpen && (
+        <OpsPanel
+          withHints={settings.hints}
+          toggles={toggles}
+          settings={settings}
+          onSettings={updateSettings}
+          quick={quick}
+          sections={sections}
+          onClose={() => setPanelOpen(false)}
+        />
+      )}
+      {helpOpen && (
+        <Dialog title={ja.keyHelp} onClose={() => setHelpOpen(false)}>
+          {(
+            [
+              [ja.secHome, ja.homeKeys],
+              [ja.secCanvas, ja.canvasKeys],
+              [ja.windowMode, windowHelp],
+            ] as const
+          ).map(([title, rows]) => (
+            <section key={title} className="help-section">
+              <h3>{title}</h3>
+              <dl>
+                {rows.map(([k, d]) => (
+                  <div key={k} className="help-row">
+                    <dt>
+                      <kbd>{k}</kbd>
+                    </dt>
+                    <dd>{d}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          ))}
+        </Dialog>
+      )}
+      {confirmStop && (
+        <Dialog
+          title={ja.shutdown}
+          onClose={() => setConfirmStop(false)}
+          actions={
+            <>
+              <button type="button" className="text-button" onClick={() => setConfirmStop(false)}>
+                {ja.cancel}
+              </button>
+              <button type="button" className="filled-button" onClick={stop}>
+                {ja.shutdownDo}
+              </button>
+            </>
+          }
+        >
+          <p>{ja.shutdownConfirm}</p>
+        </Dialog>
+      )}
+      {stopped && (
+        <div className="start-overlay stopped" data-testid="stopped">
+          <div className="start-card">
+            <h1>{ja.appTitle}</h1>
+            <p className="start-prompt">{ja.stopped}</p>
+          </div>
+        </div>
       )}
       {ime && <div className="ime">{ja.imeOn}</div>}
       {!started && (

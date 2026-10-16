@@ -1,0 +1,91 @@
+/* 上部のバー(56px)と画面下のヒントの帯は覆わない */
+.ops-panel {
+  position: fixed;
+  top: 56px;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  width: 360px;
+  background: var(--md-sys-color-surface-container-low);
+  box-shadow: var(--md-sys-elevation-level1);
+  border-radius: var(--md-sys-shape-corner-large) 0 0 var(--md-sys-shape-corner-large);
+  z-index: 70;
+}
+
+.ops-panel.with-hints {
+  bottom: 33px;
+}
+
+.ops-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 12px 0 24px;
+}
+
+.ops-title h2 {
+  margin: 0;
+  font: var(--md-sys-typescale-title-large);
+}
+
+.ops-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 16px 16px;
+}
+
+.ops-body h3 {
+  margin: 16px 8px 8px;
+  color: var(--md-sys-color-primary);
+  font: var(--md-sys-typescale-title-small);
+}
+
+.ops-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.ops-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 36px;
+  padding: 4px 10px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ops-item:hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) var(--md-sys-state-hover-opacity), transparent);
+}
+
+.ops-item kbd {
+  min-width: 0;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.ops-switch,
+.ops-radio label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  accent-color: var(--md-sys-color-primary);
+}
+
+.ops-radio {
+  margin: 4px 0;
+  padding: 0;
+  border: none;
+}
+
+.ops-radio legend {
+  padding: 6px 8px;
+  color: var(--md-sys-color-on-surface-variant);
+}

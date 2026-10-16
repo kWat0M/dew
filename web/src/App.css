@@ -3,6 +3,14 @@
   height: 100%;
 }
 
+.screen {
+  height: 100%;
+}
+
+.screen[hidden] {
+  display: none;
+}
+
 .start-overlay {
   position: fixed;
   inset: 0;

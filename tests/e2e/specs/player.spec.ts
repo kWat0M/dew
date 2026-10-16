@@ -1,5 +1,5 @@
 // フェーズ1の受け入れ基準(docs/spec.md 11章): キャンバスのプレイヤー
-import { expect, frameNumber, open, start, test } from '../lib/dew';
+import { audioDecoded, expect, frameNumber, open, start, test } from '../lib/dew';
 
 // 基準4: H.264 の MP4 が変換なしで再生され、音声トラックが有効になっている
 test('H.264 の MP4 を変換なしで音声付き再生する', async ({ page, dew }) => {
@@ -9,10 +9,11 @@ test('H.264 の MP4 を変換なしで音声付き再生する', async ({ page, 
   const video = await open(page, 'h264_aac.mp4');
 
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(0.5);
+  // 音声のある動画はミュートで始め、大きめのミュート解除ボタンを出す(7.6)
+  expect(await video.evaluate((v: HTMLVideoElement) => v.muted)).toBe(true);
+  await page.getByRole('button', { name: 'ミュート解除', exact: true }).click();
   expect(await video.evaluate((v: HTMLVideoElement) => v.muted)).toBe(false);
-  await expect
-    .poll(() => video.evaluate((v: HTMLVideoElement & { webkitAudioDecodedByteCount: number }) => v.webkitAudioDecodedByteCount))
-    .toBeGreaterThan(0);
+  await expect.poll(() => audioDecoded(video)).toBe(true);
   expect(transcodes).toEqual([]);
 });
 
@@ -24,9 +25,7 @@ for (const name of ['mp4v.mp4', 'xvid_mp3.avi']) {
     await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(0.5);
     // Media Source Extensions で再生している
     expect(await video.evaluate((v: HTMLVideoElement) => v.src)).toMatch(/^blob:/);
-    await expect
-      .poll(() => video.evaluate((v: HTMLVideoElement & { webkitAudioDecodedByteCount: number }) => v.webkitAudioDecodedByteCount))
-      .toBeGreaterThan(0);
+    await expect.poll(() => audioDecoded(video)).toBe(true);
   });
 }
 
@@ -37,13 +36,18 @@ test('コマ送りと 0–9 の移動', async ({ page, dew }) => {
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(0.3);
   await page.keyboard.press('k');
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
+  // 一時停止の直後、Firefox の drawImage は表示中の1つ前のフレームを返すことがあるので、
+  // 起点は画面の番号表示から取る。コマ送りの後(シーク後)は画素も正しく読める
+  const label = page.getByTestId('frame-number');
+  const shown = async () => Number((await label.textContent())?.match(/\d+/)?.[0]);
 
   for (let i = 0; i < 5; i++) {
-    const before = await frameNumber(page, video);
+    const before = await shown();
     await page.keyboard.press('.');
     await expect.poll(() => frameNumber(page, video)).toBe(before + 1);
+    await expect.poll(shown).toBe(before + 1);
   }
-  const before = await frameNumber(page, video);
+  const before = await shown();
   await page.keyboard.press(',');
   await expect.poll(() => frameNumber(page, video)).toBe(before - 1);
 
@@ -87,4 +91,49 @@ test('dew <ファイル> で開いているタブに表示する', async ({ page
   const win = page.getByTestId('player-window').filter({ hasText: 'h264_aac.mp4' });
   await expect(win).toBeVisible();
   await expect.poll(() => win.locator('video').evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(0.3);
+});
+
+test('ミュート解除ボタンは再生開始から約5秒で消える', async ({ page, dew }) => {
+  await start(page, dew);
+  await open(page, 'mp4v.mp4');
+  const unmute = page.getByRole('button', { name: 'ミュート解除', exact: true });
+  await expect(unmute).toBeVisible();
+  await expect(unmute).toBeHidden({ timeout: 8000 });
+});
+
+test('再生ボタン群: 再生 / 停止のアイコンが切り替わり、コマ送りは一時停止中だけ出る', async ({ page, dew }) => {
+  await start(page, dew);
+  const video = await open(page, 'h264_aac.mp4');
+  const win = page.getByTestId('player-window');
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(false);
+  await expect(win.getByRole('button', { name: '1フレーム進む' })).toBeHidden();
+
+  await win.getByRole('button', { name: '一時停止' }).click();
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
+  await expect(win.getByRole('button', { name: '再生', exact: true })).toBeVisible();
+  await expect(win.getByRole('button', { name: '1フレーム戻る' })).toBeVisible();
+
+  const t0 = await video.evaluate((v: HTMLVideoElement) => v.currentTime);
+  await win.getByRole('button', { name: '5秒送り' }).click();
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeCloseTo(t0 + 5, 0);
+  await win.getByRole('button', { name: '5秒戻り' }).click();
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeCloseTo(t0, 0);
+
+  // フォーカス中のウィンドウは、動画の表示部分のクリックで再生 / 一時停止
+  await video.click();
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(false);
+  await video.click();
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
+});
+
+test('再生速度の表示を押すと速度の一覧から選べる', async ({ page, dew }) => {
+  await start(page, dew);
+  const video = await open(page, 'h264_aac.mp4');
+  await page.getByRole('button', { name: '再生速度' }).click();
+  const menu = page.getByRole('menu', { name: '再生速度' });
+  await expect(menu.getByRole('menuitemradio')).toHaveCount(9);
+  await menu.getByRole('menuitemradio', { name: '2x' }).click();
+  await expect(menu).toBeHidden();
+  expect(await video.evaluate((v: HTMLVideoElement) => v.playbackRate)).toBe(2);
+  await expect(page.getByRole('button', { name: '再生速度' })).toHaveText('2x');
 });

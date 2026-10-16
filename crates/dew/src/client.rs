@@ -2,10 +2,16 @@
 
 use std::time::Duration;
 
-use dew_protocol::{OpenRequest, OpenResponse};
+use dew_protocol::{Info, OpenRequest, OpenResponse};
 use reqwest::blocking::Client;
 
 use crate::state::ServerFile;
+
+pub enum OpenError {
+    /// 閲覧範囲の外
+    OutsideRoot,
+    Other(anyhow::Error),
+}
 
 pub struct Api {
     client: Client,
@@ -43,17 +49,34 @@ impl Api {
         body["instanceId"] == instance_id
     }
 
-    pub fn open(&self, path: &str) -> anyhow::Result<OpenResponse> {
-        Ok(self
+    pub fn open(&self, path: &str) -> Result<OpenResponse, OpenError> {
+        let res = self
             .client
             .post(format!("{}/api/open", self.base))
             .bearer_auth(&self.token)
             .json(&OpenRequest {
                 path: path.to_owned(),
             })
-            .send()?
-            .error_for_status()?
-            .json()?)
+            .send()
+            .map_err(|e| OpenError::Other(e.into()))?;
+        if res.status() == reqwest::StatusCode::FORBIDDEN {
+            return Err(OpenError::OutsideRoot);
+        }
+        let res = res
+            .error_for_status()
+            .map_err(|e| OpenError::Other(e.into()))?;
+        res.json().map_err(|e| OpenError::Other(e.into()))
+    }
+
+    /// サーバの閲覧範囲の起点
+    pub fn root(&self) -> Option<String> {
+        let res = self
+            .client
+            .get(format!("{}/api/info", self.base))
+            .bearer_auth(&self.token)
+            .send()
+            .ok()?;
+        Some(res.json::<Info>().ok()?.root)
     }
 
     pub fn shutdown(&self) -> anyhow::Result<()> {

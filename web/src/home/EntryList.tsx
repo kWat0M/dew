@@ -25,7 +25,7 @@ type Props = {
   marked?: ReadonlySet<string>;
   /** サムネイルを出すか(親カラムでは出さない) */
   thumbs?: boolean;
-  onClick?: (index: number) => void;
+  onClick?: (index: number, e: React.MouseEvent) => void;
   onDoubleClick?: (index: number) => void;
   empty?: ReactNode;
 };
@@ -90,9 +90,10 @@ export function EntryList(p: Props) {
         role="option"
         aria-selected={i === p.selected}
         data-name={e.name}
+        data-marked={p.marked?.has(e.name) ?? false}
         className={`entry${i === p.selected ? ' selected' : ''}${p.marked?.has(e.name) ? ' marked' : ''}${e.readable ? '' : ' unreadable'}`}
         style={style}
-        onClick={() => p.onClick?.(i)}
+        onClick={(ev) => p.onClick?.(i, ev)}
         onDoubleClick={() => p.onDoubleClick?.(i)}
       >
         <span className="entry-icon">

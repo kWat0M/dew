@@ -1,0 +1,28 @@
+.hint-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+  padding: 0 8px;
+  overflow: hidden;
+  background: var(--md-sys-color-surface-container);
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+  font: var(--md-sys-typescale-label-medium);
+  white-space: nowrap;
+}
+
+.hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.hint kbd {
+  min-width: 0;
+}
+
+.hint-bar .spacer {
+  flex: 1;
+}

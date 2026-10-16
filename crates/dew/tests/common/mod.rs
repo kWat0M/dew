@@ -57,13 +57,12 @@ impl Instance {
 
     /// dew を実行して終わるまで待つ。環境変数は開発コンテナのものを持ち込まない
     pub fn dew(&self, args: &[&str]) -> Output {
-        let out = Command::new(env!("CARGO_BIN_EXE_dew"))
-            .args(args)
-            .env_clear()
-            .env("HOME", self.home.path())
-            .env("PATH", std::env::var("PATH").unwrap())
-            .output()
-            .unwrap();
+        self.dew_in(Path::new(env!("CARGO_MANIFEST_DIR")), args)
+    }
+
+    /// `dir` で dew を実行し、成功を確かめる
+    pub fn dew_in(&self, dir: &Path, args: &[&str]) -> Output {
+        let out = self.try_dew_in(dir, args);
         assert!(
             out.status.success(),
             "dew {args:?} が失敗しました\nstdout: {}\nstderr: {}",
@@ -71,6 +70,18 @@ impl Instance {
             String::from_utf8_lossy(&out.stderr)
         );
         out
+    }
+
+    /// `dir` で dew を実行する(失敗してもよい)
+    pub fn try_dew_in(&self, dir: &Path, args: &[&str]) -> Output {
+        Command::new(env!("CARGO_BIN_EXE_dew"))
+            .current_dir(dir)
+            .args(args)
+            .env_clear()
+            .env("HOME", self.home.path())
+            .env("PATH", std::env::var("PATH").unwrap())
+            .output()
+            .unwrap()
     }
 
     /// ~/.cache/dew/server.json(起動中のサーバのポートとトークン)

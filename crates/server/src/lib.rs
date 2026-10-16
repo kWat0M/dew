@@ -3,6 +3,7 @@
 mod auth;
 mod events;
 mod files;
+mod history;
 mod media;
 mod tls;
 mod web;
@@ -70,6 +71,7 @@ pub(crate) struct App {
     pub home: PathBuf,
     pub media: dew_media::Media,
     pub hub: Arc<events::Hub>,
+    pub history: history::Store,
     pub shutdown: Notify,
 }
 
@@ -90,6 +92,7 @@ pub async fn serve(cfg: Config, on_ready: impl FnOnce(&Ready)) -> anyhow::Result
         root: cfg.root.clone(),
         media: dew_media::Media::new(cfg.cache_dir.join("media"), CACHE_LIMIT, cfg.jobs),
         hub: events::Hub::new(),
+        history: history::Store::new(cfg.cache_dir.join("history.json")),
         shutdown: Notify::new(),
     });
 
@@ -167,6 +170,7 @@ fn router(app: Arc<App>) -> Router {
         .route("/info", get(info))
         .route("/tree", get(files::tree))
         .route("/media", get(media))
+        .route("/history", get(history::list).post(history::add))
         .route("/probe", get(media::probe))
         .route("/thumb", get(media::thumb))
         .route("/sprite", get(media::sprite))
