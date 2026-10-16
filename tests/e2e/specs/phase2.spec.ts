@@ -104,11 +104,14 @@ test('差分表示で違うところだけが明るく出る', async ({ page, de
 });
 
 // 基準3: 画像の等倍表示で、指定したピクセルの値が元画像と一致する
-test.fixme('等倍表示でピクセルの値が元画像と一致する', async ({ page, dew }) => {
+test('等倍表示でピクセルの値が元画像と一致する', async ({ page, dew }) => {
   await start(page, dew);
   await open(page, 'image.png');
   await page.keyboard.press('z');
   const img = page.getByTestId('player-window').locator('img');
+  // 読み込み中の表示が消えてからマウスを動かす(ブラウザは表示が消えただけではマウスのイベントを出さない)
+  await expect.poll(() => img.evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth)).toBe(640);
+  await expect(page.locator('.window-overlay')).toBeHidden();
   const box = (await img.boundingBox())!;
   expect(Math.round(box.width)).toBe(640);
   for (const [x, y] of [[100, 50], [5, 300], [639, 359]] as const) {
@@ -119,7 +122,7 @@ test.fixme('等倍表示でピクセルの値が元画像と一致する', async
 });
 
 // F8 / 2.6: 16bit PNG と TIFF も表示でき、16bit は元の値を出す
-test.fixme('16bit PNG と TIFF を表示し、16bit は元の値を出す', async ({ page, dew }) => {
+test('16bit PNG と TIFF を表示し、16bit は元の値を出す', async ({ page, dew }) => {
   copyP2(dew, ['image16.png', 'image.tif']);
   await start(page, dew);
   await open(page, 'image.tif');
@@ -129,7 +132,8 @@ test.fixme('16bit PNG と TIFF を表示し、16bit は元の値を出す', asyn
   const win = page.getByTestId('player-window').filter({ hasText: 'image16.png' });
   await page.keyboard.press('z');
   const img = win.locator('img');
-  await expect.poll(() => img.evaluate((i: HTMLImageElement) => i.naturalWidth)).toBe(640);
+  await expect.poll(() => img.evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth)).toBe(640);
+  await expect(win.locator('.window-overlay')).toBeHidden();
   const box = (await img.boundingBox())!;
   await page.mouse.move(box.x + 100.5, box.y + 50.5);
   const [r, g, b] = pixelOf(join(dew.root, 'image16.png'), 100, 50, 16);

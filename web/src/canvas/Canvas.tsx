@@ -21,7 +21,7 @@ export type Win = { id: number; path: string; media: MediaKind; members?: Member
 /** 再生のキー(選択中のウィンドウ、なければフォーカス中のウィンドウに効く) */
 type PlayAction =
   | { do: 'toggle' } | { do: 'seek'; sec: number } | { do: 'step'; dir: 1 | -1 } | { do: 'percent'; n: number }
-  | { do: 'speed'; dir: 1 | -1 } | { do: 'ab' } | { do: 'mute' } | { do: 'zoom' };
+  | { do: 'speed'; dir: 1 | -1 } | { do: 'ab' } | { do: 'mute' } | { do: 'zoom' } | { do: 'zoomBy'; f: number };
 
 /** 操作パネルから操作を実行するための入口 */
 export type CanvasRun = { normal: (a: NormalAction) => void; window: (a: WindowAction) => void };
@@ -43,7 +43,7 @@ const normal: Record<string, NormalAction> = {
   J: { do: 'seek', sec: -30 }, L: { do: 'seek', sec: 30 },
   ',': { do: 'step', dir: -1 }, '.': { do: 'step', dir: 1 },
   '[': { do: 'speed', dir: -1 }, ']': { do: 'speed', dir: 1 },
-  b: { do: 'ab' }, m: { do: 'mute' }, z: { do: 'zoom' }, f: { do: 'maximize' }, K: { do: 'all' },
+  b: { do: 'ab' }, m: { do: 'mute' }, z: { do: 'zoom' }, '+': { do: 'zoomBy', f: 1.25 }, '-': { do: 'zoomBy', f: 0.8 }, f: { do: 'maximize' }, K: { do: 'all' },
   h: { do: 'home' }, H: { do: 'homeInitial' }, Tab: { do: 'home' }, '?': { do: 'help' },
   w: { do: 'windowMode' }, r: { do: 'history' }, s: { do: 'sync' }, c: { do: 'compareMode' }, Escape: { do: 'escape' },
 };
@@ -70,7 +70,8 @@ export const playCommands: CommandDef<NormalAction>[] = [
   { id: { do: 'percent', n: 0 }, key: '0', label: '先頭へ' }, { id: { do: 'percent', n: 5 }, key: '5', label: '中央へ' },
   { id: { do: 'speed', dir: -1 }, key: '[', label: '遅く' }, { id: { do: 'speed', dir: 1 }, key: ']', label: '速く' },
   { id: { do: 'ab' }, key: 'b', label: 'A-B ループ' }, { id: { do: 'mute' }, key: 'm', label: 'ミュート' },
-  { id: { do: 'zoom' }, key: 'z', label: '等倍 / フィット' }, { id: { do: 'all' }, key: 'K', label: '全ウィンドウ再生 / 停止' },
+  { id: { do: 'zoom' }, key: 'z', label: '等倍 / フィット' },
+  { id: { do: 'zoomBy', f: 1.25 }, key: '+', label: '画像を拡大' }, { id: { do: 'zoomBy', f: 0.8 }, key: '-', label: '画像を縮小' }, { id: { do: 'all' }, key: 'K', label: '全ウィンドウ再生 / 停止' },
 ];
 export const canvasCommands: CommandDef<NormalAction>[] = [
   { id: { do: 'home' }, key: 'h', label: 'Home へ戻る' }, { id: { do: 'homeInitial' }, key: 'H', label: 'Home の初期位置へ' },
@@ -245,6 +246,7 @@ export function Canvas(p: Props) {
         case 'ab': t.ab(); break;
         case 'mute': t.toggleMute(); break;
         case 'zoom': t.toggleZoom(); break;
+        case 'zoomBy': t.zoomBy?.(a.f); break;
       }
     }
   };

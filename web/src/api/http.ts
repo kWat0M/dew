@@ -36,6 +36,10 @@ export const api = {
   /** 更新時刻を付けて、ファイルが変わったらブラウザのキャッシュを使わないようにする */
   thumbUrl: (path: string, mtime: number) => `/api/thumb?${q(path)}&v=${mtime}`,
   spriteUrl: (path: string) => `/api/sprite?${q(path)}`,
+  /** ブラウザで正確に表示できない画像(TIFF、16bit)を 8bit の PNG にしたもの */
+  imageUrl: (path: string) => `/api/image?${q(path)}`,
+  /** 画像の元の画素値(16bit RGBA) */
+  pixelsUrl: (path: string) => `/api/pixels?${q(path)}`,
   mediaUrl: (path: string) => `/api/media?${q(path)}`,
   segmentUrl: (path: string, index: number) => `/api/media?${q(path)}&transcode=1&seg=${index}`,
 };

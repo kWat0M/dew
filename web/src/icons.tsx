@@ -36,13 +36,15 @@ import free from '@material-symbols/svg-400/rounded/picture_in_picture.svg?raw';
 import search from '@material-symbols/svg-400/rounded/search.svg?raw';
 import sync from '@material-symbols/svg-400/rounded/sync.svg?raw';
 import compare from '@material-symbols/svg-400/rounded/compare.svg?raw';
+import zoomIn from '@material-symbols/svg-400/rounded/zoom_in.svg?raw';
+import zoomOut from '@material-symbols/svg-400/rounded/zoom_out.svg?raw';
 import './icons.css';
 
 const svgs = {
   folder, image, movie, audio, file, lock, home, canvas,
   play, pause, playCircle, pauseCircle, back5, back30, fwd5, fwd30, frameBack, frameNext,
   close, fullscreen, volume, volumeOff, grid, list, minimize, maximize, restore,
-  history, help, menu, power, tile, free, search, sync, compare,
+  history, help, menu, power, tile, free, search, sync, compare, zoomIn, zoomOut,
 };
 
 export type IconName = keyof typeof svgs;

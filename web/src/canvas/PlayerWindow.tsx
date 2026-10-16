@@ -1,12 +1,12 @@
 // キャンバス上の1つのウィンドウ。動画・音声・画像を表示し、下部に再生コントロールを出す(4.2、F2、F5)
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
-import { api } from '../api/http';
 import type { MediaKind } from '../protocol/MediaKind';
 import type { Probe } from '../protocol/Probe';
 import { basename, formatTime } from '../format';
 import { ja } from '../i18n/ja';
 import { Icon, type IconName } from '../icons';
 import { frameAt, frameFrom, seekTimeFor } from './frames';
+import { ImageView, type ImageApi } from './ImageView';
 import { SeekBar } from './SeekBar';
 import { useVideoSource } from './source';
 import { WindowFrame, type FrameProps } from './WindowFrame';
@@ -30,6 +30,8 @@ export type PlayerApi = {
   fullscreen(): void;
   /** 比較ウィンドウの表示を切り替える(c) */
   cycleMode?(): void;
+  /** 画像の拡大・縮小(+ / -) */
+  zoomBy?(f: number): void;
 };
 
 type Props = FrameProps & {
@@ -134,7 +136,7 @@ export function PlayerWindow({ api: apiRef, ...p }: Props) {
   const wasFocused = useRef(false);
   const [zoom, setZoom] = useState<'fit' | 'actual'>('fit');
   const [ab, setAb] = useState<{ a: number | null; b: number | null }>({ a: null, b: null });
-  const [imageSize, setImageSize] = useState({ w: 0, h: 0 });
+  const imageApi = useRef<ImageApi | null>(null);
   const timed = p.media === 'video' || p.media === 'audio';
   const abRef = useRef(ab);
   useEffect(() => {
@@ -241,7 +243,8 @@ export function PlayerWindow({ api: apiRef, ...p }: Props) {
       setAb((s) => (s.a === null ? { a: t, b: null } : s.b === null ? (t > s.a ? { a: s.a, b: t } : { a: t, b: s.a }) : { a: null, b: null }));
     },
     toggleMute: () => setMuted((m) => !m),
-    toggleZoom: () => setZoom((z) => (z === 'fit' ? 'actual' : 'fit')),
+    toggleZoom: () => (imageApi.current ? imageApi.current.toggleActual() : setZoom((z) => (z === 'fit' ? 'actual' : 'fit'))),
+    zoomBy: (f) => imageApi.current?.zoomBy(f),
     fullscreen: () => {
       if (document.fullscreenElement) void document.exitFullscreen();
       else void win.current?.requestFullscreen();
@@ -271,17 +274,7 @@ export function PlayerWindow({ api: apiRef, ...p }: Props) {
         }}
       >
         {p.media === 'image' ? (
-          <img
-            src={api.mediaUrl(p.path)}
-            alt=""
-            onLoad={(e) => {
-              setStatus({ kind: 'ready' });
-              setImageSize({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight });
-            }}
-            onError={() => fail(ja.imageFailed)}
-            style={actualSize(imageSize.w, imageSize.h)}
-          />
-        ) : (
+          <ImageView path={p.path} api={imageApi} onError={fail} onReady={() => setStatus({ kind: 'ready' })} />        ) : (
           <video
             ref={video}
             playsInline

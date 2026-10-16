@@ -161,3 +161,47 @@ fn probe_thumb_sprite_and_segment_times() {
     }
     assert_eq!(times.len(), 120, "6〜10 秒の 120 フレーム");
 }
+
+#[test]
+fn deep_images_are_converted_for_display_and_raw_values_are_kept() {
+    let a = Instance::new();
+    a.dew(&["--port", &free_port().to_string()]);
+    let p2 = common::fixtures().join("p2");
+
+    let probe: serde_json::Value = serde_json::from_str(
+        &a.get(&format!("/api/probe?path={}", q(&p2.join("image16.png"))))
+            .text()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(probe["bitDepth"], 16);
+    assert_eq!(probe["needsTranscode"], true);
+    assert_eq!(probe["width"], 640);
+    let probe: serde_json::Value = serde_json::from_str(
+        &a.get(&format!(
+            "/api/probe?path={}",
+            q(&common::fixtures().join("image.png"))
+        ))
+        .text()
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        (
+            probe["bitDepth"].as_u64(),
+            probe["needsTranscode"].as_bool()
+        ),
+        (Some(8), Some(false))
+    );
+
+    for name in ["image16.png", "image.tif"] {
+        let res = a.get(&format!("/api/image?path={}", q(&p2.join(name))));
+        assert_eq!(res.status(), 200, "{name}");
+        assert_eq!(&res.bytes().unwrap()[1..4], b"PNG", "{name}");
+    }
+    let raw = a
+        .get(&format!("/api/pixels?path={}", q(&p2.join("image16.png"))))
+        .bytes()
+        .unwrap();
+    assert_eq!(raw.len(), 640 * 360 * 8);
+}

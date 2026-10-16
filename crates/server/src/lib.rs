@@ -174,6 +174,8 @@ fn router(app: Arc<App>) -> Router {
         .route("/probe", get(media::probe))
         .route("/thumb", get(media::thumb))
         .route("/sprite", get(media::sprite))
+        .route("/image", get(media::image))
+        .route("/pixels", get(media::pixels))
         .route("/open", post(open))
         .route("/shutdown", post(shutdown));
     Router::new()

@@ -143,6 +143,52 @@ impl Media {
         Ok(path)
     }
 
+    /// ブラウザで正確に表示できない画像(TIFF、16bit など)を、表示用の 8bit RGBA の PNG にする
+    pub async fn display_png(&self, src: &Path) -> anyhow::Result<PathBuf> {
+        let (path, _) = self
+            .cached(src, "display", "png", |out| async move {
+                let args = [
+                    "-i",
+                    &path_arg(src),
+                    "-frames:v",
+                    "1",
+                    "-pix_fmt",
+                    "rgba",
+                    "-c:v",
+                    "png",
+                    "-f",
+                    "image2",
+                    &path_arg(&out),
+                ]
+                .map(str::to_owned);
+                self.ffmpeg(&args, false).await
+            })
+            .await?;
+        Ok(path)
+    }
+
+    /// 画像の元の画素値(16bit RGBA、リトルエンディアン、左上から行ごと)。ピクセル値の表示に使う(F8)
+    pub async fn pixels16(&self, src: &Path) -> anyhow::Result<PathBuf> {
+        let (path, _) = self
+            .cached(src, "rgba64", "raw", |out| async move {
+                let args = [
+                    "-i",
+                    &path_arg(src),
+                    "-frames:v",
+                    "1",
+                    "-f",
+                    "rawvideo",
+                    "-pix_fmt",
+                    "rgba64le",
+                    &path_arg(&out),
+                ]
+                .map(str::to_owned);
+                self.ffmpeg(&args, false).await
+            })
+            .await?;
+        Ok(path)
+    }
+
     /// 変換した `index` 番目のセグメント(H.264 / AAC の fragmented MP4、7.4)。
     /// 各セグメントは初期化部分を含んで単独で再生でき、時刻は 0 秒から始まる。
     /// ブラウザは SourceBuffer の timestampOffset を `index * SEGMENT_SECS` にして並べる
@@ -300,6 +346,24 @@ async fn run_probe(src: &Path) -> anyhow::Result<Probe> {
     let pix_fmt = video.and_then(|v| v["pix_fmt"].as_str()).unwrap_or("");
     let format = info["format"]["format_name"].as_str().unwrap_or("");
 
+    let bit_depth = bit_depth(pix_fmt);
+    // 画像: ブラウザで正確に表示できない形式だけを変換の対象にする(F8、2.6)
+    if is_image(src) {
+        return Ok(Probe {
+            duration: 0.0,
+            fps: 0.0,
+            width,
+            height,
+            video_codec,
+            audio_codec: None,
+            needs_transcode: bit_depth > 8 || !browser_image(src),
+            bit_depth,
+            segment_secs: SEGMENT_SECS,
+            segment_count: 0,
+            frame_times: Vec::new(),
+            sprite: None,
+        });
+    }
     let needs_transcode = !playable(
         format,
         src,
@@ -340,11 +404,46 @@ async fn run_probe(src: &Path) -> anyhow::Result<Probe> {
         video_codec,
         audio_codec,
         needs_transcode,
+        bit_depth,
         segment_secs: SEGMENT_SECS,
         segment_count: (duration / SEGMENT_SECS).ceil().max(1.0) as u32,
         frame_times,
         sprite,
     })
+}
+
+fn ext(src: &Path) -> String {
+    src.extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase()
+}
+
+fn is_image(src: &Path) -> bool {
+    matches!(
+        ext(src).as_str(),
+        "png" | "jpg" | "jpeg" | "webp" | "gif" | "avif" | "bmp" | "tif" | "tiff"
+    )
+}
+
+/// ブラウザがそのまま表示できる画像の形式(2.6)
+fn browser_image(src: &Path) -> bool {
+    matches!(
+        ext(src).as_str(),
+        "png" | "jpg" | "jpeg" | "webp" | "gif" | "avif" | "bmp"
+    )
+}
+
+/// ffmpeg の画素形式から、1色あたりのビット数
+fn bit_depth(pix_fmt: &str) -> u32 {
+    let deep = [
+        "48", "64", "gray16", "ya16", "p10", "p12", "p14", "p16", "f32", "gbrpf",
+    ];
+    if deep.iter().any(|d| pix_fmt.contains(d)) {
+        16
+    } else {
+        8
+    }
 }
 
 /// Windows の Chrome / Edge がそのまま再生できるか(2.6)
@@ -532,6 +631,16 @@ mod tests {
             "yuv420p",
             Some("ac3")
         ));
+    }
+
+    #[test]
+    fn bit_depth_from_pix_fmt() {
+        assert_eq!(bit_depth("rgb24"), 8);
+        assert_eq!(bit_depth("rgba"), 8);
+        assert_eq!(bit_depth("rgb48be"), 16);
+        assert_eq!(bit_depth("rgba64le"), 16);
+        assert_eq!(bit_depth("gray16be"), 16);
+        assert_eq!(bit_depth("yuv420p10le"), 16);
     }
 
     #[test]

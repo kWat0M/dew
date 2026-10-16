@@ -642,3 +642,46 @@
   box-shadow: var(--md-sys-elevation-level2);
   transform: translate(-50%, -50%);
 }
+
+/* 画像の表示(F8) */
+.image-view {
+  position: absolute;
+  inset: 0 0 40px 0;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+}
+
+.image-view img {
+  position: absolute;
+  max-width: none;
+}
+
+.image-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 8px;
+  background: var(--md-sys-color-surface-container);
+}
+
+.image-bar .spacer {
+  flex: 1;
+}
+
+.pixel-info,
+.zoom-level {
+  font: var(--md-sys-typescale-label-medium);
+  font-family: var(--md-ref-typeface-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: pre;
+}
+
+.zoom-level {
+  color: var(--md-sys-color-on-surface-variant);
+}

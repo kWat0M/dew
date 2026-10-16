@@ -14,9 +14,14 @@ duration: number,
  */
 fps: number, width: number, height: number, videoCodec: string | null, audioCodec: string | null, 
 /**
- * ブラウザで再生できないため変換が必要か(2.6)
+ * ブラウザで再生できないため変換が必要か(2.6)。画像では、そのままでは正確に表示できないか
+ * (TIFF や 8bit を超えるもの。`GET /api/image` の PNG で表示する)
  */
 needsTranscode: boolean, 
+/**
+ * 1色あたりのビット数(8 か 16)。16 なら元の値は `GET /api/pixels` で読む
+ */
+bitDepth: number, 
 /**
  * 変換するときのセグメントの長さ(秒)と個数
  */

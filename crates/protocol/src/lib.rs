@@ -76,8 +76,11 @@ pub struct Probe {
     pub height: u32,
     pub video_codec: Option<String>,
     pub audio_codec: Option<String>,
-    /// ブラウザで再生できないため変換が必要か(2.6)
+    /// ブラウザで再生できないため変換が必要か(2.6)。画像では、そのままでは正確に表示できないか
+    /// (TIFF や 8bit を超えるもの。`GET /api/image` の PNG で表示する)
     pub needs_transcode: bool,
+    /// 1色あたりのビット数(8 か 16)。16 なら元の値は `GET /api/pixels` で読む
+    pub bit_depth: u32,
     /// 変換するときのセグメントの長さ(秒)と個数
     pub segment_secs: f64,
     pub segment_count: u32,
