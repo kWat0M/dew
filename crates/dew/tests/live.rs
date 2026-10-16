@@ -219,3 +219,39 @@ fn session_audio_is_streamed_as_opus() {
     let _ = child.kill();
     let _ = child.wait();
 }
+
+/// 起動時に作ってすぐ消すウィンドウ(pygame などで起きる)があっても、監視が止まらない
+#[test]
+fn short_lived_windows_do_not_stop_the_monitor() {
+    let a = Instance::new();
+    a.dew(&["--port", &free_port().to_string()]);
+    let script = r#"
+import os, time
+os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
+import pygame
+for i in range(20):
+    pygame.display.init(); pygame.display.set_mode((100, 100)); pygame.display.quit()
+pygame.display.init(); s = pygame.display.set_mode((320, 240)); pygame.display.set_caption("survivor")
+t = time.time()
+while time.time() - t < 15:
+    pygame.event.pump(); s.fill((0, 0, 0)); pygame.display.flip(); time.sleep(0.03)
+"#;
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_dew"))
+        .args(["run", "python3", "-c", script])
+        .env_clear()
+        .env("HOME", a.home.path())
+        .env("PATH", std::env::var("PATH").unwrap())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut events = a.ws("/ws/events");
+    recv_json(&mut events, 20, |v| {
+        v["type"] == "liveWindows"
+            && v["windows"]
+                .as_array()
+                .is_some_and(|w| w.iter().any(|w| w["title"] == "survivor"))
+    });
+    let _ = child.kill();
+    let _ = child.wait();
+}

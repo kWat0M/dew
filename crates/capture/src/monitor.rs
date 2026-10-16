@@ -84,16 +84,19 @@ fn run(
 
     // 監視を始める前から出ているウィンドウ
     for w in conn.query_tree(root)?.reply()?.children {
-        let attrs = conn.get_window_attributes(w)?.reply()?;
+        // 問い合わせの間に消えたウィンドウは飛ばす
+        let Ok(attrs) = conn.get_window_attributes(w)?.reply() else {
+            continue;
+        };
         if !attrs.override_redirect && attrs.map_state == MapState::VIEWABLE {
-            track(&conn, &atoms, w, &mut known, &mut placer, &tx)?;
+            try_track(&conn, &atoms, w, &mut known, &mut placer, &tx);
         }
     }
     loop {
         let event = conn.wait_for_event()?;
         match event {
             Event::MapNotify(e) if e.event == root && !e.override_redirect => {
-                track(&conn, &atoms, e.window, &mut known, &mut placer, &tx)?;
+                try_track(&conn, &atoms, e.window, &mut known, &mut placer, &tx);
             }
             Event::ConfigureNotify(e) if e.event == root => {
                 if let Some(info) = known.get_mut(&e.window)
@@ -126,6 +129,22 @@ fn run(
         if tx.is_closed() {
             return Ok(());
         }
+    }
+}
+
+/// `track` の失敗は、そのウィンドウを無視して監視を続ける。アプリは起動時に作ってすぐ消す
+/// ウィンドウを出すことがあり(pygame など)、問い合わせる前に消えていると X のエラーになるため
+fn try_track(
+    conn: &RustConnection,
+    atoms: &Atoms,
+    w: Window,
+    known: &mut HashMap<Window, WindowInfo>,
+    placer: &mut Placer,
+    tx: &mpsc::UnboundedSender<WindowEvent>,
+) {
+    if let Err(e) = track(conn, atoms, w, known, placer, tx) {
+        tracing::debug!(window = w, "ウィンドウを追えません(すぐ消えたもの): {e:#}");
+        placer.free(w);
     }
 }
 

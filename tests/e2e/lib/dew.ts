@@ -37,7 +37,7 @@ function freePort(): Promise<number> {
 }
 
 export const test = base.extend<{ dew: Dew }>({
-  dew: async ({}, use) => {
+  dew: async ({}, use, testInfo) => {
     const home = mkdtempSync(join(tmpdir(), 'dew-home-'));
     const root = mkdtempSync(join(tmpdir(), 'dew-root-'));
     // scripts/gen-fixtures.sh が作るものだけを複製する(手で置いたファイルが一覧の検査を乱さないように)
@@ -49,13 +49,29 @@ export const test = base.extend<{ dew: Dew }>({
     const server = JSON.parse(readFileSync(join(home, '.cache/dew/server.json'), 'utf8'));
     const run = (args: string[]) => execFileSync(bin, args, { env, encoding: 'utf8' });
     const children: ChildProcess[] = [];
+    // dew run の出力は、失敗したときに原因を追えるよう取っておく
+    const runOutput: string[] = [];
     const spawnRun = (command: string[], extraEnv: Record<string, string> = {}) => {
-      const child = spawn(bin, ['run', ...command], { env: { ...env, ...extraEnv }, stdio: 'ignore' });
+      const child = spawn(bin, ['run', ...command], { env: { ...env, ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'] });
+      const tag = command.map((c) => c.split('/').pop()).join(' ');
+      child.stdout?.on('data', (d: Buffer) => runOutput.push(`[${tag}] ${d}`));
+      child.stderr?.on('data', (d: Buffer) => runOutput.push(`[${tag}] ${d}`));
+      child.on('exit', (code) => runOutput.push(`[${tag}] exit ${code}`));
       children.push(child);
       return child;
     };
     await use({ url: `https://127.0.0.1:${server.port}/?token=${server.token}`, root, run, spawnRun });
     for (const c of children) c.kill('SIGTERM');
+    // 失敗したら、原因を追えるよう dew run の出力とサーバのログを出す
+    if (testInfo.status !== testInfo.expectedStatus) {
+      let log = '';
+      try {
+        log = readFileSync(join(home, '.cache/dew/log/server.log'), 'utf8');
+      } catch {
+        // ログがなくても続ける
+      }
+      console.log(`---- ${testInfo.title}: dew run ----\n${runOutput.join('')}\n---- server.log ----\n${log.split('\n').slice(-30).join('\n')}`);
+    }
     execFileSync(bin, ['stop'], { env });
     rmSync(home, { recursive: true, force: true });
     rmSync(root, { recursive: true, force: true });
@@ -67,8 +83,13 @@ export { expect };
 export async function start(page: Page, dew: Dew) {
   await page.goto(dew.url);
   await expect(page).toHaveURL(/\/$/); // トークンは URL から消える
-  await page.keyboard.press('Shift');
-  await expect(page.getByTestId('start-overlay')).toBeHidden();
+  // ページの準備が整う前に押すと表示が消えないので、消えるまで押し直す
+  const overlay = page.getByTestId('start-overlay');
+  await expect(overlay).toBeVisible();
+  await expect(async () => {
+    await page.keyboard.press('Shift');
+    await expect(overlay).toBeHidden({ timeout: 500 });
+  }).toPass();
 }
 
 /** Home の中央カラム */

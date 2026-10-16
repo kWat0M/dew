@@ -41,7 +41,10 @@ test('ヒントの帯は閉じられ、ブラウザが覚える。キー一覧�
   await hints.getByRole('button', { name: '閉じる' }).click();
   await expect(hints).toBeHidden();
   await page.reload();
+  // ページの準備が整って「開始」の表示が出てから押す(早すぎると表示が消えない)
+  await expect(page.getByTestId('start-overlay')).toBeVisible();
   await page.keyboard.press('Shift');
+  await expect(page.getByTestId('start-overlay')).toBeHidden();
   await expect(current(page).getByRole('option').first()).toBeVisible();
   await expect(hints).toBeHidden();
 
