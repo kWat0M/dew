@@ -17,6 +17,8 @@ export const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 export type PlayerApi = {
   toggle(): void;
   isPaused(): boolean;
+  /** 同期再生に使う動画の要素(画像なら null) */
+  video(): HTMLVideoElement | null;
   setPlaying(playing: boolean): void;
   seekBy(sec: number): void;
   step(dir: 1 | -1): void;
@@ -252,13 +254,19 @@ export function PlayerWindow(p: Props) {
   );
   const stepable = (probe?.frameTimes.length ?? 0) > 0;
   const setSpeed = useCallback((r: number) => {
-    if (video.current) video.current.playbackRate = r;
+    const v = video.current;
+    if (v) {
+      // 読み込み中に変えても、読み込み後に 1 倍へ戻らないよう既定の速度も変える
+      v.defaultPlaybackRate = r;
+      v.playbackRate = r;
+    }
     setRate(r);
   }, []);
 
   useImperativeHandle(p.api, () => ({
     toggle: togglePlay,
     isPaused: () => video.current?.paused ?? true,
+    video: () => (timed ? video.current : null),
     setPlaying: (on) => {
       const v = video.current;
       if (v) void (on ? v.play() : Promise.resolve(v.pause())).catch(() => {});
@@ -286,7 +294,7 @@ export function PlayerWindow(p: Props) {
       if (document.fullscreenElement) void document.exitFullscreen();
       else void win.current?.requestFullscreen();
     },
-  }), [probe, seek, togglePlay, seekBy, stepFrame, setSpeed]);
+  }), [probe, seek, togglePlay, seekBy, stepFrame, setSpeed, timed]);
 
   // 自由配置ではタイトルバーで移動、右下の角で大きさを変える
   const drag = (kind: 'move' | 'resize') => (e: React.PointerEvent) => {

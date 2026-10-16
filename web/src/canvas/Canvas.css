@@ -525,3 +525,15 @@
   font: var(--md-sys-typescale-label-large);
   cursor: pointer;
 }
+
+.icon-button.toggled {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+.chip.sync-chip {
+  border-color: transparent;
+  background: var(--md-sys-color-tertiary-container);
+  color: var(--md-sys-color-on-tertiary-container);
+  white-space: nowrap;
+}

@@ -167,7 +167,7 @@ export function App() {
           { label: ja.followLatest, checked: follow, onChange: setFollow },
           { label: ja.showHidden, checked: showHidden, onChange: setShowHidden },
         ]
-      : []),
+      : [{ label: ja.syncAudio, checked: settings.syncAudio, onChange: (v: boolean) => updateSettings({ syncAudio: v }) }]),
   ];
   sections.push({
     title: ja.secCommon,
@@ -229,6 +229,7 @@ export function App() {
           hints={settings.hints}
           onHideHints={hideHints}
           tabbar={settings.tabbar}
+          syncAudio={settings.syncAudio}
           onMessage={onError}
           runRef={canvasRun}
           onHomeInitial={() => {

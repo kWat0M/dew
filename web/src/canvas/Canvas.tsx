@@ -11,6 +11,7 @@ import { KeySequence } from '../keys';
 import { useKeys } from '../useKeys';
 import { cascade, neighbor, tile, type Dir, type Rect } from './layout';
 import { PlayerWindow, type PlayerApi } from './PlayerWindow';
+import { SyncGroup } from './sync';
 import './Canvas.css';
 
 export type Win = { id: number; path: string; media: MediaKind };
@@ -26,7 +27,7 @@ export type CanvasRun = { normal: (a: NormalAction) => void; window: (a: WindowA
 export type NormalAction =
   | PlayAction
   | { do: 'maximize' } | { do: 'all' } | { do: 'home' } | { do: 'homeInitial' } | { do: 'help' } | { do: 'history' }
-  | { do: 'windowMode' } | { do: 'escape' };
+  | { do: 'windowMode' } | { do: 'sync' } | { do: 'escape' };
 
 /** ウィンドウ操作モードのキー */
 export type WindowAction =
@@ -42,7 +43,7 @@ const normal: Record<string, NormalAction> = {
   '[': { do: 'speed', dir: -1 }, ']': { do: 'speed', dir: 1 },
   b: { do: 'ab' }, m: { do: 'mute' }, z: { do: 'zoom' }, f: { do: 'maximize' }, K: { do: 'all' },
   h: { do: 'home' }, H: { do: 'homeInitial' }, Tab: { do: 'home' }, '?': { do: 'help' },
-  w: { do: 'windowMode' }, r: { do: 'history' }, Escape: { do: 'escape' },
+  w: { do: 'windowMode' }, r: { do: 'history' }, s: { do: 'sync' }, Escape: { do: 'escape' },
 };
 for (let n = 0; n <= 9; n++) normal[String(n)] = { do: 'percent', n };
 
@@ -72,6 +73,7 @@ export const playCommands: CommandDef<NormalAction>[] = [
 export const canvasCommands: CommandDef<NormalAction>[] = [
   { id: { do: 'home' }, key: 'h', label: 'Home へ戻る' }, { id: { do: 'homeInitial' }, key: 'H', label: 'Home の初期位置へ' },
   { id: { do: 'maximize' }, key: 'f', label: 'ウィンドウ最大化' }, { id: { do: 'windowMode' }, key: 'w', label: 'ウィンドウ操作モード' },
+  { id: { do: 'sync' }, key: 's', label: '同期再生' },
 ];
 export const windowCommands: CommandDef<WindowAction>[] = [
   { id: { do: 'focusDir', dir: 'h' }, key: 'w h', label: '左のウィンドウへ' }, { id: { do: 'focusDir', dir: 'l' }, key: 'w l', label: '右のウィンドウへ' },
@@ -123,6 +125,8 @@ type Props = {
   hints: boolean;
   onHideHints: () => void;
   tabbar: 'top' | 'side';
+  /** 同期再生中は全ウィンドウの音を出す */
+  syncAudio: boolean;
   /** 操作パネルから操作を実行するための入口 */
   runRef: Ref<CanvasRun>;
 };
@@ -136,6 +140,8 @@ export function Canvas(p: Props) {
   const [minimized, setMinimized] = useState<Set<number>>(new Set());
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [windowMode, setWindowMode] = useState(false);
+  /** 全ウィンドウの同期再生(s)。フォーカス中のウィンドウが基準 */
+  const [synced, setSynced] = useState(false);
   /** 左端の縦のタブバーを出しているか */
   const [sideOpen, setSideOpen] = useState(false);
   /** タイル配置でドラッグ中のウィンドウと、落とす先の番号 */
@@ -252,6 +258,7 @@ export function Canvas(p: Props) {
       case 'help': return p.onHelp();
       case 'history': return p.onHistory();
       case 'windowMode': return setWindowMode(true);
+      case 'sync': return setSynced((s) => !s);
       case 'escape': return;
       default: return runPlay(a);
     }
@@ -359,6 +366,20 @@ export function Canvas(p: Props) {
     if (a !== 'pending') runNormal(a);
   }, p.active);
 
+  // 同期再生: フォーカス中のウィンドウを基準に、ほかの動画を合わせる。ウィンドウや基準が変わったら組み直す
+  useEffect(() => {
+    if (!synced || p.focused === null) return;
+    const master = apis.current.get(p.focused)?.video();
+    if (!master) return;
+    const followers = ws
+      .filter((w) => w.id !== p.focused)
+      .map((w) => apis.current.get(w.id)?.video())
+      .filter((v): v is HTMLVideoElement => !!v);
+    const group = new SyncGroup(master, followers);
+    group.start();
+    return () => group.stop();
+  }, [synced, p.focused, ids, ws]);
+
   // 閉じたウィンドウの操作を捨てる
   useEffect(() => {
     for (const id of apis.current.keys()) if (!ws.some((w) => w.id === id)) apis.current.delete(id);
@@ -403,6 +424,23 @@ export function Canvas(p: Props) {
           <Icon name="home" />
         </button>
         {p.tabbar === 'top' ? taskbar : <div className="chips" />}
+        {synced && (
+          <span className="chip sync-chip" data-testid="sync-indicator">
+            {ja.syncing}
+          </span>
+        )}
+        {ws.length > 1 && (
+          <button
+            type="button"
+            className={`icon-button${synced ? ' toggled' : ''}`}
+            title={ja.syncKey}
+            aria-label={ja.sync}
+            aria-pressed={synced}
+            onClick={() => setSynced((s) => !s)}
+          >
+            <Icon name="sync" />
+          </button>
+        )}
         {ws.length > 1 && (
           <button
             type="button"
@@ -430,7 +468,7 @@ export function Canvas(p: Props) {
             selected={selected.has(w.id)}
             maximized={maximized === w.id}
             minimized={minimized.has(w.id)}
-            audible={p.visible && !minimized.has(w.id) && (shown.length === 1 || w.id === p.focused)}
+            audible={p.visible && !minimized.has(w.id) && (shown.length === 1 || w.id === p.focused || (synced && p.syncAudio))}
             free={mode === 'free' && shown.length > 1 && maximized !== w.id}
             dropTarget={reorder?.target === w.id}
             api={(x) => {

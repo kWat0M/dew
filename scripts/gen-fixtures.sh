@@ -34,6 +34,10 @@ printf 'not a video' > "$out/broken.mp4"
 # フェーズ2(比較・画像)。Home の一覧の検査に入らないよう p2/ に置き、テストが必要なときに複製する
 # 差分用: image.png の一部だけを塗りつぶしたもの
 ff -i "$out/image.png" -vf "drawbox=x=400:y=200:w=80:h=60:color=white:t=fill" "$out/p2/image_b.png"
+# 同期再生用: 10 秒の時点を確かめるため 15 秒のもの(そのまま再生できる形式と、変換が必要な形式)
+long=(-f lavfi -i "testsrc2=size=640x360:rate=$fps:duration=15" -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=15")
+ff "${long[@]}" "${vf[@]}" -c:v libx264 -preset veryfast -crf 18 -g 30 -c:a aac -b:a 128k -movflags +faststart "$out/p2/long_h264.mp4"
+ff "${long[@]}" "${vf[@]}" -c:v mpeg4 -tag:v mp4v -q:v 3 -c:a aac -b:a 128k "$out/p2/long_mp4v.mp4"
 # 16bit PNG と TIFF(ブラウザでそのまま正確に表示できない形式)
 ff -i "$out/image.png" -pix_fmt rgb48be "$out/p2/image16.png"
 ff -i "$out/image.png" "$out/p2/image.tif"

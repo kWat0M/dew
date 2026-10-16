@@ -21,21 +21,22 @@ async function colorAt(page: Page, el: Locator, fx: number, fy: number) {
 const isWhite = (c: number[]) => c.every((v) => v > 230);
 const isBlack = (c: number[]) => c.every((v) => v < 25);
 
-/** 両方が再生していて、先頭のウィンドウが 10 秒を過ぎるまで待つ */
+/** 両方が再生していて、どちらも 10 秒を過ぎるまで待つ(素材は 15 秒) */
 async function playTenSeconds(page: Page) {
   await expect
     .poll(() => page.evaluate(() => [...document.querySelectorAll('video')].filter((v) => v.isConnected && v.offsetParent).every((v) => !v.paused)), { timeout: 10_000 })
     .toBe(true);
   await expect
     .poll(() => page.evaluate(() => Math.min(...[...document.querySelectorAll('video')].filter((v) => v.offsetParent).map((v) => v.currentTime))), { timeout: 20_000, intervals: [500] })
-    .toBeGreaterThan(9.5);
+    .toBeGreaterThan(10);
 }
 
 // 基準1: 2本の動画を同期再生し、10秒後のフレーム番号の差が1以内(キャンバスの s)
-test.fixme('キャンバスの s で2本を同期再生する', async ({ page, dew }) => {
+test('キャンバスの s で2本を同期再生する', async ({ page, dew }) => {
   test.setTimeout(60_000);
+  copyP2(dew, ['long_h264.mp4', 'long_mp4v.mp4']);
   await start(page, dew);
-  await pick(page, ['h264_aac.mp4', 'mp4v.mp4']);
+  await pick(page, ['long_h264.mp4', 'long_mp4v.mp4']);
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('player-window')).toHaveCount(2);
   // わざと位置をずらしてから同期する
@@ -51,8 +52,9 @@ test.fixme('キャンバスの s で2本を同期再生する', async ({ page, d
 // 基準1(比較ウィンドウ): Home の c で比較ウィンドウを開き、並べて同期再生する
 test.fixme('比較ウィンドウで2本を同期再生する', async ({ page, dew }) => {
   test.setTimeout(60_000);
+  copyP2(dew, ['long_h264.mp4', 'long_mp4v.mp4']);
   await start(page, dew);
-  await pick(page, ['h264_aac.mp4', 'mp4v.mp4']);
+  await pick(page, ['long_h264.mp4', 'long_mp4v.mp4']);
   await page.keyboard.press('c');
   const win = page.getByTestId('compare-window');
   await expect(win).toBeVisible();
