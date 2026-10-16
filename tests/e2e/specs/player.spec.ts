@@ -1,5 +1,5 @@
 // フェーズ1の受け入れ基準(docs/spec.md 11章): キャンバスのプレイヤー
-import { expect, frameNumber, open, start, test } from '../lib/dew';
+import { audioDecoded, expect, frameNumber, open, start, test } from '../lib/dew';
 
 // 基準4: H.264 の MP4 が変換なしで再生され、音声トラックが有効になっている
 test('H.264 の MP4 を変換なしで音声付き再生する', async ({ page, dew }) => {
@@ -10,9 +10,7 @@ test('H.264 の MP4 を変換なしで音声付き再生する', async ({ page, 
 
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(0.5);
   expect(await video.evaluate((v: HTMLVideoElement) => v.muted)).toBe(false);
-  await expect
-    .poll(() => video.evaluate((v: HTMLVideoElement & { webkitAudioDecodedByteCount: number }) => v.webkitAudioDecodedByteCount))
-    .toBeGreaterThan(0);
+  await expect.poll(() => audioDecoded(video)).toBe(true);
   expect(transcodes).toEqual([]);
 });
 
@@ -24,9 +22,7 @@ for (const name of ['mp4v.mp4', 'xvid_mp3.avi']) {
     await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(0.5);
     // Media Source Extensions で再生している
     expect(await video.evaluate((v: HTMLVideoElement) => v.src)).toMatch(/^blob:/);
-    await expect
-      .poll(() => video.evaluate((v: HTMLVideoElement & { webkitAudioDecodedByteCount: number }) => v.webkitAudioDecodedByteCount))
-      .toBeGreaterThan(0);
+    await expect.poll(() => audioDecoded(video)).toBe(true);
   });
 }
 
@@ -37,13 +33,18 @@ test('コマ送りと 0–9 の移動', async ({ page, dew }) => {
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(0.3);
   await page.keyboard.press('k');
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
+  // 一時停止の直後、Firefox の drawImage は表示中の1つ前のフレームを返すことがあるので、
+  // 起点は画面の番号表示から取る。コマ送りの後(シーク後)は画素も正しく読める
+  const label = page.getByTestId('frame-number');
+  const shown = async () => Number((await label.textContent())?.match(/\d+/)?.[0]);
 
   for (let i = 0; i < 5; i++) {
-    const before = await frameNumber(page, video);
+    const before = await shown();
     await page.keyboard.press('.');
     await expect.poll(() => frameNumber(page, video)).toBe(before + 1);
+    await expect.poll(shown).toBe(before + 1);
   }
-  const before = await frameNumber(page, video);
+  const before = await shown();
   await page.keyboard.press(',');
   await expect.poll(() => frameNumber(page, video)).toBe(before - 1);
 

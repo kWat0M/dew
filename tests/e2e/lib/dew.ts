@@ -10,6 +10,8 @@ const repo = resolve(import.meta.dirname, '../../..');
 // DEW_BIN でリリースビルドなど別のバイナリを試せる
 const bin = process.env.DEW_BIN ?? join(repo, 'target/debug/dew');
 
+const FIXTURES = ['h264_aac.mp4', 'mp4v.mp4', 'xvid_mp3.avi', 'image.png', 'image.jpg', 'sub', '.hidden.png', 'broken.mp4'];
+
 export type Dew = {
   /** トークン付き URL(初回に開くと Cookie に移る) */
   url: string;
@@ -33,7 +35,8 @@ export const test = base.extend<{ dew: Dew }>({
   dew: async ({}, use) => {
     const home = mkdtempSync(join(tmpdir(), 'dew-home-'));
     const root = mkdtempSync(join(tmpdir(), 'dew-root-'));
-    cpSync(join(repo, 'tests/fixtures'), root, { recursive: true });
+    // scripts/gen-fixtures.sh が作るものだけを複製する(手で置いたファイルが一覧の検査を乱さないように)
+    for (const name of FIXTURES) cpSync(join(repo, 'tests/fixtures', name), join(root, name), { recursive: true });
     // 開発コンテナの DEW_PUBLIC_* などを持ち込まない
     const env = { HOME: home, PATH: process.env.PATH ?? '', DEW_PUBLIC_HOST: '127.0.0.1' };
     const port = await freePort();
@@ -73,6 +76,13 @@ export async function open(page: Page, name: string) {
   const win = page.getByTestId('player-window').filter({ hasText: name });
   await expect(win).toBeVisible();
   return win.locator('video');
+}
+
+/** 音声を復号しているか(Chrome は復号したバイト数、Firefox は mozHasAudio で見る) */
+export async function audioDecoded(video: ReturnType<Page['locator']>) {
+  return video.evaluate((v: HTMLVideoElement & { webkitAudioDecodedByteCount?: number; mozHasAudio?: boolean }) =>
+    v.webkitAudioDecodedByteCount !== undefined ? v.webkitAudioDecodedByteCount > 0 : v.mozHasAudio === true,
+  );
 }
 
 /**
