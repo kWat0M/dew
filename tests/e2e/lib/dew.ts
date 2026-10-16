@@ -104,3 +104,31 @@ export async function frameNumber(page: Page, video: ReturnType<Page['locator']>
     return n;
   });
 }
+
+/** フェーズ2の素材(tests/fixtures/p2)を、閲覧範囲の起点に複製する */
+export function copyP2(dew: Dew, names: string[]) {
+  for (const name of names) cpSync(join(repo, 'tests/fixtures/p2', name), join(dew.root, name));
+}
+
+/** 素材の1画素の値を ffmpeg で読む(8bit は rgb24、16bit は rgb48le) */
+export function pixelOf(path: string, x: number, y: number, bits: 8 | 16 = 8): number[] {
+  const fmt = bits === 8 ? 'rgb24' : 'rgb48le';
+  const out = execFileSync('ffmpeg', ['-v', 'error', '-i', path, '-vf', `crop=1:1:${x}:${y}`, '-f', 'rawvideo', '-pix_fmt', fmt, '-']);
+  return bits === 8 ? [...out] : [0, 1, 2].map((i) => out.readUInt16LE(i * 2));
+}
+
+/** 複数の動画の表示中のフレーム番号を、同じ瞬間に読む(1回の evaluate で) */
+export async function frameNumbersAtOnce(page: Page) {
+  return page.evaluate(() =>
+    [...document.querySelectorAll<HTMLVideoElement>('[data-testid="player-window"] video, [data-testid="compare-window"] video')].map((v) => {
+      const c = document.createElement('canvas');
+      c.width = v.videoWidth;
+      c.height = v.videoHeight;
+      const ctx = c.getContext('2d', { willReadFrequently: true })!;
+      ctx.drawImage(v, 0, 0);
+      let n = 0;
+      for (let bit = 0; bit < 20; bit++) if (ctx.getImageData(bit * 16 + 8, 8, 1, 1).data[0]! > 128) n |= 1 << bit;
+      return n;
+    }),
+  );
+}

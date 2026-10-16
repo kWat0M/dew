@@ -6,7 +6,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 out=tests/fixtures
 font=/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf
-rm -rf "$out" && mkdir -p "$out/sub"
+# 手で置いたファイルを消さないよう、ディレクトリは消さずに上書きする
+mkdir -p "$out/sub" "$out/p2"
 ff() { ffmpeg -hide_banner -loglevel error -y "$@"; }
 
 # 共通: 640x360、30fps、10秒(300フレーム)、440 Hz の音
@@ -30,4 +31,10 @@ ff -f lavfi -i "testsrc2=size=320x180" -frames:v 1 "$out/sub/nested.webp"
 cp "$out/image.png" "$out/.hidden.png"
 # 壊れたファイル(変換失敗の表示用)
 printf 'not a video' > "$out/broken.mp4"
+# フェーズ2(比較・画像)。Home の一覧の検査に入らないよう p2/ に置き、テストが必要なときに複製する
+# 差分用: image.png の一部だけを塗りつぶしたもの
+ff -i "$out/image.png" -vf "drawbox=x=400:y=200:w=80:h=60:color=white:t=fill" "$out/p2/image_b.png"
+# 16bit PNG と TIFF(ブラウザでそのまま正確に表示できない形式)
+ff -i "$out/image.png" -pix_fmt rgb48be "$out/p2/image16.png"
+ff -i "$out/image.png" "$out/p2/image.tif"
 echo "生成しました: $out"
