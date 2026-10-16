@@ -116,6 +116,8 @@ test('キャンバスの操作パネルは設定と拡大・縮小・均等に�
   await expect(headings.first()).toHaveText('設定');
   const quick = panel(page).getByTestId('ops-quick');
   for (const name of ['拡大', '縮小', '均等に並べる']) await expect(quick.getByRole('button', { name: new RegExp(`^${name}`) })).toBeVisible();
+  // 速度は再生コントロールの一覧で選べるので、上の段には出さない
+  await expect(quick.getByRole('button', { name: /^(遅く|速く)/ })).toHaveCount(0);
 });
 
 test('操作パネルは上部バーを覆わず、開いたままバーのボタンで閉じられる。Home の上には「選択をまとめて開く」だけ', async ({ page, dew }) => {

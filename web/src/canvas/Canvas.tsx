@@ -93,7 +93,6 @@ export const quickWindowCommands: CommandDef<WindowAction>[] = [
   { id: { do: 'only' }, key: 'w o', label: 'ほかを閉じる' }, { id: { do: 'closeAll' }, key: 'w X', label: '全部閉じる' },
 ];
 export const quickPlayCommands: CommandDef<NormalAction>[] = [
-  { id: { do: 'speed', dir: -1 }, key: '[', label: '遅く' }, { id: { do: 'speed', dir: 1 }, key: ']', label: '速く' },
   { id: { do: 'ab' }, key: 'b', label: 'A-B ループ' }, { id: { do: 'all' }, key: 'K', label: '全ウィンドウ再生 / 停止' },
 ];
 

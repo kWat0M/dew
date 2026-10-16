@@ -125,3 +125,15 @@ test('再生ボタン群: 再生 / 停止のアイコンが切り替わり、コ
   await video.click();
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
 });
+
+test('再生速度の表示を押すと速度の一覧から選べる', async ({ page, dew }) => {
+  await start(page, dew);
+  const video = await open(page, 'h264_aac.mp4');
+  await page.getByRole('button', { name: '再生速度' }).click();
+  const menu = page.getByRole('menu', { name: '再生速度' });
+  await expect(menu.getByRole('menuitemradio')).toHaveCount(9);
+  await menu.getByRole('menuitemradio', { name: '2x' }).click();
+  await expect(menu).toBeHidden();
+  expect(await video.evaluate((v: HTMLVideoElement) => v.playbackRate)).toBe(2);
+  await expect(page.getByRole('button', { name: '再生速度' })).toHaveText('2x');
+});

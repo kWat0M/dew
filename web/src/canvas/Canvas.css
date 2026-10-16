@@ -446,13 +446,64 @@
 .play-button {
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
+  padding: 0;
   border: none;
   border-radius: var(--md-sys-shape-corner-full);
-  background: var(--md-sys-color-primary);
-  color: var(--md-sys-color-on-primary);
+  background: none;
+  color: var(--md-sys-color-primary);
   cursor: pointer;
+}
+
+.play-button:hover {
+  background: color-mix(in srgb, var(--md-sys-color-primary) var(--md-sys-state-hover-opacity), transparent);
+}
+
+.rate-button {
+  min-width: 40px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: none;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-medium);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+/* MD3 の Menu。画面に対して固定位置で出す */
+.menu {
+  position: fixed;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  min-width: 88px;
+  padding: 8px 0;
+  border-radius: var(--md-sys-shape-corner-extra-small);
+  background: var(--md-sys-color-surface-container);
+  box-shadow: var(--md-sys-elevation-level2);
+  z-index: 95;
+}
+
+.menu-item {
+  height: 32px;
+  padding: 0 16px;
+  border: none;
+  background: none;
+  font: var(--md-sys-typescale-label-large);
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-item:hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) var(--md-sys-state-hover-opacity), transparent);
+}
+
+.menu-item[aria-checked='true'] {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
 }
 
 

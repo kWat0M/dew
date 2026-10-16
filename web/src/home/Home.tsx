@@ -315,7 +315,6 @@ export function Home(p: Props) {
                   data-testid={initial ? 'crumb-initial' : undefined}
                   onClick={() => go(c.path)}
                 >
-                  {initial && <Icon name="home" size={14} />}
                   {c.name}
                 </button>
               </span>

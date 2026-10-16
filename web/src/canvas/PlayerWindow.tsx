@@ -60,18 +60,70 @@ type Props = {
 /** 再生開始からミュート解除ボタンを出しておく時間 */
 const UNMUTE_HINT_MS = 5000;
 
-function IconButton({ icon, label, title, onClick }: { icon: IconName; label: string; title: string; onClick: () => void }) {
+function IconButton({ icon, label, title, size = 22, onClick }: { icon: IconName; label: string; title: string; size?: number; onClick: () => void }) {
   return (
-    <button type="button" className="icon-button small" aria-label={label} title={title} onClick={onClick}>
-      <Icon name={icon} size={22} />
+    <button type="button" className="icon-button" aria-label={label} title={title} onClick={onClick}>
+      <Icon name={icon} size={size} />
     </button>
   );
 }
 
-/** 5秒は < >、30秒は << >>。何秒かはホバーで出す */
-function SeekButton({ sec, back, label, onClick }: { sec: number; back?: boolean; label: string; onClick: () => void }) {
-  const icon: IconName = sec >= 30 ? (back ? 'rewind' : 'fastForward') : back ? 'back' : 'forward';
-  return <IconButton icon={icon} label={label} title={label} onClick={onClick} />;
+/** 5秒 / 30秒の戻り・送り(Material Symbols の replay_5 などを使う) */
+function SeekButton({ sec, back, label, onClick }: { sec: 5 | 30; back?: boolean; label: string; onClick: () => void }) {
+  const icon: IconName = back ? (sec === 5 ? 'back5' : 'back30') : sec === 5 ? 'fwd5' : 'fwd30';
+  return <IconButton icon={icon} label={label} title={label} size={26} onClick={onClick} />;
+}
+
+/** 再生速度の表示。押すと速度の一覧を出す */
+function SpeedMenu({ rate, onChange }: { rate: number; onChange: (r: number) => void }) {
+  const [at, setAt] = useState<{ left: number; bottom: number } | null>(null);
+  useEffect(() => {
+    if (!at) return;
+    const close = () => setAt(null);
+    window.addEventListener('pointerdown', close);
+    window.addEventListener('keydown', close);
+    return () => {
+      window.removeEventListener('pointerdown', close);
+      window.removeEventListener('keydown', close);
+    };
+  }, [at]);
+  return (
+    <>
+      <button
+        type="button"
+        className="rate-button"
+        aria-label={ja.speedLabel}
+        aria-haspopup="menu"
+        title={ja.speed}
+        onClick={(e) => {
+          // ウィンドウの外にはみ出しても切れないよう、画面に対して位置を決める
+          const r = e.currentTarget.getBoundingClientRect();
+          setAt(at ? null : { left: r.left + r.width / 2, bottom: window.innerHeight - r.top + 4 });
+        }}
+      >
+        {rate}x
+      </button>
+      {at && (
+        <div className="menu" role="menu" aria-label={ja.speedLabel} style={{ left: at.left, bottom: at.bottom }} onPointerDown={(e) => e.stopPropagation()}>
+          {[...SPEEDS].reverse().map((s) => (
+            <button
+              key={s}
+              type="button"
+              role="menuitemradio"
+              aria-checked={s === rate}
+              className="menu-item"
+              onClick={() => {
+                onChange(s);
+                setAt(null);
+              }}
+            >
+              {s}x
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
 }
 
 type Status = { kind: 'loading' } | { kind: 'ready' } | { kind: 'error'; message: string };
@@ -199,6 +251,10 @@ export function PlayerWindow(p: Props) {
     [probe, seek],
   );
   const stepable = (probe?.frameTimes.length ?? 0) > 0;
+  const setSpeed = useCallback((r: number) => {
+    if (video.current) video.current.playbackRate = r;
+    setRate(r);
+  }, []);
 
   useImperativeHandle(p.api, () => ({
     toggle: togglePlay,
@@ -218,9 +274,7 @@ export function PlayerWindow(p: Props) {
       const v = video.current;
       if (!v) return;
       const i = SPEEDS.indexOf(v.playbackRate);
-      const next = SPEEDS[Math.max(0, Math.min(SPEEDS.length - 1, (i < 0 ? 3 : i) + dir))]!;
-      v.playbackRate = next;
-      setRate(next);
+      setSpeed(SPEEDS[Math.max(0, Math.min(SPEEDS.length - 1, (i < 0 ? 3 : i) + dir))]!);
     },
     ab: () => {
       const t = video.current?.currentTime ?? 0;
@@ -232,7 +286,7 @@ export function PlayerWindow(p: Props) {
       if (document.fullscreenElement) void document.exitFullscreen();
       else void win.current?.requestFullscreen();
     },
-  }), [probe, seek, togglePlay, seekBy, stepFrame]);
+  }), [probe, seek, togglePlay, seekBy, stepFrame, setSpeed]);
 
   // 自由配置ではタイトルバーで移動、右下の角で大きさを変える
   const drag = (kind: 'move' | 'resize') => (e: React.PointerEvent) => {
@@ -400,16 +454,14 @@ export function PlayerWindow(p: Props) {
                 title={playing ? ja.pause : ja.play}
                 onClick={togglePlay}
               >
-                <Icon name={playing ? 'pause' : 'play'} size={30} />
+                <Icon name={playing ? 'pauseCircle' : 'playCircle'} size={44} />
               </button>
               <SeekButton sec={30} label={ja.fwd30} onClick={() => seekBy(30)} />
               <SeekButton sec={5} label={ja.fwd5} onClick={() => seekBy(5)} />
               {!playing && stepable && <IconButton icon="frameNext" label={ja.frameNext} title={ja.frameNextKey} onClick={() => stepFrame(1)} />}
             </div>
             <div className="control-side end">
-            <span className="rate" title={ja.speed}>
-              {rate}x
-            </span>
+            <SpeedMenu rate={rate} onChange={setSpeed} />
             <button type="button" className="icon-button small" title={ja.mute} onClick={() => setMuted((m) => !m)}>
               <Icon name={muted || volume === 0 ? 'volumeOff' : 'volume'} size={20} />
             </button>
