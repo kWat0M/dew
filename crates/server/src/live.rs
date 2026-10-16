@@ -7,10 +7,11 @@ use axum::Json;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse, Response};
+use dew_capture::audio::{self, Audio};
 use dew_capture::monitor::{self, WindowEvent, WindowInfo};
 use dew_capture::session::Session;
 use dew_capture::stream::{Frame, Stream};
-use dew_protocol::{LiveConfig, LiveSession, LiveWindow};
+use dew_protocol::{LiveAudioConfig, LiveConfig, LiveSession, LiveWindow};
 use tokio::sync::{broadcast, mpsc, watch};
 
 use crate::App;
@@ -21,6 +22,8 @@ pub(crate) struct Live {
     windows: Mutex<HashMap<u32, (WindowInfo, Arc<Stream>)>>,
     /// 一覧の変化(タブへ知らせる)
     pub list: watch::Sender<Vec<LiveWindow>>,
+    /// セッション音声
+    audio: Mutex<Option<Arc<Audio>>>,
 }
 
 impl Live {
@@ -28,6 +31,7 @@ impl Live {
         Self {
             windows: Mutex::default(),
             list: watch::channel(Vec::new()).0,
+            audio: Mutex::default(),
         }
     }
 
@@ -84,6 +88,9 @@ impl Live {
     }
 
     pub(crate) fn clear(&self) {
+        if let Some(a) = self.audio.lock().unwrap().take() {
+            a.stop();
+        }
         for (_, (_, s)) in self.windows.lock().unwrap().drain() {
             s.stop();
         }
@@ -101,6 +108,10 @@ pub(crate) async fn session(State(app): State<Arc<App>>) -> Result<Json<LiveSess
         let (tx, rx) = mpsc::unbounded_channel();
         monitor::spawn(s.display, tx).map_err(|e| ApiError::Internal(format!("{e:#}")))?;
         tokio::spawn(app.live_windows.clone().follow(s.display, rx));
+        match Audio::start(&s.pulse_socket) {
+            Ok(a) => *app.live_windows.audio.lock().unwrap() = Some(a),
+            Err(e) => tracing::warn!("音声を取り込めません: {e:#}"),
+        }
         *live = Some(s);
     }
     let s = live.as_ref().unwrap();
@@ -183,6 +194,48 @@ async fn send_video(mut socket: WebSocket, info: WindowInfo, stream: Arc<Stream>
             Err(_) => return,
         }
     }
+}
+
+/// `GET /ws/live-audio`: セッション音声。最初に復号の設定、続けて Opus のパケット
+pub(crate) async fn audio_ws(State(app): State<Arc<App>>, upgrade: WebSocketUpgrade) -> Response {
+    let Some(audio) = app.live_windows.audio.lock().unwrap().clone() else {
+        return (
+            axum::http::StatusCode::NOT_FOUND,
+            "ライブ描画のセッションがありません",
+        )
+            .into_response();
+    };
+    upgrade.on_upgrade(move |mut socket| async move {
+        let config = LiveAudioConfig {
+            codec: "opus".into(),
+            sample_rate: audio::SAMPLE_RATE,
+            number_of_channels: audio::CHANNELS,
+        };
+        if socket
+            .send(Message::Text(
+                serde_json::to_string(&config).unwrap().into(),
+            ))
+            .await
+            .is_err()
+        {
+            return;
+        }
+        let mut rx = audio.subscribe();
+        loop {
+            match rx.recv().await {
+                Ok(p) => {
+                    let mut out = Vec::with_capacity(8 + p.data.len());
+                    out.extend_from_slice(&p.timestamp_us.to_be_bytes());
+                    out.extend_from_slice(&p.data);
+                    if socket.send(Message::Binary(out.into())).await.is_err() {
+                        return;
+                    }
+                }
+                Err(broadcast::error::RecvError::Lagged(_)) => {}
+                Err(_) => return,
+            }
+        }
+    })
 }
 
 /// [フラグ 1バイト][タイムスタンプ µs 8バイト][H.264 Annex B]

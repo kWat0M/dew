@@ -42,7 +42,9 @@ def main():
 
     if args.tone > 0:
         pygame.mixer.init(frequency=48000, size=-16, channels=2)
-        t = np.arange(48000) / 48000.0
+        # 求めた周波数で開けるとは限らないので、実際の周波数で波形を作る(違うと音の高さがずれる)
+        rate = pygame.mixer.get_init()[0]
+        t = np.arange(rate) / float(rate)
         wave = (np.sin(2 * math.pi * args.tone * t) * 12000).astype(np.int16)
         pygame.sndarray.make_sound(np.column_stack([wave, wave])).play(loops=-1)
 

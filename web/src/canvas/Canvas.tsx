@@ -11,6 +11,7 @@ import { KeySequence } from '../keys';
 import { useKeys } from '../useKeys';
 import { cascade, neighbor, tile, type Dir, type Rect } from './layout';
 import { CompareWindow, type Member } from './CompareWindow';
+import { useLiveAudio } from './liveAudio';
 import { LiveWindow, type LiveInfo } from './LiveWindow';
 import { PlayerWindow, type PlayerApi } from './PlayerWindow';
 import { SyncGroup } from './sync';
@@ -178,7 +179,10 @@ export function Canvas(p: Props) {
   const ws = p.windows;
   /** 音声のある動画のウィンドウ(全体のミュートボタンに「ミュートを解除」と出すかに使う) */
   const [withAudio, setWithAudio] = useState<Set<number>>(new Set());
-  const hasAudio = ws.some((w) => withAudio.has(w.id));
+  // ライブ描画の音(セッション音声)。動いているライブウィンドウがある間だけ受け取る
+  const liveRunning = ws.some((w) => w.live && !w.live.ended);
+  useLiveAudio(liveRunning, p.globalMuted || !p.visible);
+  const hasAudio = ws.some((w) => withAudio.has(w.id)) || liveRunning;
   // ウィンドウの読み込み処理をやり直させないよう、変わらない関数にしてウィンドウの ID と一緒に呼んでもらう
   const onHasAudio = useCallback(
     (id: number, has: boolean) =>

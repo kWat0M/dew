@@ -171,3 +171,51 @@ fn app_window_is_listed_and_streamed_as_h264() {
     let _ = child.kill();
     let _ = child.wait();
 }
+
+#[test]
+fn session_audio_is_streamed_as_opus() {
+    let a = Instance::new();
+    a.dew(&["--port", &free_port().to_string()]);
+    // セッションを作ってから、音を鳴らすアプリを動かす
+    a.dew(&["env"]);
+    let app = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/apps/counter.py");
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_dew"))
+        .args([
+            "run",
+            "python3",
+            app.to_str().unwrap(),
+            "--tone",
+            "440",
+            "--seconds",
+            "20",
+        ])
+        .env_clear()
+        .env("HOME", a.home.path())
+        .env("PATH", std::env::var("PATH").unwrap())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut ws = a.ws("/ws/live-audio");
+    let config = recv_json(&mut ws, 10, |_| true);
+    assert_eq!(config["codec"], "opus");
+    assert_eq!(config["sampleRate"], 48000);
+    // アプリが音を出し始めるまで(起動に数秒かかる)待ってから、10 ms ごとのパケットが届き続けるかを見る
+    while !matches!(ws.read().unwrap(), tungstenite::Message::Binary(_)) {}
+    let start = std::time::Instant::now();
+    let mut packets = 0;
+    let mut last_ts = None;
+    while start.elapsed().as_secs_f64() < 1.5 {
+        if let tungstenite::Message::Binary(b) = ws.read().unwrap() {
+            let ts = u64::from_be_bytes(b[..8].try_into().unwrap());
+            if let Some(prev) = last_ts {
+                assert_eq!(ts - prev, 10_000, "10 ms 間隔");
+            }
+            last_ts = Some(ts);
+            packets += 1;
+        }
+    }
+    assert!(packets >= 100, "{packets}");
+    let _ = child.kill();
+    let _ = child.wait();
+}

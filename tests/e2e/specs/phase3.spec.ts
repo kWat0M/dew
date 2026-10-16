@@ -54,7 +54,7 @@ test.fixme('1080p 60fps で受信 fps 55 以上、遅延 150 ms 以下', async (
 });
 
 // 基準4: テストアプリの 440 Hz の音が、ブラウザ側で 440 Hz として検出される
-test.fixme('440 Hz の音がブラウザで 440 Hz として検出される', async ({ page, dew }) => {
+test('440 Hz の音がブラウザで 440 Hz として検出される', async ({ page, dew }) => {
   await start(page, dew);
   dew.spawnRun(['python3', appPath('counter.py'), '--tone', '440']);
   await expect(liveWindow(page, 'counter')).toBeVisible(APPEAR);

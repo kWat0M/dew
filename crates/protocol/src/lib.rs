@@ -197,6 +197,17 @@ pub struct LiveConfig {
     pub height: u32,
 }
 
+/// `WS /ws/live-audio` で最初に送る、セッション音声の復号の設定。続けて Opus のパケットをバイナリで送る
+/// (先頭8バイトがタイムスタンプ(µs、ビッグエンディアン)、残りが Opus のパケット)
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LiveAudioConfig {
+    pub codec: String,
+    pub sample_rate: u32,
+    pub number_of_channels: u32,
+}
+
 /// `WS /ws/events` でブラウザから送る通知
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(

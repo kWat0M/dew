@@ -195,6 +195,7 @@ fn router(app: Arc<App>) -> Router {
         .nest("/api", api)
         .route("/ws/events", get(events::ws))
         .route("/ws/live/{id}", get(live::ws))
+        .route("/ws/live-audio", get(live::audio_ws))
         .fallback(web::static_file)
         .layer(middleware::from_fn_with_state(
             app.clone(),
