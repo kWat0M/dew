@@ -1,1 +1,9 @@
 .env
+.claude/budget/
+CLAUDE.local.md
+target/
+node_modules/
+web/dist/
+tests/fixtures/
+tests/e2e/test-results/
+tests/e2e/playwright-report/

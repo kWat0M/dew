@@ -1,0 +1,27 @@
+[package]
+name = "dew-server"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow = "1"
+axum = { version = "0.8", features = ["ws"] }
+axum-server = { version = "0.8", default-features = false, features = ["tls-rustls-no-provider"] }
+dew-media = { version = "0.1.0", path = "../media" }
+dew-protocol = { version = "0.1.0", path = "../protocol" }
+futures-util = "0.3"
+getrandom = "0.4"
+notify = "8"
+rcgen = "0.14"
+rust-embed = { version = "8", features = ["mime-guess"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["fs"] }
+tracing = "0.1"
+
+[dev-dependencies]
+tempfile = "3"

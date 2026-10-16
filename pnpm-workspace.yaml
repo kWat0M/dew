@@ -1,0 +1,7 @@
+packages:
+  - web
+  - tests/e2e
+
+# パッケージのストアは名前付きボリューム(compose.yaml の pnpm-store)に置く。
+# 指定しないと pnpm がリポジトリ直下に .pnpm-store を作る
+storeDir: /home/dev/.local/share/pnpm/store

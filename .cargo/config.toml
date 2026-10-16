@@ -1,0 +1,3 @@
+[env]
+# ts-rs の出力先。cargo test(nextest)を実行すると web/src/protocol/ の型が更新される
+TS_RS_EXPORT_DIR = { value = "web/src/protocol", relative = true }

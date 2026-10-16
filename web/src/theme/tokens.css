@@ -1,0 +1,49 @@
+/* Material Design 3 のトークン(色以外)。色は colors.css(生成ファイル) */
+:root {
+  /* 角丸 */
+  --md-sys-shape-corner-none: 0;
+  --md-sys-shape-corner-extra-small: 4px;
+  --md-sys-shape-corner-small: 8px;
+  --md-sys-shape-corner-medium: 12px;
+  --md-sys-shape-corner-large: 16px;
+  --md-sys-shape-corner-extra-large: 28px;
+  --md-sys-shape-corner-full: 9999px;
+
+  /* エレベーション(影の色は shadow トークンから作る) */
+  --md-sys-elevation-shadow-key: color-mix(in srgb, var(--md-sys-color-shadow) 30%, transparent);
+  --md-sys-elevation-shadow-ambient: color-mix(in srgb, var(--md-sys-color-shadow) 15%, transparent);
+  --md-sys-elevation-level0: none;
+  --md-sys-elevation-level1: 0 1px 2px 0 var(--md-sys-elevation-shadow-key), 0 1px 3px 1px var(--md-sys-elevation-shadow-ambient);
+  --md-sys-elevation-level2: 0 1px 2px 0 var(--md-sys-elevation-shadow-key), 0 2px 6px 2px var(--md-sys-elevation-shadow-ambient);
+  --md-sys-elevation-level3: 0 1px 3px 0 var(--md-sys-elevation-shadow-key), 0 4px 8px 3px var(--md-sys-elevation-shadow-ambient);
+  --md-sys-elevation-level4: 0 2px 3px 0 var(--md-sys-elevation-shadow-key), 0 6px 10px 4px var(--md-sys-elevation-shadow-ambient);
+  --md-sys-elevation-level5: 0 4px 4px 0 var(--md-sys-elevation-shadow-key), 0 8px 12px 6px var(--md-sys-elevation-shadow-ambient);
+
+  /* 状態レイヤーの不透明度 */
+  --md-sys-state-hover-opacity: 8%;
+  --md-sys-state-focus-opacity: 10%;
+  --md-sys-state-pressed-opacity: 10%;
+  --md-sys-state-dragged-opacity: 16%;
+
+  /* モーション */
+  --md-sys-motion-easing-standard: cubic-bezier(0.2, 0, 0, 1);
+  --md-sys-motion-easing-emphasized-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --md-sys-motion-easing-emphasized-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);
+  --md-sys-motion-duration-short2: 100ms;
+  --md-sys-motion-duration-short4: 200ms;
+  --md-sys-motion-duration-medium2: 300ms;
+  --md-sys-motion-duration-long2: 500ms;
+
+  /* 文字(Windows の日本語フォントを優先) */
+  --md-ref-typeface-plain: 'Segoe UI', 'Yu Gothic UI', 'Meiryo UI', 'Noto Sans CJK JP', system-ui, sans-serif;
+  --md-ref-typeface-mono: 'Cascadia Mono', Consolas, 'Noto Sans Mono CJK JP', monospace;
+  --md-sys-typescale-body-large: 400 16px/24px var(--md-ref-typeface-plain);
+  --md-sys-typescale-body-medium: 400 14px/20px var(--md-ref-typeface-plain);
+  --md-sys-typescale-body-small: 400 12px/16px var(--md-ref-typeface-plain);
+  --md-sys-typescale-label-large: 500 14px/20px var(--md-ref-typeface-plain);
+  --md-sys-typescale-label-medium: 500 12px/16px var(--md-ref-typeface-plain);
+  --md-sys-typescale-label-small: 500 11px/16px var(--md-ref-typeface-plain);
+  --md-sys-typescale-title-large: 400 22px/28px var(--md-ref-typeface-plain);
+  --md-sys-typescale-title-medium: 500 16px/24px var(--md-ref-typeface-plain);
+  --md-sys-typescale-title-small: 500 14px/20px var(--md-ref-typeface-plain);
+}
