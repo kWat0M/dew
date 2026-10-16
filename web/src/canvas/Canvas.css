@@ -743,3 +743,24 @@
   background: var(--md-sys-color-surface-container-highest);
   color: var(--md-sys-color-on-surface-variant);
 }
+
+/* 入力モード(L6): 枠の色を変え、抜けるキーを常に出す */
+.window.input-mode,
+.window.input-mode.focused {
+  border-color: var(--md-sys-color-tertiary);
+  outline: 2px solid var(--md-sys-color-tertiary);
+}
+
+.input-hint {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-tertiary-container);
+  color: var(--md-sys-color-on-tertiary-container);
+  font: var(--md-sys-typescale-label-medium);
+  white-space: nowrap;
+  pointer-events: none;
+}

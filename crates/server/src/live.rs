@@ -8,10 +8,12 @@ use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse, Response};
 use dew_capture::audio::{self, Audio};
+use dew_capture::input::Injector;
 use dew_capture::monitor::{self, WindowEvent, WindowInfo};
 use dew_capture::session::Session;
 use dew_capture::stream::{Frame, Stream};
-use dew_protocol::{LiveAudioConfig, LiveConfig, LiveSession, LiveWindow};
+use dew_protocol::{LiveAudioConfig, LiveConfig, LiveInput, LiveSession, LiveWindow};
+use futures_util::{SinkExt, StreamExt};
 use tokio::sync::{broadcast, mpsc, watch};
 
 use crate::App;
@@ -24,6 +26,8 @@ pub(crate) struct Live {
     pub list: watch::Sender<Vec<LiveWindow>>,
     /// セッション音声
     audio: Mutex<Option<Arc<Audio>>>,
+    /// 入力モードのキー・マウスの注入
+    input: Mutex<Option<Injector>>,
 }
 
 impl Live {
@@ -32,6 +36,7 @@ impl Live {
             windows: Mutex::default(),
             list: watch::channel(Vec::new()).0,
             audio: Mutex::default(),
+            input: Mutex::default(),
         }
     }
 
@@ -91,6 +96,7 @@ impl Live {
         if let Some(a) = self.audio.lock().unwrap().take() {
             a.stop();
         }
+        self.input.lock().unwrap().take();
         for (_, (_, s)) in self.windows.lock().unwrap().drain() {
             s.stop();
         }
@@ -108,6 +114,10 @@ pub(crate) async fn session(State(app): State<Arc<App>>) -> Result<Json<LiveSess
         let (tx, rx) = mpsc::unbounded_channel();
         monitor::spawn(s.display, tx).map_err(|e| ApiError::Internal(format!("{e:#}")))?;
         tokio::spawn(app.live_windows.clone().follow(s.display, rx));
+        match Injector::new(s.display) {
+            Ok(i) => *app.live_windows.input.lock().unwrap() = Some(i),
+            Err(e) => tracing::warn!("入力を注入できません: {e:#}"),
+        }
         match Audio::start(&s.pulse_socket) {
             Ok(a) => *app.live_windows.audio.lock().unwrap() = Some(a),
             Err(e) => tracing::warn!("音声を取り込めません: {e:#}"),
@@ -135,10 +145,52 @@ pub(crate) async fn ws(
         )
             .into_response();
     };
-    upgrade.on_upgrade(move |socket| send_video(socket, info, stream))
+    let live = app.live_windows.clone();
+    upgrade.on_upgrade(move |socket| async move {
+        let (sink, mut stream_in) = socket.split();
+        let window = info.id;
+        let video = send_video(sink, info, stream);
+        // 入力モードのキー・マウスを受け取って注入する(L6)
+        let input = async {
+            while let Some(Ok(Message::Text(t))) = stream_in.next().await {
+                match serde_json::from_str::<LiveInput>(&t) {
+                    Ok(ev) => live.inject(window, ev),
+                    Err(e) => tracing::warn!("入力を読めません: {e}"),
+                }
+            }
+        };
+        tokio::select! {
+            _ = video => {}
+            _ = input => {}
+        }
+        live.inject(window, LiveInput::Release);
+    })
 }
 
-async fn send_video(mut socket: WebSocket, info: WindowInfo, stream: Arc<Stream>) {
+impl Live {
+    fn inject(&self, window: u32, ev: LiveInput) {
+        let mut guard = self.input.lock().unwrap();
+        let Some(inj) = guard.as_mut() else { return };
+        let clamp = |v: i32| v.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
+        let r = match ev {
+            LiveInput::Key { key, down } => inj.key(window, &key, down),
+            LiveInput::Move { x, y } => inj.motion(window, clamp(x), clamp(y)),
+            LiveInput::Button { button, down, x, y } => {
+                inj.button(window, button, down, clamp(x), clamp(y))
+            }
+            LiveInput::Release => inj.release_all(),
+        };
+        if let Err(e) = r {
+            tracing::warn!("入力を注入できません: {e:#}");
+        }
+    }
+}
+
+async fn send_video(
+    mut socket: futures_util::stream::SplitSink<WebSocket, Message>,
+    info: WindowInfo,
+    stream: Arc<Stream>,
+) {
     let (codec, backlog, mut rx) = stream.subscribe();
     // まだキーフレームが来ていなければ、来るまで待つ
     let mut pending: Vec<Arc<Frame>> = backlog;

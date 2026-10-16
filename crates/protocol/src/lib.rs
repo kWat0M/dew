@@ -208,6 +208,35 @@ pub struct LiveAudioConfig {
     pub number_of_channels: u32,
 }
 
+/// 入力モード(L6、5.5)で `WS /ws/live/{id}` にブラウザから送る入力。座標はアプリのウィンドウの中の画素
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+#[ts(export)]
+pub enum LiveInput {
+    /// キー(`key` は KeyboardEvent.key)
+    Key {
+        key: String,
+        down: bool,
+    },
+    Move {
+        x: i32,
+        y: i32,
+    },
+    /// マウスのボタン(1 左、2 中、3 右、4・5 ホイール)
+    Button {
+        button: u8,
+        down: bool,
+        x: i32,
+        y: i32,
+    },
+    /// 入力モードを抜けた。押したままのキーを離す
+    Release,
+}
+
 /// `WS /ws/events` でブラウザから送る通知
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(

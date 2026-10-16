@@ -67,7 +67,7 @@ test('440 Hz の音がブラウザで 440 Hz として検出される', async ({
 });
 
 // 基準5: 入力モードで押したキーをアプリが受け取り、Ctrl+] で抜けた後のキーは受け取らない
-test.fixme('入力モードのキーだけがアプリに届く', async ({ page, dew }) => {
+test('入力モードのキーだけがアプリに届く', async ({ page, dew }) => {
   const keylog = join(mkdtempSync(join(tmpdir(), 'dew-keys-')), 'keys.txt');
   writeFileSync(keylog, '');
   await start(page, dew);
@@ -94,4 +94,22 @@ test.fixme('cv2・matplotlib・pygame のサンプルが表示される', async 
   dew.spawnRun(['python3', appPath('mpl_sample.py')]);
   dew.spawnRun(['python3', appPath('counter.py'), '--tone', '0']);
   for (const title of ['cv2 sample', 'Figure 1', 'counter']) await expect(liveWindow(page, title)).toBeVisible(APPEAR);
+});
+
+// 5.5: I の送信用の入力欄から、文字列をまとめて送れる(Shift が要る文字も押した文字どおりに届く)
+test('I の入力欄から文字列を送れる', async ({ page, dew }) => {
+  const keylog = join(mkdtempSync(join(tmpdir(), 'dew-keys-')), 'keys.txt');
+  writeFileSync(keylog, '');
+  await start(page, dew);
+  dew.spawnRun(['python3', appPath('counter.py'), '--tone', '0'], { DEW_TEST_KEYLOG: keylog });
+  await expect(liveWindow(page, 'counter')).toBeVisible(APPEAR);
+  await page.waitForTimeout(1000);
+  await page.keyboard.press('I');
+  const box = page.getByRole('dialog', { name: '文字列を送る' }).getByRole('textbox');
+  await box.fill('Hi!');
+  await box.press('Enter');
+  // 大文字や記号では、実際のキーボードと同じく Shift も押される(アプリには Shift キーの押下も届く)
+  await expect
+    .poll(() => readFileSync(keylog, 'utf8').split('\n').filter((k) => k && !k.includes('shift')))
+    .toEqual(['H', 'i', '!']);
 });
