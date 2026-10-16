@@ -28,6 +28,8 @@ test('2つの窓を開くアプリで2つのウィンドウが出る', async ({ 
 });
 
 // 基準3: 1080p 60fps のテストアプリで、受信 fps が 55 以上、遅延が 150 ms 以下(Chrome で測る)
+// 単独では通る(2026-10-16: 60.5 fps、遅延の中央値 51 ms。`npx playwright test -g 1080p --project chrome`)。
+// ただし E2E 全体を並列に流すと 4.5 fps まで落ちて失敗するため、原因を調べるまで fixme にしておく(docs/handoff.md)
 test.fixme('1080p 60fps で受信 fps 55 以上、遅延 150 ms 以下', async ({ page, dew, browserName }) => {
   test.skip(browserName !== 'chromium', '基準は Chrome で測る');
   await start(page, dew);
@@ -40,6 +42,7 @@ test.fixme('1080p 60fps で受信 fps 55 以上、遅延 150 ms 以下', async (
   const d0 = await decoded();
   await page.waitForTimeout(2000);
   const fps = ((await decoded()) - d0) / 2;
+  console.log(`受信 fps: ${fps}`);
   expect(fps).toBeGreaterThanOrEqual(55);
   // 遅延: アプリが描いた時刻(2段目のブロック)と、表示中の時刻の差の中央値
   const lags: number[] = [];
@@ -50,6 +53,7 @@ test.fixme('1080p 60fps で受信 fps 55 以上、遅延 150 ms 以下', async (
     await page.waitForTimeout(50);
   }
   lags.sort((a, b) => a - b);
+  console.log(`遅延(ms): 中央値 ${lags[Math.floor(lags.length / 2)]}、最小 ${lags[0]}、最大 ${lags.at(-1)}`);
   expect(lags[Math.floor(lags.length / 2)]!).toBeLessThanOrEqual(150);
 });
 
@@ -88,7 +92,7 @@ test('入力モードのキーだけがアプリに届く', async ({ page, dew }
 });
 
 // 基準6: cv2.imshow、matplotlib、pygame のサンプルがすべて表示される
-test.fixme('cv2・matplotlib・pygame のサンプルが表示される', async ({ page, dew }) => {
+test('cv2・matplotlib・pygame のサンプルが表示される', async ({ page, dew }) => {
   await start(page, dew);
   dew.spawnRun(['python3', appPath('cv2_sample.py')]);
   dew.spawnRun(['python3', appPath('mpl_sample.py')]);
