@@ -74,3 +74,33 @@ test('キャンバスから戻ると Home の状態が残っている', async ({
   await expect(current(page).getByRole('option', { name: 'sub' })).toBeVisible();
   await expect(page.getByTestId('player-window')).toBeHidden();
 });
+
+// 履歴ウィンドウ(4.4): 直近に開いたファイルを新しい順に出し、Home と同じキーで開く。q で閉じる
+test('履歴ウィンドウから開き直せる', async ({ page, dew }) => {
+  await start(page, dew);
+  await open(page, 'h264_aac.mp4');
+  await page.keyboard.press('Tab');
+  await open(page, 'image.png');
+
+  await page.keyboard.press('r');
+  const history = page.getByTestId('history');
+  await expect(history).toBeVisible();
+  await expect(history.getByTestId('history-list').getByRole('option')).toHaveText(['image.png', 'h264_aac.mp4']);
+  await expect(history.getByTestId('col-preview').locator('img')).toBeVisible();
+  await page.keyboard.press('q');
+  await expect(history).toBeHidden();
+
+  // Home からも開け、閉じるボタンがある
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('r');
+  await expect(history).toBeVisible();
+  await history.getByRole('button', { name: '閉じる' }).click();
+  await expect(history).toBeHidden();
+
+  await page.keyboard.press('r');
+  await expect(history.getByRole('option')).toHaveCount(2);
+  await page.keyboard.press('j');
+  await page.keyboard.press('Enter');
+  await expect(history).toBeHidden();
+  await expect(page.getByTestId('player-window').filter({ hasText: 'h264_aac.mp4' })).toHaveCount(2);
+});

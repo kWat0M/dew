@@ -1,0 +1,49 @@
+/* キャンバスの縦横 90% の大きさで重ねて出す */
+.overlay-scrim {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--md-sys-color-scrim) 32%, transparent);
+  z-index: 80;
+}
+
+.history {
+  display: flex;
+  flex-direction: column;
+  width: 90vw;
+  height: 90vh;
+  border-radius: var(--md-sys-shape-corner-extra-large);
+  background: var(--md-sys-color-surface-container);
+  box-shadow: var(--md-sys-elevation-level3);
+  overflow: hidden;
+}
+
+.overlay-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 56px;
+  padding: 0 8px 0 20px;
+}
+
+.overlay-bar h2 {
+  margin: 0;
+  font: var(--md-sys-typescale-title-large);
+}
+
+.overlay-hint {
+  flex: 1;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-small);
+  text-align: right;
+}
+
+.history-columns {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(240px, 1fr);
+  gap: 8px;
+  padding: 0 8px 8px;
+  min-height: 0;
+}

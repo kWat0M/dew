@@ -36,6 +36,9 @@ export const ja = {
   playFailed: '再生できません(形式に対応していないか、ファイルが壊れています)',
 
   close: '閉じる',
+  history: '履歴',
+  historyHint: 'j/k で移動、Space で複数選択、Enter で開く、q で閉じる',
+  historyEmpty: 'まだ開いたファイルがありません',
   select: '選択',
   minimize: '最小化',
   maximize: '最大化',
@@ -86,6 +89,7 @@ export const ja = {
     ['K', '全ウィンドウを再生 / 一時停止'],
     ['h / Tab', 'Home へ戻る(離れたときの状態のまま)'],
     ['H', 'Home へ戻り、初期位置を開く'],
+    ['r', '履歴'],
     ['w', 'ウィンドウ操作モード(q で抜ける)'],
     ['?', 'このキー一覧'],
   ] as [string, string][],

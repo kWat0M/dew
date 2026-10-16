@@ -19,7 +19,7 @@ type PlayAction =
 
 type NormalAction =
   | PlayAction
-  | { do: 'maximize' } | { do: 'all' } | { do: 'home' } | { do: 'homeInitial' } | { do: 'help' }
+  | { do: 'maximize' } | { do: 'all' } | { do: 'home' } | { do: 'homeInitial' } | { do: 'help' } | { do: 'history' }
   | { do: 'windowMode' } | { do: 'escape' };
 
 /** ウィンドウ操作モードのキー */
@@ -36,7 +36,7 @@ const normal: Record<string, NormalAction> = {
   '[': { do: 'speed', dir: -1 }, ']': { do: 'speed', dir: 1 },
   b: { do: 'ab' }, m: { do: 'mute' }, z: { do: 'zoom' }, f: { do: 'maximize' }, K: { do: 'all' },
   h: { do: 'home' }, H: { do: 'homeInitial' }, Tab: { do: 'home' }, '?': { do: 'help' },
-  w: { do: 'windowMode' }, Escape: { do: 'escape' },
+  w: { do: 'windowMode' }, r: { do: 'history' }, Escape: { do: 'escape' },
 };
 for (let n = 0; n <= 9; n++) normal[String(n)] = { do: 'percent', n };
 
@@ -70,6 +70,7 @@ type Props = {
   onReorder: (ids: number[]) => void;
   onHome: () => void;
   onHomeInitial: () => void;
+  onHistory: () => void;
 };
 
 export function Canvas(p: Props) {
@@ -194,6 +195,7 @@ export function Canvas(p: Props) {
       case 'home': return p.onHome();
       case 'homeInitial': return p.onHomeInitial();
       case 'help': return setHelp((h) => !h);
+      case 'history': return p.onHistory();
       case 'windowMode': return setWindowMode(true);
       case 'escape': return setHelp(false);
       default: return runPlay(a);

@@ -99,6 +99,24 @@ pub struct Sprite {
     pub tile_height: u32,
 }
 
+/// `GET /api/history` の応答(4.4)。新しい順
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct History {
+    /// 閲覧範囲の起点。各項目の `name` はここからの相対パス
+    pub root: String,
+    pub entries: Vec<Entry>,
+}
+
+/// `POST /api/history` の要求。開いたファイルを履歴の先頭に加える
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct HistoryAdd {
+    pub paths: Vec<String>,
+}
+
 /// `POST /api/open` の要求(F10)
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]

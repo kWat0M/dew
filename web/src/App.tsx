@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api/http';
 import { Events } from './api/events';
 import { Canvas, type Win } from './canvas/Canvas';
+import { HistoryWindow } from './history/HistoryWindow';
 import { Home, type DirRequest } from './home/Home';
 import { ja } from './i18n/ja';
 import { readKey } from './keys';
@@ -28,6 +29,7 @@ export function App() {
   const [windows, setWindows] = useState<Win[]>([]);
   const [focused, setFocused] = useState<number | null>(null);
   const [ime, setIme] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const nextId = useRef(1);
   const lastActive = useRef(0);
@@ -46,6 +48,7 @@ export function App() {
 
   const open = useCallback((files: Omit<Win, 'id'>[]) => {
     const added = files.map((f) => ({ ...f, id: nextId.current++ }));
+    api.addHistory(files.map((f) => f.path));
     setWindows((ws) => [...ws, ...added]);
     setFocused(added.at(-1)!.id);
     setScreen('canvas');
@@ -117,18 +120,19 @@ export function App() {
       <div className="screen" hidden={screen !== 'home'}>
         <Home
           events={events}
-          active={started && screen === 'home'}
+          active={started && screen === 'home' && !historyOpen}
           dir={homeRequest}
           liveCount={0}
           onOpen={open}
           onCanvas={() => setScreen('canvas')}
           onInitial={toInitial}
+          onHistory={() => setHistoryOpen(true)}
           onError={onError}
         />
       </div>
       <div className="screen" hidden={screen !== 'canvas'}>
         <Canvas
-          active={started && screen === 'canvas'}
+          active={started && screen === 'canvas' && !historyOpen}
           visible={screen === 'canvas'}
           windows={windows}
           focused={focused}
@@ -140,12 +144,14 @@ export function App() {
           }}
           onReorder={(ids) => setWindows((ws) => ids.map((id) => ws.find((w) => w.id === id)!))}
           onHome={() => setScreen('home')}
+          onHistory={() => setHistoryOpen(true)}
           onHomeInitial={() => {
             toInitial();
             setScreen('home');
           }}
         />
       </div>
+      {historyOpen && started && <HistoryWindow onOpen={open} onClose={() => setHistoryOpen(false)} onError={onError} />}
       {ime && <div className="ime">{ja.imeOn}</div>}
       {!started && (
         <div className="start-overlay" data-testid="start-overlay">

@@ -114,7 +114,7 @@ fn list(root: &Path, dir: &Path) -> Result<Tree, ApiError> {
     })
 }
 
-fn entry(path: &Path) -> Entry {
+pub(crate) fn entry(path: &Path) -> Entry {
     let name = path
         .file_name()
         .unwrap_or_default()

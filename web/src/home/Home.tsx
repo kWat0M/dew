@@ -16,13 +16,13 @@ import './Home.css';
 
 type Action =
   | 'down' | 'up' | 'parent' | 'enter' | 'open' | 'mark' | 'top' | 'bottom'
-  | 'filter' | 'follow' | 'view' | 'hidden' | 'canvas' | 'initial' | 'escape';
+  | 'filter' | 'follow' | 'view' | 'hidden' | 'canvas' | 'initial' | 'history' | 'escape';
 
 const keymap = new KeySequence<Action>({
   j: 'down', ArrowDown: 'down', k: 'up', ArrowUp: 'up',
   h: 'parent', ArrowLeft: 'parent', l: 'enter', ArrowRight: 'enter',
   Enter: 'open', ' ': 'mark', 'g g': 'top', G: 'bottom',
-  '/': 'filter', n: 'follow', v: 'view', '.': 'hidden', Tab: 'canvas', H: 'initial', Escape: 'escape',
+  '/': 'filter', n: 'follow', v: 'view', '.': 'hidden', Tab: 'canvas', H: 'initial', r: 'history', Escape: 'escape',
 });
 
 export type DirRequest = { path: string; seq: number };
@@ -37,6 +37,7 @@ type Props = {
   onCanvas: () => void;
   /** 初期位置へ戻る(H) */
   onInitial: () => void;
+  onHistory: () => void;
   onError: (message: string) => void;
 };
 
@@ -211,6 +212,7 @@ export function Home(p: Props) {
       case 'hidden': return setShowHidden((h) => !h);
       case 'canvas': return p.onCanvas();
       case 'initial': return p.onInitial();
+      case 'history': return p.onHistory();
       case 'escape':
         setMarked(new Set());
         setFilter('');
