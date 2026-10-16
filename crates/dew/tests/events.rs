@@ -12,6 +12,20 @@ fn send(ws: &mut Ws, v: Value) {
     ws.send(Message::Text(v.to_string().into())).unwrap();
 }
 
+/// `ms` ミリ秒の間に、種類 `kind` の通知が来ないことを確かめる(ほかの種類は読み捨てる)
+fn assert_none(ws: &mut Ws, kind: &str, ms: u64) {
+    ws.get_mut()
+        .get_mut()
+        .set_read_timeout(Some(Duration::from_millis(ms)))
+        .unwrap();
+    while let Ok(m) = ws.read() {
+        if let Message::Text(t) = m {
+            let v: Value = serde_json::from_str(&t).unwrap();
+            assert_ne!(v["type"], kind, "{v}");
+        }
+    }
+}
+
 /// 条件に合う通知が来るまで読む
 fn recv_until(ws: &mut Ws, f: impl Fn(&Value) -> bool) -> Value {
     loop {
@@ -77,13 +91,8 @@ fn dew_file_is_sent_to_last_active_tab() {
     assert_eq!(ev["path"], file.to_str().unwrap());
     assert_eq!(ev["kind"], "file");
     assert_eq!(ev["media"], "video");
-    // もう一方のタブには送らない
-    second
-        .get_mut()
-        .get_mut()
-        .set_read_timeout(Some(Duration::from_millis(300)))
-        .unwrap();
-    assert!(second.read().is_err());
+    // もう一方のタブには送らない(ライブ描画の一覧などほかの通知は届いてよい)
+    assert_none(&mut second, "open", 300);
 }
 
 #[test]
@@ -142,9 +151,6 @@ fn reading_files_is_not_a_change() {
         200
     );
     std::fs::read(dir.join("h264_aac.mp4")).unwrap();
-    ws.get_mut()
-        .get_mut()
-        .set_read_timeout(Some(Duration::from_millis(400)))
-        .unwrap();
-    assert!(ws.read().is_err(), "読んだだけでは通知しない");
+    // 読んだだけでは変更として通知しない
+    assert_none(&mut ws, "dirChanged", 400);
 }

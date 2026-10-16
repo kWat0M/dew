@@ -27,14 +27,34 @@ pub struct Session {
 impl Drop for Session {
     /// SIGTERM で止める(SIGKILL だと Xvfb がロックファイルとソケットを残し、次から番号がずれていくため)
     fn drop(&mut self) {
-        for child in [&self.xvfb, &self.pulse] {
-            if let Some(pid) = child.id() {
-                let _ = std::process::Command::new("kill")
-                    .args(["-TERM", &pid.to_string()])
-                    .status();
-            }
+        let pids: Vec<u32> = [&self.xvfb, &self.pulse]
+            .iter()
+            .filter_map(|c| c.id())
+            .collect();
+        for pid in &pids {
+            let _ = std::process::Command::new("kill")
+                .args(["-TERM", &pid.to_string()])
+                .status();
+        }
+        // 終わるまで少し待つ(サーバが先に終わると、止まりきる前に次の dew が同じ番号を使おうとするため)
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_secs(2)
+            && pids
+                .iter()
+                .any(|p| Path::new(&format!("/proc/{p}")).exists() && !zombie(*p))
+        {
+            std::thread::sleep(Duration::from_millis(20));
         }
     }
+}
+
+/// 終わったが親に回収されていないプロセス(/proc には残る)
+fn zombie(pid: u32) -> bool {
+    std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|s| {
+        s.rsplit(')')
+            .next()
+            .is_some_and(|rest| rest.trim_start().starts_with('Z'))
+    })
 }
 
 impl Session {
@@ -98,7 +118,13 @@ async fn start_xvfb() -> anyhow::Result<(u32, Child)> {
             if child.try_wait()?.is_some() {
                 break; // 他と同時に同じ番号を取ろうとして負けた。次の番号へ
             }
-            if x_listening(n) {
+            // 同時に同じ番号を取り合ったとき、待ち受けているのが相手の Xvfb のことがあるので、
+            // ロックファイルに書かれたプロセスが自分の起動したものかも確かめる
+            let ours = std::fs::read_to_string(format!("/tmp/.X{n}-lock"))
+                .ok()
+                .and_then(|t| t.trim().parse::<u32>().ok())
+                .is_some_and(|pid| Some(pid) == child.id());
+            if ours && x_listening(n) {
                 return Ok((n, child));
             }
             tokio::time::sleep(Duration::from_millis(30)).await;

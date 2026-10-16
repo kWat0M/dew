@@ -118,6 +118,16 @@ impl Hub {
         id
     }
 
+    /// タブへ送る口
+    pub(crate) fn sender(&self, id: u64) -> Option<mpsc::UnboundedSender<ServerEvent>> {
+        self.inner
+            .lock()
+            .unwrap()
+            .tabs
+            .get(&id)
+            .map(|t| t.tx.clone())
+    }
+
     fn disconnect(&self, id: u64) {
         let mut inner = self.inner.lock().unwrap();
         inner.tabs.remove(&id);
@@ -256,6 +266,20 @@ async fn session(app: Arc<App>, socket: WebSocket) {
             }
         }
     };
+    // ライブ描画のウィンドウの一覧を、つないだときと変わったときに送る
+    let tx_live = app.hub.sender(id);
+    let mut list = app.live_windows.list.subscribe();
+    let live = async move {
+        loop {
+            let windows = list.borrow_and_update().clone();
+            if let Some(tx) = &tx_live {
+                let _ = tx.send(ServerEvent::LiveWindows { windows });
+            }
+            if list.changed().await.is_err() {
+                return;
+            }
+        }
+    };
     let recv = async {
         while let Some(Ok(msg)) = stream.next().await {
             match msg {
@@ -271,6 +295,7 @@ async fn session(app: Arc<App>, socket: WebSocket) {
     tokio::select! {
         _ = send => {}
         _ = recv => {}
+        _ = live => {}
     }
     app.hub.disconnect(id);
 }

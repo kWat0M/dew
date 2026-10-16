@@ -87,3 +87,87 @@ fn stopping_server_stops_xvfb_and_pulseaudio() {
         "サーバを止めたら仮想ディスプレイも止まる"
     );
 }
+
+/// 受信を待つ上限つきで、条件に合う通知を読む
+fn recv_json(
+    ws: &mut common::Ws,
+    secs: u64,
+    f: impl Fn(&serde_json::Value) -> bool,
+) -> serde_json::Value {
+    let start = std::time::Instant::now();
+    ws.get_mut()
+        .get_mut()
+        .set_read_timeout(Some(std::time::Duration::from_secs(secs)))
+        .unwrap();
+    loop {
+        assert!(start.elapsed().as_secs() < secs, "通知が来ない");
+        if let tungstenite::Message::Text(t) = ws.read().expect("通知が来ない") {
+            let v: serde_json::Value = serde_json::from_str(&t).unwrap();
+            if f(&v) {
+                return v;
+            }
+        }
+    }
+}
+
+#[test]
+fn app_window_is_listed_and_streamed_as_h264() {
+    let a = Instance::new();
+    a.dew(&["--port", &free_port().to_string()]);
+    let app = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/apps/counter.py");
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_dew"))
+        .args([
+            "run",
+            "python3",
+            app.to_str().unwrap(),
+            "--tone",
+            "0",
+            "--seconds",
+            "20",
+        ])
+        .env_clear()
+        .env("HOME", a.home.path())
+        .env("PATH", std::env::var("PATH").unwrap())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+
+    let mut events = a.ws("/ws/events");
+    let list = recv_json(&mut events, 20, |v| {
+        v["type"] == "liveWindows"
+            && v["windows"]
+                .as_array()
+                .is_some_and(|w| w.iter().any(|w| w["title"] == "counter"))
+    });
+    let win = list["windows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|w| w["title"] == "counter")
+        .unwrap()
+        .clone();
+    assert_eq!(
+        (win["width"].as_u64(), win["height"].as_u64()),
+        (Some(640), Some(360))
+    );
+
+    let mut video = a.ws(&format!("/ws/live/{}", win["id"]));
+    let config = recv_json(&mut video, 10, |_| true);
+    assert!(
+        config["codec"].as_str().unwrap().starts_with("avc1."),
+        "{config}"
+    );
+    // 最初のフレームはキーフレームで、続いてフレームが届き続ける
+    let mut frames = 0;
+    let mut first_key = None;
+    while frames < 30 {
+        if let tungstenite::Message::Binary(b) = video.read().unwrap() {
+            first_key.get_or_insert(b[0] & 1 == 1);
+            frames += 1;
+        }
+    }
+    assert_eq!(first_key, Some(true));
+    let _ = child.kill();
+    let _ = child.wait();
+}

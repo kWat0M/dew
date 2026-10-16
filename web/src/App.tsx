@@ -4,6 +4,7 @@ import { api } from './api/http';
 import { Events } from './api/events';
 import { canvasCommands, playCommands, quickPlayCommands, quickWindowCommands, windowCommands, windowHelp, Canvas, type CanvasRun, type NormalAction, type WindowAction, type Win } from './canvas/Canvas';
 import type { Command, Section } from './commands';
+import type { LiveWindow } from './protocol/LiveWindow';
 import { useSettings } from './settings';
 import { Dialog } from './ui/Dialog';
 import { OpsPanel } from './ui/OpsPanel';
@@ -63,6 +64,8 @@ export function App() {
   const [windows, setWindows] = useState<Win[]>([]);
   const [focused, setFocused] = useState<number | null>(null);
   const [ime, setIme] = useState(false);
+  /** 動いているライブウィンドウの数(Home の FAB のバッジ) */
+  const [liveCount, setLiveCount] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -106,10 +109,41 @@ export function App() {
     goCanvas();
   }, [goCanvas]);
 
+  // ライブ描画のウィンドウ(L1、L2)。サーバの一覧に合わせて、増えたら足し、消えたら「終了」にする
+  const knownLive = useRef(new Set<number>());
+  const onLiveWindows = useCallback(
+    (list: LiveWindow[]) => {
+      const present = new Map(list.map((l) => [l.id, l]));
+      const added = list.filter((l) => !knownLive.current.has(l.id));
+      for (const l of added) knownLive.current.add(l.id);
+      const newWins = added.map((l) => ({
+        id: nextId.current++,
+        path: '',
+        media: 'video' as const,
+        live: { id: l.id, title: l.title, width: l.width, height: l.height, ended: false },
+      }));
+      setWindows((ws) => [
+        ...ws.map((w) => {
+          if (!w.live) return w;
+          const l = present.get(w.live.id);
+          return { ...w, live: l ? { ...w.live, title: l.title, width: l.width, height: l.height } : { ...w.live, ended: true } };
+        }),
+        ...newWins,
+      ]);
+      setLiveCount(list.length);
+      if (newWins.length) {
+        setFocused(newWins.at(-1)!.id);
+        goCanvas();
+      }
+    },
+    [goCanvas],
+  );
+
   // CLI からの表示指示(F10)
   useEffect(
     () =>
       events.subscribe((ev) => {
+        if (ev.type === 'liveWindows') return onLiveWindows(ev.windows);
         if (ev.type !== 'open') return;
         if (ev.kind === 'dir') {
           setHomeRequest({ path: ev.path, seq: seq.current++ });
@@ -118,7 +152,7 @@ export function App() {
           open([{ path: ev.path, media: ev.media }]);
         }
       }),
-    [events, open, goHome],
+    [events, open, goHome, onLiveWindows],
   );
 
   // 最初の操作で開始の表示を消す。以降は自動再生できる(7.6)。IME の状態も見る
@@ -228,7 +262,7 @@ export function App() {
           events={events}
           active={started && screen === 'home' && !historyOpen}
           dir={homeRequest}
-          liveCount={0}
+          liveCount={liveCount}
           onOpen={open}
           onCompare={openCompare}
           onCanvas={goCanvas}

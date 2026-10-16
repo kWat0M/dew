@@ -75,6 +75,8 @@ pub(crate) struct App {
     pub history: history::Store,
     /// ライブ描画のセッション(最初の dew run / dew env で作る)
     pub live: tokio::sync::Mutex<Option<dew_capture::session::Session>>,
+    /// 映っているライブ描画のウィンドウ
+    pub live_windows: Arc<live::Live>,
     pub cache_dir: PathBuf,
     pub shutdown: Notify,
 }
@@ -98,6 +100,7 @@ pub async fn serve(cfg: Config, on_ready: impl FnOnce(&Ready)) -> anyhow::Result
         hub: events::Hub::new(),
         history: history::Store::new(cfg.cache_dir.join("history.json")),
         live: tokio::sync::Mutex::new(None),
+        live_windows: Arc::new(live::Live::new()),
         cache_dir: cfg.cache_dir.clone(),
         shutdown: Notify::new(),
     });
@@ -167,7 +170,8 @@ pub async fn serve(cfg: Config, on_ready: impl FnOnce(&Ready)) -> anyhow::Result
         .handle(handle)
         .serve(router.into_make_service_with_connect_info::<SocketAddr>())
         .await?;
-    // ライブ描画の仮想ディスプレイと音声サーバも止める
+    // ライブ描画の取り込みと、仮想ディスプレイ・音声サーバも止める
+    app.live_windows.clear();
     app.live.lock().await.take();
     Ok(())
 }
@@ -190,6 +194,7 @@ fn router(app: Arc<App>) -> Router {
     Router::new()
         .nest("/api", api)
         .route("/ws/events", get(events::ws))
+        .route("/ws/live/{id}", get(live::ws))
         .fallback(web::static_file)
         .layer(middleware::from_fn_with_state(
             app.clone(),

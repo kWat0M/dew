@@ -163,12 +163,38 @@ pub enum ServerEvent {
     DirChanged { dir: String, name: String },
     /// 監視を登録した(Watch への応答)。ブラウザはこれを受けて一覧を読み直す
     Watching { dirs: Vec<String> },
+    /// ライブ描画のウィンドウの一覧(つないだとき、増減・変化したとき。L1、L2)
+    LiveWindows { windows: Vec<LiveWindow> },
     /// CLI からの表示指示(F10)。ファイルはキャンバスに開き、ディレクトリは Home で開く
     Open {
         path: String,
         kind: EntryKind,
         media: MediaKind,
     },
+}
+
+/// ライブ描画のウィンドウ1つ(アプリが仮想ディスプレイに開いたトップレベルのウィンドウ)
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LiveWindow {
+    /// X のウィンドウ ID。`WS /ws/live/{id}` で映像を受け取る
+    pub id: u32,
+    pub title: String,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// `WS /ws/live/{id}` で最初に送る、映像の復号の設定。続けてフレームをバイナリで送る
+/// (1バイト目の bit0 がキーフレーム、続く8バイトがタイムスタンプ(µs、ビッグエンディアン)、残りが H.264 Annex B)
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LiveConfig {
+    /// WebCodecs のコーデック名(例 avc1.64001F)
+    pub codec: String,
+    pub width: u32,
+    pub height: u32,
 }
 
 /// `WS /ws/events` でブラウザから送る通知

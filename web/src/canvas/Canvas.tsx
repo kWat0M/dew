@@ -11,12 +11,13 @@ import { KeySequence } from '../keys';
 import { useKeys } from '../useKeys';
 import { cascade, neighbor, tile, type Dir, type Rect } from './layout';
 import { CompareWindow, type Member } from './CompareWindow';
+import { LiveWindow, type LiveInfo } from './LiveWindow';
 import { PlayerWindow, type PlayerApi } from './PlayerWindow';
 import { SyncGroup } from './sync';
 import './Canvas.css';
 
 /** キャンバスのウィンドウ。members があれば比較ウィンドウ */
-export type Win = { id: number; path: string; media: MediaKind; members?: Member[] };
+export type Win = { id: number; path: string; media: MediaKind; members?: Member[]; live?: LiveInfo };
 
 /** 再生のキー(選択中のウィンドウ、なければフォーカス中のウィンドウに効く) */
 type PlayAction =
@@ -442,7 +443,7 @@ export function Canvas(p: Props) {
               }}
             >
               <span className="chip-number">{i + 1}</span>
-              {w.members ? ja.compareTitle(w.members.map((m) => basename(m.path))) : basename(w.path)}
+              {w.live ? w.live.title || ja.liveUntitled : w.members ? ja.compareTitle(w.members.map((m) => basename(m.path))) : basename(w.path)}
             </button>
           ))}
         </div>
@@ -534,6 +535,7 @@ export function Canvas(p: Props) {
           const register = (x: PlayerApi | null) => {
             apis.current.set(w.id, x);
           };
+          if (w.live) return <LiveWindow key={w.id} {...frame} live={w.live} api={register} />;
           return w.members ? (
             <CompareWindow key={w.id} {...frame} id={w.id} members={w.members} audible={audible} onHasAudio={onHasAudio} api={register} onError={p.onError} />
           ) : (

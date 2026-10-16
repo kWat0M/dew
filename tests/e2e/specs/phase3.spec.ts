@@ -9,7 +9,7 @@ test.describe.configure({ timeout: 60_000 });
 const APPEAR = { timeout: 20_000 };
 
 // 基準1: dew run で、コードを変えずにウィンドウがキャンバスに現れる
-test.fixme('dew run でアプリのウィンドウがキャンバスに現れる', async ({ page, dew }) => {
+test('dew run でアプリのウィンドウがキャンバスに現れる', async ({ page, dew }) => {
   await start(page, dew);
   dew.spawnRun(['python3', appPath('counter.py'), '--tone', '0']);
   const win = liveWindow(page, 'counter');
@@ -20,7 +20,7 @@ test.fixme('dew run でアプリのウィンドウがキャンバスに現れる
 });
 
 // 基準2: アプリが2つの窓を開くと、キャンバスに2つのウィンドウが出る
-test.fixme('2つの窓を開くアプリで2つのウィンドウが出る', async ({ page, dew }) => {
+test('2つの窓を開くアプリで2つのウィンドウが出る', async ({ page, dew }) => {
   await start(page, dew);
   dew.spawnRun(['python3', appPath('two_windows.py')]);
   await expect(liveWindow(page, 'left')).toBeVisible(APPEAR);
