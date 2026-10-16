@@ -442,6 +442,11 @@ dependencies = [
 [[package]]
 name = "dew-capture"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "tokio",
+ "tracing",
+]
 
 [[package]]
 name = "dew-media"
@@ -471,6 +476,7 @@ dependencies = [
  "anyhow",
  "axum",
  "axum-server",
+ "dew-capture",
  "dew-media",
  "dew-protocol",
  "futures-util",

@@ -120,6 +120,19 @@ pub struct HistoryAdd {
     pub paths: Vec<String>,
 }
 
+/// `POST /api/live/session` の応答: ライブ描画のセッション(仮想ディスプレイと音声サーバ)につなぐ設定(6.1)
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LiveSession {
+    /// 例: ":100"
+    pub display: String,
+    /// アプリに渡す環境変数
+    pub env: Vec<(String, String)>,
+    /// アプリから消す環境変数
+    pub unset: Vec<String>,
+}
+
 /// `POST /api/open` の要求(F10)
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]

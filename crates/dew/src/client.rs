@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use dew_protocol::{Info, OpenRequest, OpenResponse};
+use dew_protocol::{Info, LiveSession, OpenRequest, OpenResponse};
 use reqwest::blocking::Client;
 
 use crate::state::ServerFile;
@@ -77,6 +77,19 @@ impl Api {
             .send()
             .ok()?;
         Some(res.json::<Info>().ok()?.root)
+    }
+
+    /// ライブ描画のセッションにつなぐ設定(なければサーバが作る)
+    pub fn live_session(&self) -> anyhow::Result<LiveSession> {
+        Ok(self
+            .client
+            .post(format!("{}/api/live/session", self.base))
+            .bearer_auth(&self.token)
+            // 仮想ディスプレイと音声サーバの起動を待つ
+            .timeout(Duration::from_secs(30))
+            .send()?
+            .error_for_status()?
+            .json()?)
     }
 
     pub fn shutdown(&self) -> anyhow::Result<()> {
