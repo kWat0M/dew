@@ -12,6 +12,20 @@ CACHE_DIRS=(/home/dev/.cargo /home/dev/.local/share/pnpm /home/dev/.config/gh)
 
 export HOST_UID=$(id -u) HOST_GID=$(id -g)
 
+# docker compose を直接使えるよう、.env にも書いておく（compose はどのシェルから実行しても .env を読む）
+set_env() {
+  if grep -qs "^$1=" .env; then
+    sed -i "s/^$1=.*/$1=$2/" .env
+  else
+    # 最後の行に改行がなければ足してから追記する
+    [ -s .env ] && [ -n "$(tail -c1 .env)" ] && echo >> .env
+    printf '%s=%s\n' "$1" "$2" >> .env
+  fi
+}
+set_env HOST_UID "$HOST_UID"
+set_env HOST_GID "$HOST_GID"
+
+
 # 前回のコンテナ（停止中も含む）をビルドしたときの UID（compose.yaml の labels）
 id=$(docker compose ps -aq "$SERVICE")
 prev_uid=$([ -n "$id" ] && docker inspect -f '{{index .Config.Labels "dev.uid"}}' "$id" || true)
