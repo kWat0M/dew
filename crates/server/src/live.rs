@@ -1,6 +1,7 @@
 //! ライブ描画(フェーズ3)の API: セッションの作成、ウィンドウの一覧、ウィンドウごとの映像
 
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::sync::{Arc, Mutex};
 
 use axum::Json;
@@ -10,6 +11,7 @@ use axum::response::{IntoResponse, Response};
 use dew_capture::audio::{self, Audio};
 use dew_capture::input::Injector;
 use dew_capture::monitor::{self, WindowEvent, WindowInfo};
+use dew_capture::pulse::{self, Cli};
 use dew_capture::session::Session;
 use dew_capture::stream::{Frame, Stream};
 use dew_protocol::{LiveAudioConfig, LiveConfig, LiveInput, LiveSession, LiveWindow};
@@ -26,6 +28,10 @@ pub(crate) struct Live {
     pub list: watch::Sender<Vec<LiveWindow>>,
     /// セッション音声
     audio: Mutex<Option<Arc<Audio>>>,
+    /// アプリ(ウィンドウの `_NET_WM_PID`)ごとの音。同じアプリのウィンドウは同じ音を共有する(7.6、ADR 0013)
+    apps: Mutex<HashMap<u32, Arc<Audio>>>,
+    /// 音の振り分け(`route`)のタスク
+    router: Mutex<Option<tokio::task::JoinHandle<()>>>,
     /// 入力モードのキー・マウスの注入
     input: Mutex<Option<Injector>>,
 }
@@ -36,11 +42,14 @@ impl Live {
             windows: Mutex::default(),
             list: watch::channel(Vec::new()).0,
             audio: Mutex::default(),
+            apps: Mutex::default(),
+            router: Mutex::default(),
             input: Mutex::default(),
         }
     }
 
     fn publish(&self) {
+        let apps = self.apps.lock().unwrap();
         let mut list: Vec<LiveWindow> = self
             .windows
             .lock()
@@ -51,8 +60,10 @@ impl Live {
                 title: w.title.clone(),
                 width: w.width,
                 height: w.height,
+                audio: w.pid.is_some_and(|p| apps.contains_key(&p)),
             })
             .collect();
+        drop(apps);
         list.sort_by_key(|w| w.id);
         self.list.send_replace(list);
     }
@@ -97,7 +108,13 @@ impl Live {
     }
 
     pub(crate) fn clear(&self) {
+        if let Some(r) = self.router.lock().unwrap().take() {
+            r.abort();
+        }
         if let Some(a) = self.audio.lock().unwrap().take() {
+            a.stop();
+        }
+        for (_, a) in self.apps.lock().unwrap().drain() {
             a.stop();
         }
         self.input.lock().unwrap().take();
@@ -122,10 +139,16 @@ pub(crate) async fn session(State(app): State<Arc<App>>) -> Result<Json<LiveSess
             Ok(i) => *app.live_windows.input.lock().unwrap() = Some(i),
             Err(e) => tracing::warn!("入力を注入できません: {e:#}"),
         }
-        match Audio::start(&s.pulse_socket) {
+        match Audio::start(&s.pulse_socket, Audio::SESSION_SINK) {
             Ok(a) => *app.live_windows.audio.lock().unwrap() = Some(a),
             Err(e) => tracing::warn!("音声を取り込めません: {e:#}"),
         }
+        let router = tokio::spawn(
+            app.live_windows
+                .clone()
+                .route(Cli::new(s.pulse_cli.clone()), s.pulse_socket.clone()),
+        );
+        *app.live_windows.router.lock().unwrap() = Some(router);
         *live = Some(s);
     }
     let s = live.as_ref().unwrap();
@@ -181,6 +204,69 @@ pub(crate) async fn ws(
 }
 
 impl Live {
+    /// アプリの音を、そのアプリのウィンドウの音として振り分け続ける(7.6、ADR 0013)。音のストリームのプロセスが
+    /// ウィンドウの `_NET_WM_PID` そのものかその子孫なら、そのアプリ用の出力先へ移して別に取り込む。
+    /// 結びつかない音は既定の出力先(セッション音声)のまま
+    async fn route(self: Arc<Self>, cli: Cli, pulse_socket: std::path::PathBuf) {
+        let cli = Arc::new(cli);
+        loop {
+            let me = self.clone();
+            let (cli2, socket) = (cli.clone(), pulse_socket.clone());
+            let changed = tokio::task::spawn_blocking(move || me.route_once(&cli2, &socket))
+                .await
+                .unwrap_or(Ok(false));
+            match changed {
+                Ok(true) => self.publish(),
+                Ok(false) => {}
+                Err(e) => tracing::debug!("音を振り分けられません: {e:#}"),
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        }
+    }
+
+    /// 1回分の振り分け。ウィンドウの音の有無が変わったら true
+    fn route_once(&self, cli: &Cli, pulse_socket: &std::path::Path) -> anyhow::Result<bool> {
+        let pids: Vec<u32> = {
+            let ws = self.windows.lock().unwrap();
+            let mut v: Vec<u32> = ws.values().filter_map(|(w, _)| w.pid).collect();
+            v.sort_unstable();
+            v.dedup();
+            v
+        };
+        let mut changed = false;
+        for input in cli.sink_inputs()? {
+            let Some(owner) = input
+                .pid
+                .and_then(|p| pids.iter().copied().find(|&w| pulse::descends(p, w)))
+            else {
+                continue;
+            };
+            let sink = format!("dew_p{owner}");
+            if let Entry::Vacant(e) = self.apps.lock().unwrap().entry(owner) {
+                cli.add_sink(&sink)?;
+                e.insert(Audio::start(pulse_socket, &sink)?);
+                changed = true;
+            }
+            if input.sink != sink {
+                cli.move_input(input.index, &sink)?;
+            }
+        }
+        // ウィンドウがなくなったアプリの出力先を消す(残っていた音はセッション音声へ戻る)
+        let gone: Vec<(u32, Arc<Audio>)> = {
+            let mut apps = self.apps.lock().unwrap();
+            let ids: Vec<u32> = apps.keys().copied().filter(|p| !pids.contains(p)).collect();
+            ids.into_iter()
+                .filter_map(|p| apps.remove(&p).map(|a| (p, a)))
+                .collect()
+        };
+        for (pid, audio) in gone {
+            audio.stop();
+            cli.remove_sink(&format!("dew_p{pid}"))?;
+            changed = true;
+        }
+        Ok(changed)
+    }
+
     /// `old` に代わる映像。作り直しの途中で古い方が先に終わることがあるので、少し待つ
     async fn next_stream(&self, id: u32, old: &Arc<Stream>) -> Option<(WindowInfo, Arc<Stream>)> {
         for _ in 0..20 {
@@ -280,7 +366,7 @@ async fn send_frames(socket: &mut Sink, info: &WindowInfo, stream: &Stream) -> b
     }
 }
 
-/// `GET /ws/live-audio`: セッション音声。最初に復号の設定、続けて Opus のパケット
+/// `GET /ws/live-audio`: セッション音声(どのウィンドウにも結びつかない音)。最初に復号の設定、続けて Opus のパケット
 pub(crate) async fn audio_ws(State(app): State<Arc<App>>, upgrade: WebSocketUpgrade) -> Response {
     let Some(audio) = app.live_windows.audio.lock().unwrap().clone() else {
         return (
@@ -289,7 +375,29 @@ pub(crate) async fn audio_ws(State(app): State<Arc<App>>, upgrade: WebSocketUpgr
         )
             .into_response();
     };
-    upgrade.on_upgrade(move |mut socket| async move {
+    upgrade.on_upgrade(move |socket| send_audio(socket, audio))
+}
+
+/// `GET /ws/live-audio/{window}`: そのウィンドウのアプリの音(7.6、ADR 0013)。形式は `/ws/live-audio` と同じ
+pub(crate) async fn window_audio_ws(
+    State(app): State<Arc<App>>,
+    Path(id): Path<u32>,
+    upgrade: WebSocketUpgrade,
+) -> Response {
+    let live = &app.live_windows;
+    let pid = live.stream(id).and_then(|(info, _)| info.pid);
+    let Some(audio) = pid.and_then(|p| live.apps.lock().unwrap().get(&p).cloned()) else {
+        return (
+            axum::http::StatusCode::NOT_FOUND,
+            "そのウィンドウの音はありません",
+        )
+            .into_response();
+    };
+    upgrade.on_upgrade(move |socket| send_audio(socket, audio))
+}
+
+async fn send_audio(mut socket: WebSocket, audio: Arc<Audio>) {
+    {
         let config = LiveAudioConfig {
             codec: "opus".into(),
             sample_rate: audio::SAMPLE_RATE,
@@ -319,7 +427,7 @@ pub(crate) async fn audio_ws(State(app): State<Arc<App>>, upgrade: WebSocketUpgr
                 Err(_) => return,
             }
         }
-    })
+    }
 }
 
 /// [フラグ 1バイト][タイムスタンプ µs 8バイト][H.264 Annex B]

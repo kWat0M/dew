@@ -7,4 +7,8 @@ export type LiveWindow = {
 /**
  * X のウィンドウ ID。`WS /ws/live/{id}` で映像を受け取る
  */
-id: number, title: string, width: number, height: number, };
+id: number, title: string, width: number, height: number, 
+/**
+ * そのウィンドウのアプリの音がある(`WS /ws/live-audio/{id}` で受け取る。7.6)
+ */
+audio: boolean, };

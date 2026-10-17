@@ -1,5 +1,6 @@
-//! セッションの音声(L5、7.6): 仮想の出力先(null-sink)に流れたアプリの音を ffmpeg で Opus にして配る。
-//! ウィンドウごとに分けず、仮想ディスプレイ全体の音を1本の「セッション音声」として扱う(ADR 0010)
+//! ライブ描画の音声(L5、7.6): 仮想の出力先(null-sink)に流れたアプリの音を ffmpeg で Opus にして配る。
+//! ウィンドウに結びつけられた音はアプリごとの出力先へ移し(ADR 0013)、残りは既定の出力先 `dew` の
+//! 「セッション音声」として1本で配る(ADR 0010)
 
 use std::path::Path;
 use std::process::Stdio;
@@ -29,8 +30,11 @@ pub struct Audio {
 }
 
 impl Audio {
-    /// `pulse_socket` の音声サーバの、仮想の出力先 `dew` の音を取り込み始める
-    pub fn start(pulse_socket: &Path) -> anyhow::Result<Arc<Self>> {
+    /// セッション音声の出力先
+    pub const SESSION_SINK: &str = "dew";
+
+    /// `pulse_socket` の音声サーバの、仮想の出力先 `sink` の音を取り込み始める
+    pub fn start(pulse_socket: &Path, sink: &str) -> anyhow::Result<Arc<Self>> {
         let (tx, _) = broadcast::channel(256);
         let mut child = Command::new("ffmpeg")
             .args([
@@ -41,7 +45,8 @@ impl Audio {
                 "-fflags",
                 "nobuffer",
             ])
-            .args(["-f", "pulse", "-fragment_size", "1920", "-i", "dew.monitor"])
+            .args(["-f", "pulse", "-fragment_size", "1920", "-i"])
+            .arg(format!("{sink}.monitor"))
             .args([
                 "-c:a",
                 "libopus",

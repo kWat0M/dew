@@ -3,5 +3,6 @@
 pub mod audio;
 pub mod input;
 pub mod monitor;
+pub mod pulse;
 pub mod session;
 pub mod stream;

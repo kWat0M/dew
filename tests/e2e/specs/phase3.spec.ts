@@ -40,6 +40,26 @@ test('440 Hz の音がブラウザで 440 Hz として検出される', async ({
   expect(hz!).toBeLessThan(450);
 });
 
+// 7.6: アプリの音はそのアプリのウィンドウの音になり、ウィンドウが複数あるときはフォーカス中のウィンドウの音だけが鳴る(ADR 0013)
+test('ライブウィンドウの音はフォーカス中のウィンドウだけ鳴る', async ({ page, dew }) => {
+  await start(page, dew);
+  dew.spawnRun(['python3', appPath('counter.py'), '--tone', '440', '--title', 'low']);
+  dew.spawnRun(['python3', appPath('counter.py'), '--tone', '660', '--title', 'high']);
+  const low = liveWindow(page, 'low');
+  const high = liveWindow(page, 'high');
+  await expect(low).toBeVisible(APPEAR);
+  await expect(high).toBeVisible(APPEAR);
+  await page.getByTestId('global-mute').click();
+  const peak = () => page.evaluate(() => (window as unknown as { dewTest: { audioPeakHz(): number | null } }).dewTest.audioPeakHz() ?? 0);
+  const near = (hz: number) => async () => Math.abs((await peak()) - hz) < 10;
+  await low.click();
+  await expect.poll(near(440), { timeout: 15_000 }).toBe(true);
+  await high.click();
+  await expect.poll(near(660), { timeout: 15_000 }).toBe(true);
+  await low.click();
+  await expect.poll(near(440), { timeout: 15_000 }).toBe(true);
+});
+
 // 基準5: 入力モードで押したキーをアプリが受け取り、Ctrl+] で抜けた後のキーは受け取らない
 test('入力モードのキーだけがアプリに届く', async ({ page, dew }) => {
   const keylog = join(mkdtempSync(join(tmpdir(), 'dew-keys-')), 'keys.txt');

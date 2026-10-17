@@ -20,6 +20,8 @@ pub struct Session {
     pub display: u32,
     /// pulseaudio のソケット(`PULSE_SERVER=unix:<ここ>`)
     pub pulse_socket: PathBuf,
+    /// pulseaudio を操作するソケット(module-cli-protocol-unix。ウィンドウごとの音の振り分けに使う)
+    pub pulse_cli: PathBuf,
     xvfb: Child,
     pulse: Child,
 }
@@ -61,11 +63,12 @@ impl Session {
     /// 仮想ディスプレイと音声サーバを起動する。`dir` に音声サーバのソケットなどを置く
     pub async fn start(dir: &Path) -> anyhow::Result<Self> {
         let (number, xvfb) = start_xvfb().await?;
-        let (pulse_socket, pulse) = start_pulse(dir).await?;
+        let (pulse_socket, pulse_cli, pulse) = start_pulse(dir).await?;
         tracing::info!(display = number, socket = %pulse_socket.display(), "ライブ描画のセッションを作りました");
         Ok(Self {
             display: number,
             pulse_socket,
+            pulse_cli,
             xvfb,
             pulse,
         })
@@ -160,11 +163,13 @@ fn x_listening(n: u32) -> bool {
 }
 
 /// 専用の pulseaudio を起動する。出力先は音の出ない仮想のもの(null-sink)で、dew がその音を取り込む
-async fn start_pulse(dir: &Path) -> anyhow::Result<(PathBuf, Child)> {
+async fn start_pulse(dir: &Path) -> anyhow::Result<(PathBuf, PathBuf, Child)> {
     let runtime = dir.join("pulse");
     tokio::fs::create_dir_all(&runtime).await?;
     let socket = runtime.join("native");
+    let cli = runtime.join("cli");
     let _ = tokio::fs::remove_file(&socket).await;
+    let _ = tokio::fs::remove_file(&cli).await;
     let child = Command::new("pulseaudio")
         // リアルタイム優先度を求めると D-Bus への接続を何度も試して起動が遅れるので、使わない
         .args([
@@ -185,6 +190,10 @@ async fn start_pulse(dir: &Path) -> anyhow::Result<(PathBuf, Child)> {
         ))
         .arg("--load=module-null-sink sink_name=dew sink_properties=device.description=dew")
         .arg("--load=module-always-sink")
+        .arg(format!(
+            "--load=module-cli-protocol-unix socket={}",
+            cli.display()
+        ))
         // ホストの音声サーバや設定を使わない
         .env("PULSE_RUNTIME_PATH", &runtime)
         .env("PULSE_STATE_PATH", &runtime)
@@ -198,7 +207,7 @@ async fn start_pulse(dir: &Path) -> anyhow::Result<(PathBuf, Child)> {
     let start = Instant::now();
     while start.elapsed() < START_TIMEOUT {
         if tokio::net::UnixStream::connect(&socket).await.is_ok() {
-            return Ok((socket, child));
+            return Ok((socket, cli, child));
         }
         tokio::time::sleep(Duration::from_millis(30)).await;
     }

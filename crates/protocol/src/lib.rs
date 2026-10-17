@@ -183,6 +183,8 @@ pub struct LiveWindow {
     pub title: String,
     pub width: u32,
     pub height: u32,
+    /// そのウィンドウのアプリの音がある(`WS /ws/live-audio/{id}` で受け取る。7.6)
+    pub audio: bool,
 }
 
 /// `WS /ws/live/{id}` で最初に送る、映像の復号の設定。続けてフレームをバイナリで送る

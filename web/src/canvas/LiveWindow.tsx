@@ -4,16 +4,21 @@ import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'reac
 import type { LiveConfig } from '../protocol/LiveConfig';
 import type { LiveInput } from '../protocol/LiveInput';
 import { ja } from '../i18n/ja';
+import { useLiveSound, type LiveAudioMix } from './liveAudio';
 import type { PlayerApi } from './PlayerWindow';
 import { WindowFrame, type FrameProps } from './WindowFrame';
 
 /** 復号を待っているフレームがこれより多ければ、次のキーフレームまで飛ばす(遅延を積み上げない。6.1 の 6) */
 const MAX_QUEUE = 3;
 
-export type LiveInfo = { id: number; title: string; width: number; height: number; ended: boolean };
+/** audio: そのウィンドウのアプリの音がある(7.6) */
+export type LiveInfo = { id: number; title: string; width: number; height: number; audio: boolean; ended: boolean };
 
 type Props = FrameProps & {
   live: LiveInfo;
+  audioMix: LiveAudioMix;
+  /** アプリの音を鳴らすか(フォーカス中など。動画のウィンドウと同じ決め方。7.6) */
+  audible: boolean;
   /** 入力モード(キー・マウスをアプリへ送る。L6、5.5) */
   inputMode: boolean;
   onExitInput: () => void;
@@ -23,7 +28,7 @@ type Props = FrameProps & {
 /** キャンバスから使うライブウィンドウだけの操作(I の文字列の送信、w r の大きさ合わせ) */
 export type LiveApi = PlayerApi & { sendText?: (text: string) => void; fitApp?: () => void };
 
-export function LiveWindow({ api: apiRef, live, inputMode, onExitInput, ...p }: Props) {
+export function LiveWindow({ api: apiRef, live, audioMix, audible, inputMode, onExitInput, ...p }: Props) {
   const socket = useRef<WebSocket | null>(null);
   const send = (ev: LiveInput) => {
     if (socket.current?.readyState === WebSocket.OPEN) socket.current.send(JSON.stringify(ev));
@@ -33,6 +38,7 @@ export function LiveWindow({ api: apiRef, live, inputMode, onExitInput, ...p }: 
   const body = useRef<HTMLDivElement>(null);
   const [config, setConfig] = useState<LiveConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
+  useLiveSound(audioMix, live.audio && !live.ended ? `/ws/live-audio/${live.id}` : null, audible);
 
   useEffect(() => {
     if (live.ended) return;
