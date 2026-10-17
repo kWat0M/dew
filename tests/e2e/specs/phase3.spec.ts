@@ -87,3 +87,24 @@ test('I の入力欄から文字列を送れる', async ({ page, dew }) => {
     .poll(() => readFileSync(keylog, 'utf8').split('\n').filter((k) => k && !k.includes('shift')))
     .toEqual(['H', 'i', '!']);
 });
+
+// 7.9: w r で、アプリのウィンドウの大きさが表示領域(ディスプレイの画素)に合い、新しい大きさの映像が続けて届く
+test('w r でアプリの大きさが表示領域に合う', async ({ page, dew }) => {
+  await start(page, dew);
+  dew.spawnRun(['python3', appPath('counter.py'), '--tone', '0', '--resizable']);
+  const win = liveWindow(page, 'counter');
+  await expect(win).toBeVisible(APPEAR);
+  await expect(win.locator('.live-bar')).toContainText('640×360');
+  const size = await win.locator('.window-body').evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    return { w: Math.round(r.width * devicePixelRatio), h: Math.round(r.height * devicePixelRatio) };
+  });
+  await page.keyboard.press('w');
+  await page.keyboard.press('r');
+  await page.keyboard.press('q');
+  // H.264 のため、映像の大きさは偶数に切り上がる
+  await expect(win.locator('.live-bar')).toContainText(`${size.w + (size.w % 2)}×${size.h + (size.h % 2)}`, APPEAR);
+  // 作り直した映像が届き続けている(フレーム番号が増える)
+  const first = await liveBits(win, 0, 20);
+  await expect.poll(() => liveBits(win, 0, 20)).toBeGreaterThan(first + 10);
+});

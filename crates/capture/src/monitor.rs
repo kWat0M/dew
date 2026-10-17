@@ -104,6 +104,14 @@ fn run(
                 {
                     info.width = e.width.into();
                     info.height = e.height.into();
+                    // 大きくなると隣と重なったり画面からはみ出したりするので、置き直す(7.9)
+                    placer.free(e.window);
+                    let (x, y) = placer.place(e.window, e.width.into(), e.height.into());
+                    if (x, y) != (e.x.into(), e.y.into()) {
+                        let _ =
+                            conn.configure_window(e.window, &ConfigureWindowAux::new().x(x).y(y));
+                        let _ = conn.flush();
+                    }
                     let _ = tx.send(WindowEvent::Changed(info.clone()));
                 }
             }

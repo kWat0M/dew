@@ -12,6 +12,7 @@ export const ja = {
   live: 'ライブ',
   inputModeHint: '入力モード: キーとマウスをアプリへ送っています(Ctrl+] で抜ける)',
   inputNeedsLive: '入力モードと文字列の送信は、ライブ描画のウィンドウで使えます',
+  fitNeedsLive: 'アプリの大きさ合わせは、ライブ描画のウィンドウで使えます',
   sendText: '文字列を送る',
   sendTextHint: '送る文字列(日本語も可)。Enter で送る',
   liveEnded: '終了',
@@ -107,6 +108,7 @@ export const ja = {
   wOnly: 'ほかを閉じる',
   wClose: '閉じる(選択中があれば選択中)',
   wCloseAll: '全部閉じる',
+  wFitApp: 'アプリの大きさを表示に合わせる(ライブ)',
   wSelect: '選択を切替',
   wSelectAll: '全選択 / 解除',
   wMaximize: '最大化 / 元に戻す',
@@ -144,7 +146,7 @@ export const ja = {
   ] as [string, string][],
   windowHints: [
     ['h/j/k/l', '移動'], ['H/J/K/L', '入れ替え'], ['1–9', '番号'], ['Space', '選択'], ['a', '全選択'], ['+ -', '拡大 / 縮小'],
-    ['=', '均等'], ['t', '配置'], ['m/f', '最小化 / 最大化'], ['o', 'ほかを閉じる'], ['x/X', '閉じる / 全部'], ['q', '抜ける'],
+    ['=', '均等'], ['t', '配置'], ['m/f', '最小化 / 最大化'], ['o', 'ほかを閉じる'], ['x/X', '閉じる / 全部'], ['r', '大きさ合わせ'], ['q', '抜ける'],
   ] as [string, string][],
   homeKeys: [
     ['j / k', '下 / 上へ移動'],

@@ -8,7 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use bytes::{Bytes, BytesMut};
 use tokio::io::AsyncReadExt;
 use tokio::process::{Child, Command};
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, watch};
 
 /// 1秒あたりのフレーム数の上限(3.3 の L4)
 pub const FPS: u32 = 60;
@@ -27,6 +27,8 @@ pub struct Frame {
 pub struct Stream {
     tx: broadcast::Sender<Arc<Frame>>,
     state: Mutex<State>,
+    /// ffmpeg が終わった(止めた・落ちた)。大きさの変化で作り直したとき、見ている側が新しい映像へ移るのに使う
+    ended: watch::Sender<bool>,
 }
 
 #[derive(Default)]
@@ -45,6 +47,7 @@ impl Stream {
         let stream = Arc::new(Self {
             tx,
             state: Mutex::new(State::default()),
+            ended: watch::channel(false).0,
         });
         let mut child = Command::new("ffmpeg")
             .args(["-hide_banner", "-loglevel", "error", "-nostdin"])
@@ -116,6 +119,13 @@ impl Stream {
         if let Some(mut c) = self.state.lock().unwrap().child.take() {
             let _ = c.start_kill();
         }
+        self.ended.send_replace(true);
+    }
+
+    /// 映像が終わるまで待つ
+    pub async fn ended(&self) {
+        let mut rx = self.ended.subscribe();
+        let _ = rx.wait_for(|e| *e).await;
     }
 
     fn push(&self, frame: Frame) {
@@ -144,7 +154,12 @@ async fn read_frames(stream: std::sync::Weak<Stream>, mut out: tokio::process::C
     let mut buf = BytesMut::with_capacity(1 << 20);
     loop {
         match out.read_buf(&mut buf).await {
-            Ok(0) | Err(_) => return,
+            Ok(0) | Err(_) => {
+                if let Some(s) = stream.upgrade() {
+                    s.ended.send_replace(true);
+                }
+                return;
+            }
             Ok(_) => {}
         }
         // 2つ目の AUD が来たら、そこまでが1フレーム

@@ -5,7 +5,9 @@
 - 440 Hz の音を鳴らし続ける(--tone 0 で止める)
 - 受け取ったキーを、環境変数 DEW_TEST_KEYLOG のファイルに1行ずつ書く
 
-使い方: python3 counter.py [--size 640x360] [--fps 60] [--tone 440] [--seconds 0] [--title counter]
+使い方: python3 counter.py [--size 640x360] [--fps 60] [--tone 440] [--seconds 0] [--title counter] [--resizable]
+
+--resizable を付けると、ウィンドウの大きさが外から変えられたとき、その大きさで描き直す(w r の確認用)
 """
 import argparse
 import math
@@ -32,11 +34,12 @@ def main():
     ap.add_argument("--tone", type=float, default=440.0)
     ap.add_argument("--seconds", type=float, default=0.0)
     ap.add_argument("--title", default="counter")
+    ap.add_argument("--resizable", action="store_true")
     args = ap.parse_args()
     w, h = (int(v) for v in args.size.split("x"))
 
     pygame.init()
-    screen = pygame.display.set_mode((w, h))
+    screen = pygame.display.set_mode((w, h), pygame.RESIZABLE if args.resizable else 0)
     pygame.display.set_caption(args.title)
     font = pygame.font.Font(None, max(48, h // 4))
 
@@ -61,6 +64,8 @@ def main():
                     f.write((ev.unicode or pygame.key.name(ev.key)) + "\n")
         if args.seconds and time.time() - start > args.seconds:
             return
+        screen = pygame.display.get_surface()
+        w, h = screen.get_size()
         screen.fill((40, 80, 160))
         text = font.render(str(n), True, (255, 255, 255))
         screen.blit(text, text.get_rect(center=(w // 2, h // 2)))

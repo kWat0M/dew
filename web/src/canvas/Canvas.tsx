@@ -44,7 +44,7 @@ export type NormalAction =
 export type WindowAction =
   | { do: 'focusN'; n: number } | { do: 'focusDir'; dir: Dir } | { do: 'moveDir'; dir: Dir }
   | { do: 'select' } | { do: 'selectAll' } | { do: 'grow'; f: number } | { do: 'equalize' } | { do: 'layout' }
-  | { do: 'minimize' } | { do: 'maximize' } | { do: 'only' } | { do: 'close' } | { do: 'closeAll' } | { do: 'exit' };
+  | { do: 'minimize' } | { do: 'maximize' } | { do: 'only' } | { do: 'close' } | { do: 'closeAll' } | { do: 'fitApp' } | { do: 'exit' };
 
 /** キャンバスのキーマップ(キー一覧・ヒントとの突き合わせのテストにも使う) */
 export const normal: Record<string, NormalAction> = {
@@ -64,7 +64,7 @@ export const windowKeys: Record<string, WindowAction> = {
   H: { do: 'moveDir', dir: 'h' }, J: { do: 'moveDir', dir: 'j' }, K: { do: 'moveDir', dir: 'k' }, L: { do: 'moveDir', dir: 'l' },
   ' ': { do: 'select' }, a: { do: 'selectAll' },
   '+': { do: 'grow', f: 1.1 }, '-': { do: 'grow', f: 1 / 1.1 }, '=': { do: 'equalize' }, t: { do: 'layout' },
-  m: { do: 'minimize' }, f: { do: 'maximize' }, o: { do: 'only' }, x: { do: 'close' }, X: { do: 'closeAll' },
+  m: { do: 'minimize' }, f: { do: 'maximize' }, o: { do: 'only' }, x: { do: 'close' }, X: { do: 'closeAll' }, r: { do: 'fitApp' },
   q: { do: 'exit' }, Escape: { do: 'exit' },
 };
 for (let n = 1; n <= 9; n++) windowKeys[String(n)] = { do: 'focusN', n };
@@ -99,7 +99,7 @@ export const windowCommands: CommandDef<WindowAction>[] = [
   { id: { do: 'equalize' }, key: 'w =', label: '均等に並べる' }, { id: { do: 'layout' }, key: 'w t', label: 'タイル / 自由配置' },
   { id: { do: 'minimize' }, key: 'w m', label: '最小化' }, { id: { do: 'maximize' }, key: 'w f', label: '最大化 / 元に戻す' },
   { id: { do: 'only' }, key: 'w o', label: 'ほかを閉じる' }, { id: { do: 'close' }, key: 'w x', label: 'ウィンドウを閉じる' },
-  { id: { do: 'closeAll' }, key: 'w X', label: '全部閉じる' },
+  { id: { do: 'closeAll' }, key: 'w X', label: '全部閉じる' }, { id: { do: 'fitApp' }, key: 'w r', label: 'アプリの大きさを合わせる(ライブ)' },
 ];
 
 /** 操作パネルの上に出す、画面にボタンがない操作 */
@@ -116,7 +116,7 @@ export const quickPlayCommands: CommandDef<NormalAction>[] = [
 export const windowHelp: [string, string][] = [
   ['1–9', ja.wFocusN], ['h/j/k/l', ja.wFocusDir], ['H/J/K/L', ja.wMoveDir], ['Space', ja.wSelect], ['a', ja.wSelectAll],
   ['+ / -', `${ja.wGrow} / ${ja.wShrink}`], ['=', ja.wEqualize], ['t', ja.wLayout], ['m', ja.minimize], ['f', ja.wMaximize],
-  ['o', ja.wOnly], ['x', ja.wClose], ['X', ja.wCloseAll], ['q', ja.windowModeExit],
+  ['o', ja.wOnly], ['x', ja.wClose], ['X', ja.wCloseAll], ['r', ja.wFitApp], ['q', ja.windowModeExit],
 ];
 
 type Props = {
@@ -365,6 +365,10 @@ export function Canvas(p: Props) {
       case 'closeAll':
         setWindowMode(false);
         return closeIds(ws.map((w) => w.id));
+      case 'fitApp': {
+        if (!focusedLive) return p.onMessage(ja.fitNeedsLive);
+        return (apis.current.get(focusedLive.id) as LiveApi | null | undefined)?.fitApp?.();
+      }
       case 'exit': return setWindowMode(false);
     }
   };

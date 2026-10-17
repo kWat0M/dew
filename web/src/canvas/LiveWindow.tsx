@@ -20,8 +20,8 @@ type Props = FrameProps & {
   api: Ref<PlayerApi | null>;
 };
 
-/** キャンバスから文字列を送る(I の送信用の入力欄) */
-export type LiveApi = PlayerApi & { sendText?: (text: string) => void };
+/** キャンバスから使うライブウィンドウだけの操作(I の文字列の送信、w r の大きさ合わせ) */
+export type LiveApi = PlayerApi & { sendText?: (text: string) => void; fitApp?: () => void };
 
 export function LiveWindow({ api: apiRef, live, inputMode, onExitInput, ...p }: Props) {
   const socket = useRef<WebSocket | null>(null);
@@ -30,6 +30,7 @@ export function LiveWindow({ api: apiRef, live, inputMode, onExitInput, ...p }: 
   };
   const canvas = useRef<HTMLCanvasElement>(null);
   const win = useRef<HTMLElement>(null);
+  const body = useRef<HTMLDivElement>(null);
   const [config, setConfig] = useState<LiveConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -137,6 +138,11 @@ export function LiveWindow({ api: apiRef, live, inputMode, onExitInput, ...p }: 
 
   // 再生の操作はライブには効かない(録画・巻き戻しはフェーズ4)
   useImperativeHandle(apiRef, (): LiveApi => ({
+    // w r: アプリのウィンドウを表示領域の大きさにする。画素はディスプレイの画素(CSS px × 表示倍率)で数え、等倍で映るようにする(7.9)
+    fitApp: () => {
+      const r = body.current!.getBoundingClientRect();
+      send({ type: 'resize', width: Math.round(r.width * devicePixelRatio), height: Math.round(r.height * devicePixelRatio) });
+    },
     sendText: (text) => {
       for (const ch of text) {
         send({ type: 'key', key: ch, down: true });
@@ -162,7 +168,7 @@ export function LiveWindow({ api: apiRef, live, inputMode, onExitInput, ...p }: 
 
   return (
     <WindowFrame {...p} testId="live-window" name={live.title || ja.liveUntitled} icon="canvas" sectionRef={win}>
-      <div className="window-body fit" {...mouse}>
+      <div ref={body} className="window-body fit" {...mouse}>
         <canvas ref={canvas} width={live.width} height={live.height} />
         {inputMode && <div className="input-hint">{ja.inputModeHint}</div>}
         {live.ended && <div className="window-overlay ended">{ja.liveEnded}</div>}

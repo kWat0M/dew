@@ -74,7 +74,10 @@ impl Live {
                         // 大きさが変わったら取り込みを作り直す(x11grab は始めたときの大きさで取り込むため)
                         match Stream::start(display, info.id) {
                             Ok(s) => {
-                                ws.insert(info.id, (info, s));
+                                // 古い取り込みは止める(見ている側は ended を見て新しい映像へ移る)
+                                if let Some((_, old)) = ws.insert(info.id, (info, s)) {
+                                    old.stop();
+                                }
                             }
                             Err(e) => tracing::warn!("ウィンドウを取り込めません: {e:#}"),
                         }
@@ -147,9 +150,18 @@ pub(crate) async fn ws(
     };
     let live = app.live_windows.clone();
     upgrade.on_upgrade(move |socket| async move {
-        let (sink, mut stream_in) = socket.split();
+        let (mut sink, mut stream_in) = socket.split();
         let window = info.id;
-        let video = send_video(sink, info, stream);
+        // 大きさが変わって取り込みが作り直されたら、同じ接続のまま新しい映像を送る(設定から送り直す)
+        let video = async {
+            let (mut info, mut stream) = (info, stream);
+            while send_video(&mut sink, &info, &stream).await {
+                match live.next_stream(window, &stream).await {
+                    Some((i, s)) => (info, stream) = (i, s),
+                    None => return,
+                }
+            }
+        };
         // 入力モードのキー・マウスを受け取って注入する(L6)
         let input = async {
             while let Some(Ok(Message::Text(t))) = stream_in.next().await {
@@ -168,6 +180,18 @@ pub(crate) async fn ws(
 }
 
 impl Live {
+    /// `old` に代わる映像。作り直しの途中で古い方が先に終わることがあるので、少し待つ
+    async fn next_stream(&self, id: u32, old: &Arc<Stream>) -> Option<(WindowInfo, Arc<Stream>)> {
+        for _ in 0..20 {
+            match self.stream(id) {
+                Some((i, s)) if !Arc::ptr_eq(&s, old) => return Some((i, s)),
+                Some(_) => tokio::time::sleep(std::time::Duration::from_millis(100)).await,
+                None => return None,
+            }
+        }
+        None
+    }
+
     fn inject(&self, window: u32, ev: LiveInput) {
         let mut guard = self.input.lock().unwrap();
         let Some(inj) = guard.as_mut() else { return };
@@ -187,11 +211,17 @@ impl Live {
     }
 }
 
-async fn send_video(
-    mut socket: futures_util::stream::SplitSink<WebSocket, Message>,
-    info: WindowInfo,
-    stream: Arc<Stream>,
-) {
+type Sink = futures_util::stream::SplitSink<WebSocket, Message>;
+
+/// 映像を送る。映像が終わったら true、接続が切れたら false を返す
+async fn send_video(socket: &mut Sink, info: &WindowInfo, stream: &Stream) -> bool {
+    tokio::select! {
+        sent = send_frames(socket, info, stream) => sent,
+        _ = stream.ended() => true,
+    }
+}
+
+async fn send_frames(socket: &mut Sink, info: &WindowInfo, stream: &Stream) -> bool {
     let (codec, backlog, mut rx) = stream.subscribe();
     // まだキーフレームが来ていなければ、来るまで待つ
     let mut pending: Vec<Arc<Frame>> = backlog;
@@ -207,7 +237,7 @@ async fn send_video(
                 }
                 Ok(_) => {}
                 Err(broadcast::error::RecvError::Lagged(_)) => {}
-                Err(_) => return,
+                Err(_) => return true,
             }
         },
     };
@@ -223,11 +253,11 @@ async fn send_video(
         .await
         .is_err()
     {
-        return;
+        return false;
     }
     for f in pending {
         if socket.send(Message::Binary(encode(&f))).await.is_err() {
-            return;
+            return false;
         }
     }
     // 遅れて取りこぼしたら、次のキーフレームまで飛ばす(遅延を積み上げない。6.1 の 6)
@@ -240,11 +270,11 @@ async fn send_video(
                 }
                 skipping = false;
                 if socket.send(Message::Binary(encode(&f))).await.is_err() {
-                    return;
+                    return false;
                 }
             }
             Err(broadcast::error::RecvError::Lagged(_)) => skipping = true,
-            Err(_) => return,
+            Err(_) => return true,
         }
     }
 }
