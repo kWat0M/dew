@@ -49,6 +49,8 @@
 
 ## 3. 未解決・次にやること(上から優先)
 
+仕様にあってまだ作っていない項目の一覧は `docs/spec.md` の 9.2(実装状況)にある。作ったら、その表から消す。
+
 1. **基準3が全体実行で落ちる**: `npx playwright test -g 1080p --project chrome` 単独なら 60.5 fps・遅延 51 ms で通るが、E2E 全体を並列に流すと 4.5 fps まで落ちる。CPU の取り合い(1080p の libx264 と、2つのブラウザでの復号)か、ヘッドレス Chrome が裏のページを間引いているのかは未調査。調べて直すか、性能のテストだけを別の Playwright プロジェクト(workers 1、ほかの後)で流す。直したら `tests/e2e/specs/phase3.spec.ts` の `fixme` を外す
 2. **`w r` のブラウザ側**: サーバは `LiveInput::Resize` を受けられる(`460aeeb`)。残りは、ウィンドウ操作モードの `r` と操作パネルのボタン、LiveWindow の表示領域の大きさ(CSS px × devicePixelRatio)を送る処理、E2E。キー一覧とヒントへの追加を忘れると `web/src/keymaps.test.ts` が落ちる
 3. **一時的な窓(メニュー・ツールチップ)**: spec 7.9 では親の映像に重ねて出すが、今は監視が override-redirect の窓を無視しているので出ない
