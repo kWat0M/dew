@@ -51,8 +51,9 @@ scp -r tests/fixtures <user>@<server>:~/dew-test/
 
 dew が表示する URL(`https://<ホスト名>:18765/?token=…`)のホスト名部分を、`~/dew-test/.env` に書いておく。compose はこのファイルを毎回自動で読むので、以降の `docker compose …` のたびに指定しなくてよい(書かないと `required variable DEW_PUBLIC_HOST is missing a value` で止まる)。
 
-書く値は、**Windows のブラウザからサーバに届く名前か IP アドレス**。ふだん Windows から `ssh <user>@<server>` で入っているなら、その `<server>` の部分と同じものでよい。
+書く値は、**Windows のブラウザからサーバに届く名前か IP アドレス**。迷ったら IP アドレスを書く(名前は Windows から引けないことがあり、そのときブラウザは「サイトが見つからない」になる)。ふだん Windows から `ssh <user>@<server>` で入っているなら、その `<server>` の部分と同じものでよい。
 
+- Tailscale などの VPN 経由でつないでいる場合は、Windows からその VPN で届く IP を書く(`Test-NetConnection <IP>` の `InterfaceAlias` に VPN の名前が出る)
 - `~/.ssh/config` の別名(`Host` に書いた名前)で入っている場合は、その別名ではなく `HostName` に書いた値を使う(ブラウザは ssh の別名を知らないため)
 - 分からないときはサーバで次を実行し、出てきた名前か IP のうち Windows から届くものを使う
 
@@ -67,7 +68,23 @@ echo 'DEW_PUBLIC_HOST=<server>' > .env   # 例: DEW_PUBLIC_HOST=192.168.1.20
 cat .env
 ```
 
-### 3-2. コンテナを立てる
+### 3-2. Windows からポートに届くか確かめる
+
+コンテナを立てる前に、サーバの 18765 番に Windows から届くかだけを確かめておく。届かない場合は dew の問題ではないので、先に切り分けられる。
+
+```bash
+# サーバで(コンテナの外で)。確かめ終わったら Ctrl+C で止める(Ctrl+Z だとポートを持ったまま残る)
+python3 -m http.server 18765 --bind 0.0.0.0
+```
+
+```powershell
+# Windows の PowerShell で
+Test-NetConnection <server> -Port 18765
+```
+
+`TcpTestSucceeded : True` なら届いている。False なら、サーバのファイアウォールか大学・会社のネットワークで閉じられているので、下の「ssh -L で試す」を使う。
+
+### 3-3. コンテナを立てる
 
 ```bash
 docker compose up -d --build
@@ -75,6 +92,17 @@ docker compose ps
 ```
 
 `dew-test-a`(ポート 18765)と `dew-test-b`(ポート 18766)が `running` になっていればよい。初回はイメージを作るので数分かかる。
+
+`failed to bind host port 0.0.0.0:18765/tcp: address already in use` で止まったら、そのポートをほかのプロセスが使っている。
+
+```bash
+ss -ltnp | grep -E '1876[56]'                 # 使っているプロセスと pid
+ps -o pid,user,stat,cmd -p <pid>              # STAT が T なら一時停止したまま残っている
+kill <pid>                                    # 一時停止中で止まらなければ kill -9 <pid>
+docker compose up -d
+```
+
+ほかの人のプロセスで止められないときは、`compose.yaml` の `ports` と `DEW_PUBLIC_PORT` の番号を空いているものに変える(2か所とも同じ番号にする)。
 
 ## 4. それぞれのコンテナで dew を起動する(サーバで)
 
@@ -87,7 +115,7 @@ docker compose exec b dew
 
 ## 5. Windows のブラウザで確かめる
 
-2つの URL を、同じブラウザの別のタブで開く。初回は自己署名証明書の警告が出るので許可する(ポートごとに1回)。
+2つの URL を、同じブラウザの別のタブで開く。表示された URL を `https://` のまま開く(`http://` や `127.0.0.1` に変えない。`127.0.0.1` は Windows 自身を指す)。初回は自己署名証明書の警告が出るので許可する(ポートごとに1回。コンテナを作り直すと証明書も変わるので、また出る)。
 
 - Zen(Firefox 系): 「詳細情報」→「危険性を承知で続行」
 - Chrome / Edge: 「詳細設定」→「(安全ではありません)にアクセスする」
@@ -106,7 +134,9 @@ docker compose exec b dew
 
 うまくいかないとき:
 
-- URL が開けない(タイムアウト): サーバの 18765・18766 番に Windows から届いていない。サーバのファイアウォール(`sudo ufw status` など)を確かめる。開けられない環境では、次の「ssh -L で試す」を使う
+- 「サイトが見つからない」: URL のホスト名を Windows が引けていない。`.env` の `DEW_PUBLIC_HOST` を IP アドレスにして `docker compose up -d --force-recreate` で作り直す
+- URL が開けない(タイムアウト): サーバの 18765・18766 番に Windows から届いていない。手順3-2で確かめる。サーバのファイアウォール(`sudo ufw status` など)も見る。開けられない環境では、次の「ssh -L で試す」を使う
+- 「接続が拒否されました」: そのアドレスとポートで待ち受けているものがない。`127.0.0.1` で開いていないか、`docker compose ps` でコンテナが動いているかを確かめる
 - `docker compose` がない: 古い Docker では `docker-compose`(ハイフン付き)の場合がある。どちらもなければ、サーバの管理者に Docker Compose を入れてもらう
 - dew のログを見たい: `docker compose exec a cat /home/tester/.cache/dew/log/server.log`
 

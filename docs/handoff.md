@@ -58,7 +58,7 @@
 5. **フェーズ3の終わりの報告**: 受け入れ基準の達成状況と、人が見た目・操作感を確かめる手順。そのあと `phase-3` を push して、ユーザーに Web で PR・マージを頼む
 6. ユーザーの確認待ち:
    - Zen で2本並べたとき、フォーカス中の右側の動画が黒くなる問題への対策(フォーカスで影と重なり順を変えない)が効いたか
-   - リモートサーバでの2コンテナの確認(`docs/manual/remote-test.md`)。前回は URL が「サイトが見つからない」で開けなかった。ホスト名が Windows から引けていない可能性が高い、と説明済み(Jupyter の URL のホスト部分を使う、`Test-NetConnection` で確かめる)
+   - (済 2026-10-18)リモートサーバでの2コンテナの確認(`docs/manual/remote-test.md`)。`DEW_PUBLIC_HOST` を IP にして、Tailscale 経由で a・b とも手順5の1〜7が通った。証明書の警告は今までどおり許可して使う方針(ユーザー決定。自前の認証局などは作らない)
 7. 開発用コンテナを作り直すと Playwright の Firefox(`~/.cache/ms-playwright`)が消える。Dockerfile に `playwright install firefox` を足す必要がある(コンテナの作り直しは人がホストで行う)
 8. `tests/fixtures/komasan.png` はユーザーが置いたファイル。消さない(`gen-fixtures.sh` もディレクトリを消さないようにしてある)
 
