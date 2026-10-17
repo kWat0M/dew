@@ -83,6 +83,9 @@ impl Stream {
                 "zerolatency",
                 "-pix_fmt",
                 "yuv420p",
+                // 共有サーバでほかの人の CPU を使い切らないよう、エンコードは最大 2 スレッド(7.3)
+                "-threads",
+                "2",
             ])
             .args(["-g", &GOP.to_string(), "-bf", "0"])
             // フレームの区切りが分かるよう、各フレームの先頭に AUD を入れる
