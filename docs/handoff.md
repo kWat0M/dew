@@ -21,7 +21,7 @@
 |---|---|---|
 | 1. `dew run python3 tests/apps/counter.py` でウィンドウがキャンバスに出る | 達成 | E2E(Chrome / Firefox)、Rust 結合 |
 | 2. 2つの窓で2つのウィンドウが出る | 達成 | E2E |
-| 3. 1080p60 で受信 fps 55 以上、遅延 150 ms 以下 | **単独では達成、全体実行で失敗**(下の「未解決 1」) | E2E(`fixme` にしてある) |
+| 3. 1080p60 で受信 fps 55 以上、遅延 150 ms 以下 | 達成(61 fps・遅延 49 ms) | E2E の perf プロジェクト(ほかが終わってから単独で。ADR 0011) |
 | 4. 440 Hz がブラウザで 440 Hz として検出される | 達成 | E2E、Rust 結合 |
 | 5. 入力モードのキーだけがアプリに届く(`Ctrl+]` で抜ける) | 達成 | E2E |
 | 6. cv2・matplotlib・pygame のサンプルが表示される | 達成 | E2E |
@@ -51,7 +51,7 @@
 
 仕様にあってまだ作っていない項目の一覧は `docs/spec.md` の 9.2(実装状況)にある。作ったら、その表から消す。
 
-1. **基準3が全体実行で落ちる**: `npx playwright test -g 1080p --project chrome` 単独なら 60.5 fps・遅延 51 ms で通るが、E2E 全体を並列に流すと 4.5 fps まで落ちる。CPU の取り合い(1080p の libx264 と、2つのブラウザでの復号)か、ヘッドレス Chrome が裏のページを間引いているのかは未調査。調べて直すか、性能のテストだけを別の Playwright プロジェクト(workers 1、ほかの後)で流す。直したら `tests/e2e/specs/phase3.spec.ts` の `fixme` を外す
+1. (済 2026-10-17)基準3が全体実行で落ちる: 原因は CPU の取り合い(並列 12 で load 33、アプリ自身も 28 fps に落ちる)。性能のテストを `tests/e2e/specs/phase3-perf.spec.ts` に移し、perf プロジェクトでほかの後に単独で流すようにした(ADR 0011)
 2. **`w r` のブラウザ側**: サーバは `LiveInput::Resize` を受けられる(`460aeeb`)。残りは、ウィンドウ操作モードの `r` と操作パネルのボタン、LiveWindow の表示領域の大きさ(CSS px × devicePixelRatio)を送る処理、E2E。キー一覧とヒントへの追加を忘れると `web/src/keymaps.test.ts` が落ちる
 3. **一時的な窓(メニュー・ツールチップ)**: spec 7.9 では親の映像に重ねて出すが、今は監視が override-redirect の窓を無視しているので出ない
 4. **音をウィンドウごとに分ける**(spec 7.6、ADR 0010): PID はすでに取っている(`WindowInfo.pid`)
