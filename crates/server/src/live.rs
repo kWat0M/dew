@@ -68,11 +68,12 @@ impl Live {
                 WindowEvent::Changed(info) => {
                     let mut ws = self.windows.lock().unwrap();
                     let restart = ws.get(&info.id).is_none_or(|(old, _)| {
-                        (old.width, old.height) != (info.width, info.height)
+                        (old.x, old.y, old.width, old.height)
+                            != (info.x, info.y, info.width, info.height)
                     });
                     if restart {
-                        // 大きさが変わったら取り込みを作り直す(x11grab は始めたときの大きさで取り込むため)
-                        match Stream::start(display, info.id) {
+                        // 位置か大きさが変わったら取り込みを作り直す(x11grab は始めたときの範囲を取り込むため)
+                        match Stream::start(display, &info) {
                             Ok(s) => {
                                 // 古い取り込みは止める(見ている側は ended を見て新しい映像へ移る)
                                 if let Some((_, old)) = ws.insert(info.id, (info, s)) {

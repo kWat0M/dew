@@ -10,6 +10,9 @@ use tokio::io::AsyncReadExt;
 use tokio::process::{Child, Command};
 use tokio::sync::{broadcast, watch};
 
+use crate::monitor::WindowInfo;
+use crate::session::SCREEN;
+
 /// 1秒あたりのフレーム数の上限(3.3 の L4)
 pub const FPS: u32 = 60;
 /// キーフレームの間隔(2秒。9.1)
@@ -41,8 +44,13 @@ struct State {
 }
 
 impl Stream {
-    /// `display` の `window`(大きさ `width`×`height`)の取り込みを始める
-    pub fn start(display: u32, window: u32) -> anyhow::Result<Arc<Self>> {
+    /// `display` の `window` の取り込みを始める。ウィンドウそのもの(`-window_id`)ではなく画面上のその範囲を取り込む。
+    /// `-window_id` では、上に重なった一時的な窓(メニュー・ツールチップ)の部分が黒く抜けるため(7.9、ADR 0012)
+    pub fn start(display: u32, window: &WindowInfo) -> anyhow::Result<Arc<Self>> {
+        // 画面からはみ出す部分は取り込めない(x11grab が失敗する)
+        let (x, y) = (window.x.max(0), window.y.max(0));
+        let width = window.width.min(SCREEN.0.saturating_sub(x as u32)).max(2);
+        let height = window.height.min(SCREEN.1.saturating_sub(y as u32)).max(2);
         let (tx, _) = broadcast::channel(256);
         let stream = Arc::new(Self {
             tx,
@@ -55,8 +63,12 @@ impl Stream {
             .args([
                 "-framerate",
                 &FPS.to_string(),
-                "-window_id",
-                &window.to_string(),
+                "-video_size",
+                &format!("{width}x{height}"),
+                "-grab_x",
+                &x.to_string(),
+                "-grab_y",
+                &y.to_string(),
                 "-i",
                 &format!(":{display}"),
             ])
@@ -92,12 +104,13 @@ impl Stream {
         let stderr = child.stderr.take().expect("stderr");
         stream.state.lock().unwrap().child = Some(child);
         tokio::spawn(read_frames(Arc::downgrade(&stream), stdout));
+        let id = window.id;
         tokio::spawn(async move {
             let mut s = String::new();
             let mut err = stderr;
             let _ = err.read_to_string(&mut s).await;
             if !s.trim().is_empty() {
-                tracing::warn!(window, "ffmpeg(ライブ描画): {}", s.trim());
+                tracing::warn!(window = id, "ffmpeg(ライブ描画): {}", s.trim());
             }
         });
         Ok(stream)

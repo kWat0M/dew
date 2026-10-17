@@ -25,6 +25,9 @@ pub struct WindowInfo {
     pub title: String,
     pub width: u32,
     pub height: u32,
+    /// 中身の左上の、画面上の位置。この範囲を取り込むので、上に重なった一時的な窓(メニューなど)も映る(7.9、ADR 0012)
+    pub x: i32,
+    pub y: i32,
     /// `_NET_WM_PID`(音声をウィンドウに結びつけるのに使う。7.6)
     pub pid: Option<u32>,
 }
@@ -99,20 +102,34 @@ fn run(
                 try_track(&conn, &atoms, e.window, &mut known, &mut placer, &tx);
             }
             Event::ConfigureNotify(e) if e.event == root => {
-                if let Some(info) = known.get_mut(&e.window)
-                    && (info.width, info.height) != (u32::from(e.width), u32::from(e.height))
-                {
-                    info.width = e.width.into();
-                    info.height = e.height.into();
-                    // 大きくなると隣と重なったり画面からはみ出したりするので、置き直す(7.9)
-                    placer.free(e.window);
-                    let (x, y) = placer.place(e.window, e.width.into(), e.height.into());
-                    if (x, y) != (e.x.into(), e.y.into()) {
-                        let _ =
-                            conn.configure_window(e.window, &ConfigureWindowAux::new().x(x).y(y));
-                        let _ = conn.flush();
+                if let Some(info) = known.get_mut(&e.window) {
+                    let border = i32::from(e.border_width);
+                    let (mut x, mut y) = (i32::from(e.x), i32::from(e.y));
+                    if (info.width, info.height) != (u32::from(e.width), u32::from(e.height)) {
+                        // 大きくなると隣と重なったり画面からはみ出したりするので、置き直す(7.9)
+                        placer.free(e.window);
+                        let spot = placer.place(e.window, e.width.into(), e.height.into());
+                        if spot != (x, y) {
+                            let _ = conn.configure_window(
+                                e.window,
+                                &ConfigureWindowAux::new().x(spot.0).y(spot.1),
+                            );
+                            let _ = conn.flush();
+                            (x, y) = spot;
+                        }
                     }
-                    let _ = tx.send(WindowEvent::Changed(info.clone()));
+                    let next = WindowInfo {
+                        width: e.width.into(),
+                        height: e.height.into(),
+                        x: x + border,
+                        y: y + border,
+                        ..info.clone()
+                    };
+                    // 置き直しで動かしたときの通知は、同じ値なのでここで止まる
+                    if next != *info {
+                        *info = next;
+                        let _ = tx.send(WindowEvent::Changed(info.clone()));
+                    }
                 }
             }
             Event::PropertyNotify(e)
@@ -178,11 +195,14 @@ fn track(
     let (x, y) = placer.place(w, geo.width.into(), geo.height.into());
     conn.configure_window(w, &ConfigureWindowAux::new().x(x).y(y))?;
     conn.flush()?;
+    let border = i32::from(geo.border_width);
     let info = WindowInfo {
         id: w,
         title: title_of(conn, atoms, w).unwrap_or_default(),
         width: geo.width.into(),
         height: geo.height.into(),
+        x: x + border,
+        y: y + border,
         pid: pid_of(conn, atoms, w),
     };
     known.insert(w, info.clone());

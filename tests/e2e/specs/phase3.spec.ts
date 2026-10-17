@@ -108,3 +108,21 @@ test('w r でアプリの大きさが表示領域に合う', async ({ page, dew 
   const first = await liveBits(win, 0, 20);
   await expect.poll(() => liveBits(win, 0, 20)).toBeGreaterThan(first + 10);
 });
+
+// 7.9: メニューやツールチップのような一時的な窓(override-redirect)が、親の映像に重なって映る
+// (親の範囲からはみ出した部分は映らない。ADR 0012)
+test('一時的な窓が親の映像に重なって映る', async ({ page, dew }) => {
+  await start(page, dew);
+  dew.spawnRun(['python3', appPath('popup.py'), '--outside']);
+  const win = liveWindow(page, 'popup');
+  await expect(win).toBeVisible(APPEAR);
+  // 一時的な窓は、キャンバスに別のウィンドウとしては出ない
+  await expect(page.getByTestId('live-window')).toHaveCount(1);
+  const rgb = (x: number, y: number) =>
+    win.locator('canvas').evaluate((c: HTMLCanvasElement, [x, y]) => [...c.getContext('2d')!.getImageData(x, y, 1, 1).data.slice(0, 3)], [x, y] as const);
+  const near = (want: number[]) => (got: number[]) => got.every((v, i) => Math.abs(v - want[i]!) < 48);
+  // 親の灰色、内側の赤い窓、右下にはみ出した緑の窓のうち親に重なる部分
+  await expect.poll(() => rgb(10, 10).then(near([128, 128, 128])), APPEAR).toBe(true);
+  await expect.poll(() => rgb(100, 80).then(near([255, 0, 0])), APPEAR).toBe(true);
+  await expect.poll(() => rgb(360, 290).then(near([0, 255, 0])), APPEAR).toBe(true);
+});
