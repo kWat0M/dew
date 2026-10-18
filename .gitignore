@@ -8,3 +8,4 @@ tests/fixtures/
 tests/e2e/test-results/
 tests/e2e/playwright-report/
 __pycache__/
+dew-recordings/
