@@ -184,3 +184,8 @@ export async function liveBits(win: ReturnType<Page['locator']>, row: number, bi
     [row, bits] as const,
   );
 }
+
+/** Home で Ctrl+クリックして選ぶ */
+export async function pick(page: Page, names: string[]) {
+  for (const name of names) await current(page).getByRole('option', { name }).click({ modifiers: ['Control'] });
+}

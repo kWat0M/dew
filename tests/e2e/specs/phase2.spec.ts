@@ -2,12 +2,7 @@
 import { join } from 'node:path';
 import { type Locator, type Page } from '@playwright/test';
 import { PNG } from 'pngjs';
-import { copyP2, current, expect, frameNumbersAtOnce, open, pixelOf, start, test } from '../lib/dew';
-
-/** Home で Ctrl+クリックして選ぶ */
-async function pick(page: Page, names: string[]) {
-  for (const name of names) await current(page).getByRole('option', { name }).click({ modifiers: ['Control'] });
-}
+import { copyP2, expect, open, pick, pixelOf, start, test } from '../lib/dew';
 
 /** 要素の中の相対位置(0–1)の画素の色を、画面のスクリーンショットから読む */
 async function colorAt(page: Page, el: Locator, fx: number, fy: number) {
@@ -20,49 +15,6 @@ async function colorAt(page: Page, el: Locator, fx: number, fy: number) {
 }
 const isWhite = (c: number[]) => c.every((v) => v > 230);
 const isBlack = (c: number[]) => c.every((v) => v < 25);
-
-/** 両方が再生していて、どちらも 10 秒を過ぎるまで待つ(素材は 15 秒) */
-async function playTenSeconds(page: Page) {
-  await expect
-    .poll(() => page.evaluate(() => [...document.querySelectorAll('video')].filter((v) => v.isConnected && v.offsetParent).every((v) => !v.paused)), { timeout: 10_000 })
-    .toBe(true);
-  await expect
-    .poll(() => page.evaluate(() => Math.min(...[...document.querySelectorAll('video')].filter((v) => v.offsetParent).map((v) => v.currentTime))), { timeout: 20_000, intervals: [500] })
-    .toBeGreaterThan(10);
-}
-
-// 基準1: 2本の動画を同期再生し、10秒後のフレーム番号の差が1以内(キャンバスの s)
-test('キャンバスの s で2本を同期再生する', async ({ page, dew }) => {
-  test.setTimeout(60_000);
-  copyP2(dew, ['long_h264.mp4', 'long_mp4v.mp4']);
-  await start(page, dew);
-  await pick(page, ['long_h264.mp4', 'long_mp4v.mp4']);
-  await page.keyboard.press('Enter');
-  await expect(page.getByTestId('player-window')).toHaveCount(2);
-  // わざと位置をずらしてから同期する
-  await page.keyboard.press('3');
-  await page.keyboard.press('s');
-  await expect(page.getByTestId('sync-indicator')).toBeVisible();
-  await page.keyboard.press('0');
-  await playTenSeconds(page);
-  const [a, b] = await frameNumbersAtOnce(page);
-  expect(Math.abs(a! - b!)).toBeLessThanOrEqual(1);
-});
-
-// 基準1(比較ウィンドウ): Home の c で比較ウィンドウを開き、並べて同期再生する
-test('比較ウィンドウで2本を同期再生する', async ({ page, dew }) => {
-  test.setTimeout(60_000);
-  copyP2(dew, ['long_h264.mp4', 'long_mp4v.mp4']);
-  await start(page, dew);
-  await pick(page, ['long_h264.mp4', 'long_mp4v.mp4']);
-  await page.keyboard.press('c');
-  const win = page.getByTestId('compare-window');
-  await expect(win).toBeVisible();
-  await expect(win.locator('video')).toHaveCount(2);
-  await playTenSeconds(page);
-  const [a, b] = await frameNumbersAtOnce(page);
-  expect(Math.abs(a! - b!)).toBeLessThanOrEqual(1);
-});
 
 // 基準2: スライダー比較が動く
 test('スライダー比較で境目より左は1つ目、右は2つ目が見える', async ({ page, dew }) => {

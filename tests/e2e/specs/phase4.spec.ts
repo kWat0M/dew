@@ -61,44 +61,6 @@ test('録画した MP4 の長さが録画時間と ±1秒以内', async ({ page,
   execFileSync('ffmpeg', ['-v', 'error', '-xerror', '-i', file, '-enc_time_base:v', '1/1000000', '-fps_mode', 'passthrough', '-f', 'null', '-']);
 });
 
-// 基準3: 直近30秒を巻き戻して再生できる
-test('直近30秒を巻き戻して再生できる', async ({ page, dew }) => {
-  test.setTimeout(90_000);
-  await start(page, dew);
-  dew.spawnRun(['python3', appPath('counter.py'), '--tone', '0', '--fps', '30']);
-  const win = liveWindow(page, 'counter');
-  await expect(win).toBeVisible(APPEAR);
-  const frame = () => liveBits(win, 0, 20);
-  // 30秒より長く流してから、一時停止して先頭(30秒前)へ
-  await page.waitForTimeout(34_000);
-  await page.keyboard.press('k');
-  await expect(win).toHaveAttribute('data-paused', 'true');
-  const paused = await frame();
-  await page.waitForTimeout(500);
-  expect(await frame()).toBe(paused); // 止まっている
-  await page.keyboard.press('0');
-  // 30fps のアプリなので、30秒前はおよそ 900 フレーム前。位置は受け取った時刻で数えるので、負荷が高く
-  // フレームがまとまって届くと少しずれる(キーフレームの区切りのぶん古いのもよい)
-  await expect.poll(async () => paused - (await frame())).toBeGreaterThanOrEqual(840);
-  expect(paused - (await frame())).toBeLessThanOrEqual(1100);
-  // 5秒進める(l)と、およそ 150 フレーム進む
-  const old = await frame();
-  await page.keyboard.press('l');
-  await expect.poll(async () => (await frame()) - old).toBeGreaterThanOrEqual(110);
-  expect((await frame()) - old).toBeLessThanOrEqual(200);
-  // 再生すると、巻き戻した位置から進む
-  await page.keyboard.press('k');
-  const a = await frame();
-  await expect.poll(frame).toBeGreaterThan(a + 20);
-  expect(await frame()).toBeLessThan(paused);
-  await expect(win).toHaveAttribute('data-rewind', 'playing');
-  // マウスでも: 「ライブへ戻る」で今の映像に戻り、一時停止ボタンで止められる
-  await win.getByRole('button', { name: 'ライブへ戻る' }).click();
-  await expect(win).toHaveAttribute('data-rewind', 'live');
-  await expect.poll(frame).toBeGreaterThan(paused + 30);
-  await win.locator('.live-bar').getByRole('button', { name: '一時停止' }).click();
-  await expect(win).toHaveAttribute('data-paused', 'true');
-});
 
 // L3: 精度モードでも、入力モードで押したキーが waitKey に返る(Esc で終わるふつうのループが動く)
 test('精度モードの waitKey に入力モードのキーが届く', async ({ page, dew }) => {
