@@ -7,6 +7,7 @@ import { api } from '../api/http';
 import { ja } from '../i18n/ja';
 import { Icon } from '../icons';
 import { useLiveSound, type LiveAudioMix } from './liveAudio';
+import { LiveRewind } from './liveRewind';
 import type { PlayerApi } from './PlayerWindow';
 import { WindowFrame, type FrameProps } from './WindowFrame';
 
@@ -47,6 +48,23 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, onMessage, in
   const [muted, setMuted] = useState(false);
   useLiveSound(audioMix, live.audio && !live.ended ? `/ws/live-audio/${live.id}` : null, audible && !muted);
 
+  // 一時停止・巻き戻し(L7)。受け取ったフレームを直近 30 秒ぶん持ち、ライブでない間はそこから描く
+  const [, setTick] = useState(0);
+  const [rewind] = useState(() => new LiveRewind(() => setTick((n) => n + 1)));
+  useEffect(() => {
+    rewind.setCanvas(canvas.current);
+    return () => rewind.close();
+  }, [rewind]);
+  const rw = rewind.state();
+  // ライブでない間は、バーの位置を進めるために描き直す
+  useEffect(() => {
+    win.current?.setAttribute('data-paused', String(rw.mode === 'paused'));
+    win.current?.setAttribute('data-rewind', rw.mode);
+    if (rw.mode === 'live') return;
+    const t = setInterval(() => setTick((n) => n + 1), 250);
+    return () => clearInterval(t);
+  }, [rw.mode]);
+
   useEffect(() => {
     if (live.ended) return;
     const el = canvas.current!;
@@ -54,6 +72,8 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, onMessage, in
     let decoded = 0;
     const decoder = new VideoDecoder({
       output: (frame) => {
+        // 一時停止・巻き戻し中は、ライブの映像を描かない
+        if (!rewind.isLive()) return frame.close();
         if (el.width !== frame.displayWidth || el.height !== frame.displayHeight) {
           el.width = frame.displayWidth;
           el.height = frame.displayHeight;
@@ -73,7 +93,9 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, onMessage, in
     ws.onmessage = (m) => {
       if (typeof m.data === 'string') {
         const c = JSON.parse(m.data) as LiveConfig;
-        decoder.configure({ codec: c.codec, codedWidth: c.width, codedHeight: c.height, optimizeForLatency: true });
+        const cfg = { codec: c.codec, codedWidth: c.width, codedHeight: c.height, optimizeForLatency: true };
+        decoder.configure(cfg);
+        rewind.configure(cfg);
         setConfig(c);
         return;
       }
@@ -81,20 +103,26 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, onMessage, in
       const buf = m.data as ArrayBuffer;
       const view = new DataView(buf);
       const key = (view.getUint8(0) & 1) === 1;
+      const timestamp = Number(view.getBigUint64(1));
+      const data = new Uint8Array(buf, 9);
+      // ライブでない間は持っておくだけ。戻ったら次のキーフレームから描く
+      if (!rewind.push({ key, ts: timestamp, data })) {
+        waitKey = true;
+        return;
+      }
       if (!key && (waitKey || decoder.decodeQueueSize > MAX_QUEUE)) {
         waitKey = true;
         return;
       }
       waitKey = false;
-      const timestamp = Number(view.getBigUint64(1));
-      decoder.decode(new EncodedVideoChunk({ type: key ? 'key' : 'delta', timestamp, data: new Uint8Array(buf, 9) }));
+      decoder.decode(new EncodedVideoChunk({ type: key ? 'key' : 'delta', timestamp, data }));
     };
     return () => {
       ws.close();
       socket.current = null;
       if (decoder.state !== 'closed') decoder.close();
     };
-  }, [live.id, live.ended]);
+  }, [live.id, live.ended, rewind]);
 
   // 録画(L7)。録画中かはサーバが一覧で知らせる(ほかのタブで始めたものも出る)
   const recording = live.recording && !live.ended;
@@ -182,13 +210,13 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, onMessage, in
         send({ type: 'key', key: ch, down: false });
       }
     },
-    toggle: () => {},
-    isPaused: () => false,
+    toggle: () => rewind.toggle(),
+    isPaused: () => rewind.isPaused(),
     video: () => null,
-    setPlaying: () => {},
-    seekBy: () => {},
-    step: () => {},
-    seekFraction: () => {},
+    setPlaying: (playing) => (playing ? rewind.play() : rewind.pause()),
+    seekBy: (sec) => rewind.seekBy(sec),
+    step: (dir) => rewind.step(dir),
+    seekFraction: (f) => rewind.seekFraction(f),
     speed: () => {},
     ab: () => {},
     toggleMute: () => setMuted((m) => !m),
@@ -197,7 +225,7 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, onMessage, in
       if (document.fullscreenElement) void document.exitFullscreen();
       else void win.current?.requestFullscreen();
     },
-  }), []);
+  }), [rewind]);
 
   return (
     <WindowFrame
@@ -231,7 +259,35 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, onMessage, in
         )}
       </div>
       <footer className="live-bar">
-        <span className={`live-badge${live.ended ? ' ended' : ''}`}>{live.ended ? ja.liveEnded : ja.live}</span>
+        <button
+          type="button"
+          className="icon-button small"
+          title={rw.mode === 'paused' ? ja.play : ja.pause}
+          aria-label={rw.mode === 'paused' ? ja.playLabel : ja.pauseLabel}
+          onClick={() => rewind.toggle()}
+        >
+          <Icon name={rw.mode === 'paused' ? 'play' : 'pause'} size={20} />
+        </button>
+        {rw.mode === 'live' ? (
+          <span className={`live-badge${live.ended ? ' ended' : ''}`}>{live.ended ? ja.liveEnded : ja.live}</span>
+        ) : (
+          <>
+            {/* 直近のバッファ(L7)。ドラッグでその位置へ */}
+            <input
+              className="rewind-bar"
+              type="range"
+              min={0}
+              max={Math.max(1, rw.end - rw.start)}
+              value={rw.pos - rw.start}
+              aria-label={ja.rewindBar}
+              onChange={(e) => rewind.seekTo(rw.start + Number(e.target.value))}
+            />
+            <span className="muted">{ja.behind((rw.end - rw.pos) / 1e6)}</span>
+            <button type="button" className="text-button" onClick={() => rewind.goLive()}>
+              {ja.backToLive}
+            </button>
+          </>
+        )}
         {config && (
           <span className="muted">
             {config.width}×{config.height}

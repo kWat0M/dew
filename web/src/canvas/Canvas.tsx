@@ -424,7 +424,8 @@ export function Canvas(p: Props) {
   useImperativeHandle(p.runRef, () => ({
     normal: runNormal,
     window: runWindow,
-    pauseAll: () => apis.current.forEach((a) => a?.setPlaying(false)),
+    // ライブウィンドウは止めない(戻ったときにライブのまま見られるように。7.6 は動画の話)
+    pauseAll: () => apis.current.forEach((a, id) => !ws.find((w) => w.id === id)?.live && a?.setPlaying(false)),
   }));
 
   const windowMap = new KeySequence(windowKeys);
