@@ -60,6 +60,26 @@ test('ライブウィンドウの音はフォーカス中のウィンドウだ�
   await expect.poll(near(440), { timeout: 15_000 }).toBe(true);
 });
 
+// 7.9: 親からはみ出した一時的な窓が、ほかのアプリのウィンドウの映像に映り込まない(重なったウィンドウをよける。ADR 0012)
+test('はみ出した一時的な窓がほかのウィンドウに映り込まない', async ({ page, dew }) => {
+  await start(page, dew);
+  // 親(400x300)を先に置き、その右隣に counter を置いてから、右下にはみ出す緑の窓(親の (320, 260)、160x80)を出す
+  dew.spawnRun(['python3', appPath('popup.py'), '--outside', '--delay', '4']);
+  await expect(liveWindow(page, 'popup')).toBeVisible(APPEAR);
+  dew.spawnRun(['python3', appPath('counter.py'), '--tone', '0']);
+  const counter = liveWindow(page, 'counter');
+  await expect(counter).toBeVisible(APPEAR);
+  const rgb = (x: number, y: number) =>
+    counter.locator('canvas').evaluate((c: HTMLCanvasElement, [x, y]) => [...c.getContext('2d')!.getImageData(x, y, 1, 1).data.slice(0, 3)], [x, y] as const);
+  const isGreen = ([r, g, b]: number[]) => g! > 200 && r! < 80 && b! < 80;
+  // 緑の窓が出たあと(4秒後)も、counter の左端のあたりに緑が映らない
+  await page.waitForTimeout(6000);
+  for (let i = 0; i < 10; i++) {
+    for (const [x, y] of [[8, 280], [24, 300], [8, 330]] as const) expect(isGreen(await rgb(x, y))).toBe(false);
+    await page.waitForTimeout(100);
+  }
+});
+
 // 基準5: 入力モードで押したキーをアプリが受け取り、Ctrl+] で抜けた後のキーは受け取らない
 test('入力モードのキーだけがアプリに届く', async ({ page, dew }) => {
   const keylog = join(mkdtempSync(join(tmpdir(), 'dew-keys-')), 'keys.txt');

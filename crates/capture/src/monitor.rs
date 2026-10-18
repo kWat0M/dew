@@ -8,8 +8,8 @@ use tokio::sync::mpsc;
 use x11rb::connection::Connection;
 use x11rb::protocol::Event;
 use x11rb::protocol::xproto::{
-    AtomEnum, ChangeWindowAttributesAux, ConfigureWindowAux, ConnectionExt, EventMask, MapState,
-    Window,
+    AtomEnum, CONFIGURE_NOTIFY_EVENT, ChangeWindowAttributesAux, ConfigureNotifyEvent,
+    ConfigureWindowAux, ConnectionExt, EventMask, MapState, Window,
 };
 use x11rb::rust_connection::RustConnection;
 
@@ -84,6 +84,8 @@ fn run(
     let atoms = Atoms::new(&conn)?;
     let mut known: HashMap<Window, WindowInfo> = HashMap::new();
     let mut placer = Placer::default();
+    // ウィンドウ ID の上位ビットは、作った X の接続(= アプリ)ごとに決まる。一時的な窓の持ち主を見分けるのに使う
+    let client_mask = !conn.setup().resource_id_mask;
 
     // 監視を始める前から出ているウィンドウ
     for w in conn.query_tree(root)?.reply()?.children {
@@ -101,6 +103,34 @@ fn run(
             Event::MapNotify(e) if e.event == root && !e.override_redirect => {
                 try_track(&conn, &atoms, e.window, &mut known, &mut placer, &tx);
             }
+            // 一時的な窓(メニュー・ツールチップ)。親の範囲を取り込むので映像には映るが、はみ出して
+            // ほかのアプリのウィンドウに重なると、そちらの映像に映り込む。重なったウィンドウをよける(ADR 0012)
+            Event::MapNotify(e) if e.event == root => {
+                if let Ok(Ok(g)) = conn.get_geometry(e.window).map(|c| c.reply()) {
+                    let rect = popup_rect(g.x, g.y, g.width, g.height, g.border_width);
+                    placer.popups.insert(e.window, rect);
+                    evict(
+                        &conn,
+                        &mut placer,
+                        e.window & client_mask,
+                        rect,
+                        client_mask,
+                    );
+                }
+            }
+            Event::ConfigureNotify(e)
+                if e.event == root && placer.popups.contains_key(&e.window) =>
+            {
+                let rect = popup_rect(e.x, e.y, e.width, e.height, e.border_width);
+                placer.popups.insert(e.window, rect);
+                evict(
+                    &conn,
+                    &mut placer,
+                    e.window & client_mask,
+                    rect,
+                    client_mask,
+                );
+            }
             Event::ConfigureNotify(e) if e.event == root => {
                 if let Some(info) = known.get_mut(&e.window) {
                     let border = i32::from(e.border_width);
@@ -110,11 +140,12 @@ fn run(
                         placer.free(e.window);
                         let spot = placer.place(e.window, e.width.into(), e.height.into());
                         if spot != (x, y) {
-                            let _ = conn.configure_window(
+                            let _ = move_window(
+                                &conn,
                                 e.window,
-                                &ConfigureWindowAux::new().x(spot.0).y(spot.1),
+                                spot,
+                                (e.width, e.height, e.border_width),
                             );
-                            let _ = conn.flush();
                             (x, y) = spot;
                         }
                     }
@@ -144,9 +175,11 @@ fn run(
                 }
             }
             Event::UnmapNotify(e) if e.event == root => {
+                placer.popups.remove(&e.window);
                 close(e.window, &mut known, &mut placer, &tx)
             }
             Event::DestroyNotify(e) if e.event == root => {
+                placer.popups.remove(&e.window);
                 close(e.window, &mut known, &mut placer, &tx)
             }
             _ => {}
@@ -193,8 +226,7 @@ fn track(
     )?;
     // 隠れた部分が欠けないよう、ほかのウィンドウと重ならない位置へ(ADR 0009)
     let (x, y) = placer.place(w, geo.width.into(), geo.height.into());
-    conn.configure_window(w, &ConfigureWindowAux::new().x(x).y(y))?;
-    conn.flush()?;
+    move_window(conn, w, (x, y), (geo.width, geo.height, geo.border_width))?;
     let border = i32::from(geo.border_width);
     let info = WindowInfo {
         id: w,
@@ -268,21 +300,88 @@ fn pid_of(conn: &RustConnection, atoms: &Atoms, w: Window) -> Option<u32> {
     r.value32()?.next()
 }
 
-/// 仮想ディスプレイの上で、ウィンドウを重ならないように左上から横に並べる
+type Rect = (i32, i32, i32, i32);
+
+/// 枠を含めた画面上の範囲
+fn popup_rect(x: i16, y: i16, width: u16, height: u16, border: u16) -> Rect {
+    let b = i32::from(border);
+    (
+        x.into(),
+        y.into(),
+        i32::from(width) + 2 * b,
+        i32::from(height) + 2 * b,
+    )
+}
+
+fn intersects(a: Rect, b: Rect) -> bool {
+    a.0 < b.0 + b.2 && b.0 < a.0 + a.2 && a.1 < b.1 + b.3 && b.1 < a.1 + a.3
+}
+
+/// 一時的な窓 `rect`(アプリ `client` のもの)に重なった、ほかのアプリのウィンドウを空いた場所へ移す。
+/// 移したウィンドウは ConfigureNotify で位置が変わったと知らせ、取り込みが作り直される
+fn evict(conn: &RustConnection, placer: &mut Placer, client: u32, rect: Rect, client_mask: u32) {
+    let hit: Vec<(Window, Rect)> = placer
+        .placed
+        .iter()
+        .filter(|&(&w, &r)| w & client_mask != client && intersects(r, rect))
+        .map(|(&w, &r)| (w, r))
+        .collect();
+    for (w, (_, _, width, height)) in hit {
+        placer.free(w);
+        let spot = placer.place(w, width, height);
+        let size = (width as u16, height as u16, 0);
+        let _ = move_window(conn, w, spot, size);
+    }
+}
+
+/// ウィンドウを動かし、アプリにも新しい位置を知らせる。ウィンドウマネージャがないので、ICCCM 4.1.5 で
+/// ウィンドウマネージャが送るのと同じ合成の ConfigureNotify を dew が送る。送らないと、アプリ(Tk など)は
+/// 元の位置のままだと思い、メニューなどの一時的な窓を元の位置に出してしまう
+fn move_window(
+    conn: &RustConnection,
+    w: Window,
+    (x, y): (i32, i32),
+    (width, height, border): (u16, u16, u16),
+) -> anyhow::Result<()> {
+    conn.configure_window(w, &ConfigureWindowAux::new().x(x).y(y))?;
+    let event = ConfigureNotifyEvent {
+        response_type: CONFIGURE_NOTIFY_EVENT,
+        sequence: 0,
+        event: w,
+        window: w,
+        above_sibling: x11rb::NONE,
+        x: x as i16,
+        y: y as i16,
+        width,
+        height,
+        border_width: border,
+        override_redirect: false,
+    };
+    conn.send_event(false, w, EventMask::STRUCTURE_NOTIFY, event)?;
+    conn.flush()?;
+    Ok(())
+}
+
+/// 仮想ディスプレイの上で、ウィンドウを重ならないように左上から横に並べる。一時的な窓のある場所も避ける
 #[derive(Default)]
 struct Placer {
-    placed: HashMap<Window, (i32, i32, i32, i32)>,
+    placed: HashMap<Window, Rect>,
+    /// 出ている一時的な窓(override-redirect)の範囲
+    popups: HashMap<Window, Rect>,
 }
 
 impl Placer {
     fn place(&mut self, w: Window, width: i32, height: i32) -> (i32, i32) {
         let overlaps = |x: i32, y: i32| {
-            self.placed.values().any(|&(px, py, pw, ph)| {
-                x < px + pw + GAP
-                    && px < x + width + GAP
-                    && y < py + ph + GAP
-                    && py < y + height + GAP
-            })
+            self.placed
+                .values()
+                .chain(self.popups.values())
+                .any(|&(px, py, pw, ph)| {
+                    x < px + pw + GAP
+                        && px < x + width + GAP
+                        && y < py + ph + GAP
+                        && py < y + height + GAP
+                })
         };
         let (sw, sh) = (SCREEN.0 as i32, SCREEN.1 as i32);
         let mut spot = (0, 0);
@@ -316,5 +415,13 @@ mod tests {
         assert!(b.0 >= 640 + GAP, "{b:?}");
         p.free(1);
         assert_eq!(p.place(3, 320, 240), (0, 0), "空いた場所を使い直す");
+    }
+
+    #[test]
+    fn placer_avoids_popups() {
+        let mut p = Placer::default();
+        p.popups.insert(9, (0, 0, 200, 100));
+        let a = p.place(1, 320, 240);
+        assert!(!intersects((a.0, a.1, 320, 240), (0, 0, 200, 100)), "{a:?}");
     }
 }
