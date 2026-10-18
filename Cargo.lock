@@ -426,6 +426,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "dew-capture",
  "dew-protocol",
  "dew-server",
  "reqwest",
@@ -445,6 +446,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bytes",
+ "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
  "x11rb",

@@ -17,6 +17,21 @@ pub struct ServerFile {
     pub url: String,
     #[serde(default)]
     pub warnings: Vec<String>,
+    /// サーバを起動したときの dew の実行ファイルの更新時刻(ナノ秒)。ビルドし直したのに古いサーバが
+    /// 動き続けているのを見つけるのに使う
+    #[serde(default)]
+    pub exe_mtime: Option<u128>,
+}
+
+/// 今の dew の実行ファイルの更新時刻(ナノ秒)
+pub fn exe_mtime() -> Option<u128> {
+    let m = std::env::current_exe()
+        .ok()?
+        .metadata()
+        .ok()?
+        .modified()
+        .ok()?;
+    Some(m.duration_since(std::time::UNIX_EPOCH).ok()?.as_nanos())
 }
 
 pub fn home() -> PathBuf {

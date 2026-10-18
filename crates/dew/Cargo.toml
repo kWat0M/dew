@@ -11,6 +11,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive", "env"] }
+dew-capture = { version = "0.1.0", path = "../capture" }
 dew-protocol = { version = "0.1.0", path = "../protocol" }
 dew-server = { version = "0.1.0", path = "../server" }
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "rustls-no-provider"] }

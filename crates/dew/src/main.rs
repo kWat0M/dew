@@ -2,6 +2,7 @@
 
 mod client;
 mod doctor;
+mod hooks;
 mod state;
 
 use std::fs::File;
@@ -49,6 +50,9 @@ enum Sub {
     Doctor,
     /// 仮想ディスプレイと音声を用意してコマンドを実行し、ウィンドウをブラウザに出す
     Run {
+        /// 精度モード: cv2.imshow の画像を圧縮せずに送る(L3。プログラムは変えない)
+        #[arg(long)]
+        exact: bool,
         /// 実行するコマンドと引数
         #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
         command: Vec<String>,
@@ -79,8 +83,8 @@ struct ServeArgs {
 fn main() -> ExitCode {
     let cli = Cli::parse();
     // dew run はアプリの終了コードをそのまま返す
-    if let Some(Sub::Run { command }) = &cli.command {
-        return match run(&cli.serve, command) {
+    if let Some(Sub::Run { exact, command }) = &cli.command {
+        return match run(&cli.serve, *exact, command) {
             Ok(code) => ExitCode::from(code),
             Err(e) => {
                 eprintln!("dew: {e:#}");
@@ -122,7 +126,10 @@ fn start(args: &ServeArgs, path: Option<&Path>) -> anyhow::Result<()> {
         })
         .transpose()?;
     let server = match alive() {
-        Some(s) => s,
+        Some(s) => {
+            warn_if_stale(&s);
+            s
+        }
         None => {
             let missing = doctor::missing_required();
             if !missing.is_empty() {
@@ -163,6 +170,7 @@ fn start(args: &ServeArgs, path: Option<&Path>) -> anyhow::Result<()> {
 /// 動いているサーバを返す。なければ起動する
 fn ensure_server(args: &ServeArgs) -> anyhow::Result<ServerFile> {
     if let Some(s) = alive() {
+        warn_if_stale(&s);
         return Ok(s);
     }
     let s = spawn(args)?;
@@ -175,12 +183,27 @@ fn ensure_server(args: &ServeArgs) -> anyhow::Result<ServerFile> {
 }
 
 /// `dew run`: 仮想ディスプレイと音声につないでコマンドを実行し、終わるまで待つ(6.1)
-fn run(args: &ServeArgs, command: &[String]) -> anyhow::Result<u8> {
+fn run(args: &ServeArgs, exact: bool, command: &[String]) -> anyhow::Result<u8> {
     let server = ensure_server(args)?;
     let live = Api::new(&server).live_session()?;
     let mut cmd = Command::new(&command[0]);
     cmd.args(&command[1..])
         .envs(live.env.iter().map(|(k, v)| (k, v)));
+    // 精度モード: 同梱のフックを PYTHONPATH の先頭に置き、cv2 を import したときに差し替えさせる(ADR 0017)
+    if exact {
+        let hooks = hooks::install()?;
+        let path = match std::env::var_os("PYTHONPATH") {
+            Some(old) if !old.is_empty() => {
+                let mut p = hooks.into_os_string();
+                p.push(":");
+                p.push(old);
+                p
+            }
+            _ => hooks.into_os_string(),
+        };
+        cmd.env("PYTHONPATH", path)
+            .env("DEW_EXACT_SOCKET", &live.exact_socket);
+    }
     for k in &live.unset {
         cmd.env_remove(k);
     }
@@ -222,6 +245,18 @@ fn shell_quote(s: &str) -> String {
 }
 
 /// 記録があり、実際に応答するサーバ
+/// 動いているサーバが、今の dew より前のビルドなら知らせる。dew は動いているサーバを使い回すので、
+/// ビルドし直しても `dew stop` するまでは古いサーバのまま(開発ビルドでは画面だけ新しくなり、食い違う)
+fn warn_if_stale(s: &ServerFile) {
+    if let (Some(server), Some(me)) = (s.exe_mtime, state::exe_mtime())
+        && server != me
+    {
+        eprintln!(
+            "dew: 警告: 動いているサーバは、この dew より前にビルドしたものです。新しい dew を使うには dew stop してから起動し直してください"
+        );
+    }
+}
+
 fn alive() -> Option<ServerFile> {
     let s = state::read()?;
     Api::new(&s).alive(&s.instance_id).then_some(s)
@@ -335,6 +370,7 @@ fn foreground(args: &ServeArgs) -> anyhow::Result<()> {
         args.bind.to_string()
     };
     let pid = std::process::id();
+    let exe_mtime = state::exe_mtime();
 
     let rt = tokio::runtime::Runtime::new()?;
     let result = rt.block_on(dew_server::serve(cfg, |r| {
@@ -346,6 +382,7 @@ fn foreground(args: &ServeArgs) -> anyhow::Result<()> {
             local_host,
             url: r.url.clone(),
             warnings: r.warnings.clone(),
+            exe_mtime,
         };
         if let Err(e) = state::write(&s) {
             tracing::error!("server.json を書けません: {e:#}");

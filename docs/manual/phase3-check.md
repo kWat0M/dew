@@ -8,6 +8,7 @@
 cd ~/projects/DevView
 pnpm -C web build && cargo build -p dew
 alias dew=$PWD/target/debug/dew
+dew stop       # 前に起動したサーバが残っていたら止める(dew は動いているサーバを使い回すので、ビルドし直しても古いままになる)
 dew            # 出た URL を Windows のブラウザで開き、「クリックかキーで開始」を押す
 ```
 

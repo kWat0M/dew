@@ -85,11 +85,20 @@ pub fn run() {
             missing.push(d.package);
         }
     }
-    let gpu = found("nvidia-smi");
+    // ライブ映像のエンコーダ(NVENC が実際に使えるか。ADR 0014)
+    let enc = dew_capture::encoder::Encoder::detect("ffmpeg");
     println!(
-        "{} {:<22} NVENC・GPU 付き仮想ディスプレイ(任意)",
-        if gpu { "✓" } else { "-" },
-        "nvidia-smi"
+        "{} {:<22} ライブ映像のエンコード: {}",
+        if enc == dew_capture::encoder::Encoder::Nvenc {
+            "✓"
+        } else {
+            "-"
+        },
+        "NVENC(任意)",
+        match enc {
+            dew_capture::encoder::Encoder::Nvenc => "NVENC(GPU)を使います",
+            dew_capture::encoder::Encoder::X264 => "NVENC が使えないので libx264(CPU)を使います",
+        }
     );
     if missing.is_empty() {
         println!("\n必要なものはそろっています");

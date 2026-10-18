@@ -184,6 +184,7 @@ fn router(app: Arc<App>) -> Router {
         .route("/media", get(media))
         .route("/history", get(history::list).post(history::add))
         .route("/live/session", post(live::session))
+        .route("/live/record", post(live::record))
         .route("/probe", get(media::probe))
         .route("/thumb", get(media::thumb))
         .route("/sprite", get(media::sprite))

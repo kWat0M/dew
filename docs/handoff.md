@@ -1,4 +1,4 @@
-# 引き継ぎ(2026-10-16 時点)
+# 引き継ぎ(2026-10-18 時点)
 
 次のセッションが、この文書だけで続きを始められるようにまとめる。仕様は `docs/spec.md`、判断の記録は `docs/decisions/` が正。
 
@@ -8,60 +8,48 @@
 
 | ブランチ | 状態 |
 |---|---|
-| `main` | フェーズ1・操作画面の改訂・フェーズ2まで入っている(PR #1〜#3 をユーザーが Web でマージ。`28818f6`) |
-| `phase-2-followup` | GitHub に push 済み、**未マージ**。キャンバスのバーの並び、リモート確認の手順で `.env` を使う修正(`ea6e6b1`) |
-| `phase-3` | `phase-2-followup` から切った。**手元だけで、push していない**。フェーズ3の作業はすべてここ |
+| `main` | フェーズ1〜3 が入っている(PR #4 で `phase-3` をマージ。`6a69af9`) |
+| `phase-4` | `origin/main` から切った。2026-10-18 に push 済み。ユーザーが Web で PR・マージする |
 
-- PR はユーザーが GitHub の Web で作ってマージしている(`gh` は未ログインで、`gh auth login` はユーザーが面倒と判断)。こちらは push までを行い、Web でのマージを頼む
+- PR はユーザーが GitHub の Web で作ってマージしている(`gh` は未ログイン)。こちらは push までを行い、Web でのマージを頼む
 - `git push` と `git merge` は `.claude/settings.json` で確認が出る設定。ユーザーの許可を得てから行う
 
-### フェーズ3(ライブ描画)の受け入れ基準(spec 11章)
+### フェーズ4(精度・記録)の受け入れ基準(spec 11章)
 
 | 基準 | 状態 | テスト |
 |---|---|---|
-| 1. `dew run python3 tests/apps/counter.py` でウィンドウがキャンバスに出る | 達成 | E2E(Chrome / Firefox)、Rust 結合 |
-| 2. 2つの窓で2つのウィンドウが出る | 達成 | E2E |
-| 3. 1080p60 で受信 fps 55 以上、遅延 150 ms 以下 | 達成(61 fps・遅延 49 ms) | E2E の perf プロジェクト(ほかが終わってから単独で。ADR 0011) |
-| 4. 440 Hz がブラウザで 440 Hz として検出される | 達成 | E2E、Rust 結合 |
-| 5. 入力モードのキーだけがアプリに届く(`Ctrl+]` で抜ける) | 達成 | E2E |
-| 6. cv2・matplotlib・pygame のサンプルが表示される | 達成 | E2E |
+| 1. 精度モードの cv2.imshow が送信元の配列と画素単位で一致する | 達成 | E2E(`phase4.spec.ts`、Chrome / Firefox) |
+| 2. 録画した MP4 が再生でき、長さが録画時間と ±1秒以内 | 達成(ずれは実測 -0.4〜+0.45 秒) | E2E |
+| 3. 直近30秒を巻き戻して再生できる | 達成 | E2E(40秒ほどかかる) |
+| 4. NVENC があれば使い、なければ libx264 | 達成(選び方) | 単体テスト(`crates/capture/src/encoder.rs`。偽の ffmpeg で両方の場合)。GPU のある環境での実物は未確認 |
 
-最新の結果(`c8bf2ab` の時点、2026-10-17): Rust 62件、web 単体 16件、E2E 101件(Chrome・Firefox と perf)がすべて通る。全体の連続実行でも確かめた。
+最新の結果(2026-10-18、`ef7c740`): Rust 73件、web 単体 19件、E2E 127件がすべて通る。全体の連続実行でも確かめた。開発ビルドの dew は画面(web/dist)を実行時に読むので、ビルドし直したら `dew stop` してから確かめる(古いサーバには警告が出る)
 
-## 2. フェーズ3で作ったもの
-
-流れ: `dew run` → サーバが仮想ディスプレイ(Xvfb)と音声サーバ(pulseaudio)のセッションを1つ作る → アプリのウィンドウを監視し、ウィンドウごとに ffmpeg で H.264 にして `/ws/live/{id}` で配る → ブラウザが WebCodecs で復号して canvas に描く。音は null-sink の monitor を ffmpeg で Opus にして `/ws/live-audio` で配る。入力は `/ws/live/{id}` で受け取って XTest で注入する。
+## 2. フェーズ4で作ったもの
 
 | 場所 | 中身 |
 |---|---|
-| `crates/capture/src/session.rs` | Xvfb(`:100` から空き、3840x2160)と pulseaudio(null-sink `dew`)。止めるときは SIGTERM で、終わるまで待つ |
-| `crates/capture/src/monitor.rs` | x11rb でトップレベルのウィンドウを監視。重ならない位置に置き直す。名前・大きさ・PID を知らせる |
-| `crates/capture/src/stream.rs` | ウィンドウごとの ffmpeg(`x11grab -window_id` → libx264 zerolatency、AUD 入り)。最後のキーフレーム以降を取っておく |
-| `crates/capture/src/audio.rs` | セッション音声(ffmpeg の pulse 入力 → 10 ms 単位の Opus → Ogg を区切る) |
-| `crates/capture/src/input.rs` | KeyboardEvent.key → keysym、XTest でキー・マウス、XSetInputFocus、ウィンドウの大きさの変更 |
-| `crates/server/src/live.rs` | `/api/live/session`、`/ws/live/{id}`(映像と入力)、`/ws/live-audio`、一覧を `/ws/events` へ |
-| `crates/dew/src/main.rs` | `dew run <コマンド>`(終了コードを返す)、`dew env` |
-| `web/src/canvas/LiveWindow.tsx` | ライブウィンドウ(WebCodecs、入力モード、`I` の文字列送信、終わったら「終了」) |
-| `web/src/canvas/liveAudio.ts` | セッション音声の再生(50 ms 先に予約)と `window.dewTest.audioPeakHz()` |
-| `tests/apps/` | テスト用アプリ。counter.py はフレーム番号と描いた時刻を画素に焼き込み、440 Hz を鳴らし、受け取ったキーを記録 |
+| `crates/capture/src/encoder.rs` | h264_nvenc で1枚エンコードしてみて、使えれば NVENC、だめなら libx264(ADR 0014)。`dew doctor` にも出す |
+| `crates/capture/src/record.rs` | 録画。配っている H.264 を時刻付きの FLV にして ffmpeg の `-c copy` で MP4 へ。押した時刻に近いキーフレームから(ADR 0015)。キーフレームの間隔は1秒にした |
+| `crates/server/src/live.rs` | `POST /api/live/record`、精度モードの窓の一覧と `/ws/live/{id}`(PNG) |
+| `web/src/canvas/liveRewind.ts` | 一時停止・巻き戻し。ブラウザが直近30秒の H.264 を持ち、別の復号器でキーフレームから復号し直す(ADR 0016) |
+| `python/dew_hooks/` | 精度モードのフック(sitecustomize が cv2 の import を捕まえて imshow・waitKey を差し替え、PNG を Unix ソケットへ)。`crates/dew/src/hooks.rs` がバイナリに同梱して `~/.cache/dew/python/` へ書き出す(ADR 0017) |
+| `crates/capture/src/exact.rs` | 精度モードの受け口(窓の名前ごとに ID を 0x40000000 から振る、キーを waitKey へ返す) |
+| `tests/apps/exact_sample.py` | 乱数の画像を cv2.imshow で出し、送った画素をファイルに書く |
 
-決めたこと(ADR): 0009 取り込みとエンコードは ffmpeg に任せる(openh264 は組み込まない)/ 0010 音声はまずセッション全体で1本。
+フェーズ3の作りは `docs/decisions/` の 0009〜0013 と、各ファイルの先頭のコメントを見る。
 
 ## 3. 未解決・次にやること(上から優先)
 
 仕様にあってまだ作っていない項目の一覧は `docs/spec.md` の 9.2(実装状況)にある。作ったら、その表から消す。
 
-1. (済 2026-10-17)基準3が全体実行で落ちる: 原因は CPU の取り合い(並列 12 で load 33、アプリ自身も 28 fps に落ちる)。性能のテストを `tests/e2e/specs/phase3-perf.spec.ts` に移し、perf プロジェクトでほかの後に単独で流すようにした(ADR 0011)
-2. (済 2026-10-17)`w r` のブラウザ側。あわせて、大きさが変わったときに、つないだままの WebSocket が新しい取り込みへ移る処理(`Stream::ended`、`Live::next_stream`)と、仮想ディスプレイ上での置き直しを加えた。E2E は `counter.py --resizable`
-3. (一部済 2026-10-17)一時的な窓(メニュー・ツールチップ): 取り込みを `-window_id` から画面上の範囲に変え、親に重なる部分は映るようにした(ADR 0012)。親からはみ出した部分は映らない。直すなら、はみ出した窓を別の映像にしてブラウザで重ねる案(ADR 0012 に書いた)
-4. (済 2026-10-17)音をウィンドウごとに分ける(spec 7.6、ADR 0013)。`crates/capture/src/pulse.rs` が pulseaudio の CLI モジュールで出力先を作ってストリームを移す。`Live::route` が 250 ms ごとに振り分ける
-5. **フェーズ3の終わりの報告**(2026-10-17 に報告済み): 人が確かめる手順は `docs/manual/phase3-check.md`。`phase-3` は 2026-10-18 に push 済み(`e7730cf` まで)。ユーザーが Web で PR・マージする(`phase-2-followup` が先)
-6. ユーザーの確認待ち:
-   - Zen で2本並べたとき、フォーカス中の右側の動画が黒くなる問題への対策(フォーカスで影と重なり順を変えない)が効いたか
-   - (済 2026-10-18)リモートサーバでの2コンテナの確認(`docs/manual/remote-test.md`)。`DEW_PUBLIC_HOST` を IP にして、Tailscale 経由で a・b とも手順5の1〜7が通った。証明書の警告は今までどおり許可して使う方針(ユーザー決定。自前の認証局などは作らない)
-6.5 **負荷が高いときだけ落ちる E2E**: フェーズ2の「キャンバスの s で2本を同期再生する」が、E2E 全体の並列実行でたまに落ちる(単独では 20/20 で通る。2026-10-18)。フレーム番号の差が1以内という時間に厳しい基準なので、基準3と同じく perf プロジェクトへ移すのが候補(ADR 0011)
-7. 開発用コンテナを作り直すと Playwright の Firefox(`~/.cache/ms-playwright`)が消える。Dockerfile に `playwright install firefox` を足す必要がある(コンテナの作り直しは人がホストで行う)
-8. `tests/fixtures/komasan.png` はユーザーが置いたファイル。消さない(`gen-fixtures.sh` もディレクトリを消さないようにしてある)
+1. (済 2026-10-18)フェーズ4の終わりの報告と、ユーザーの確認を受けた修正(下部を動画と同じ並びに、録画は表示している映像を録る、ヒントの帯の出し分け、ライブへ戻るのは q、古いサーバの警告、精度モードの窓を閉じたら出し直さない、dew stop で1行だけ出して終わる)。人が確かめる手順は `docs/manual/phase4-check.md`。`phase-4` は push 済み
+2. GPU のある環境での NVENC の実物の確認(人が `dew doctor` と録画・巻き戻しで確かめる)
+3. 9.2 の残り: 親からはみ出した一時的な窓(ADR 0012)、ライブ映像と音声の同期、平文 HTTP のフォールバック、`dew update`、`:` のコマンドパレット、キーマップの設定ファイル、再接続時の配置の復元、「ログを見る」、LICENSE(文面は人が決める)
+4. **負荷が高いときだけ落ちる E2E**: フェーズ2の「キャンバスの s で2本を同期再生する」と、フェーズ3のライブウィンドウが 20 秒以内に出ない、がまれに起きる(単独では通る)。基準3と同じく perf プロジェクトへ移すのが候補(ADR 0011)
+5. 開発用コンテナを作り直すと Playwright の Firefox(`~/.cache/ms-playwright`)が消える(このセッションでも2回入れ直した)。Dockerfile に `npx playwright install firefox` を足すのはユーザーの判断(Docker のファイルはユーザーが手を入れている)
+6. `tests/fixtures/komasan.png` はユーザーが置いたファイル。消さない
+7. ユーザーの確認待ち: Zen で2本並べたとき、フォーカス中の右側の動画が黒くなる問題への対策が効いたか
 
 ## 4. 作業の決まりと注意
 
@@ -78,7 +66,9 @@
 - React の lint(React Compiler)は、描画中に ref を読む書き方を通さない。`useCallback` の依存に毎回作り直されるオブジェクトを入れると、動画の読み込みが毎回やり直される不具合になった(2回起きた)。変わらない関数だけを依存に入れる
 - 開発用コンテナの `/tmp/.X11-unix` は WSLg と共有していて Xvfb が使えない。Xvfb は抽象名前空間のソケットで待ち受けるので、つなぐ側もそこを見る(`session.rs` の `x_listening`、`monitor.rs` の `connect`)
 - pulseaudio は `--realtime=false --high-priority=false` を付けないと D-Bus を待って起動が遅れる
-- テストが読む口: `data-decoded`(ライブウィンドウの復号したフレーム数)、`data-input`(入力モード)、`window.dewTest.audioPeakHz()`、`data-testid="live-window"`
+- テストが読む口: `data-decoded`(ライブウィンドウの描いたフレーム数)、`data-input`(入力モード)、`data-recording`、`data-paused`・`data-rewind`(live / paused / playing)、`data-exact`、`window.dewTest.audioPeakHz()`(鳴らす設定の音だけを測る)、`data-testid="live-window"`
+- E2E の dew は素材の複製(`dew.root`)の中で起動する。録画はそこの `dew-recordings/` にできる
+- 一時ファイルの削除で `rm -rf $HOME` のような変数を使うと安全装置で止まる。テストの HOME は新しいディレクトリを作って使う
 
 ## 5. ユーザーについて
 

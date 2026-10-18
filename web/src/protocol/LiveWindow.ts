@@ -11,4 +11,12 @@ id: number, title: string, width: number, height: number,
 /**
  * そのウィンドウのアプリの音がある(`WS /ws/live-audio/{id}` で受け取る。7.6)
  */
-audio: boolean, };
+audio: boolean, 
+/**
+ * 録画中(L7)
+ */
+recording: boolean, 
+/**
+ * 精度モード(L3)の cv2.imshow の窓。映像は H.264 ではなく PNG(`LiveConfig.codec` が "png")
+ */
+exact: boolean, };

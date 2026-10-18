@@ -131,6 +131,8 @@ pub struct LiveSession {
     pub env: Vec<(String, String)>,
     /// アプリから消す環境変数
     pub unset: Vec<String>,
+    /// 精度モード(L3)のフックがつなぐソケット(`dew run --exact` が DEW_EXACT_SOCKET で渡す)
+    pub exact_socket: String,
 }
 
 /// `POST /api/open` の要求(F10)
@@ -185,6 +187,27 @@ pub struct LiveWindow {
     pub height: u32,
     /// そのウィンドウのアプリの音がある(`WS /ws/live-audio/{id}` で受け取る。7.6)
     pub audio: bool,
+    /// 録画中(L7)
+    pub recording: bool,
+    /// 精度モード(L3)の cv2.imshow の窓。映像は H.264 ではなく PNG(`LiveConfig.codec` が "png")
+    pub exact: bool,
+}
+
+/// `POST /api/live/record`: ライブウィンドウの録画を始める(`on: true`)・止める(L7)
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct RecordRequest {
+    pub window: u32,
+    pub on: bool,
+}
+
+/// `POST /api/live/record` の応答。止めたときは保存したファイル(閲覧範囲の起点からの相対パス)
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct RecordResult {
+    pub path: Option<String>,
 }
 
 /// `WS /ws/live/{id}` で最初に送る、映像の復号の設定。続けてフレームをバイナリで送る

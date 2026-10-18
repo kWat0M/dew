@@ -2,6 +2,7 @@
 import type { History } from '../protocol/History';
 import type { Info } from '../protocol/Info';
 import type { Probe } from '../protocol/Probe';
+import type { RecordResult } from '../protocol/RecordResult';
 import type { Tree } from '../protocol/Tree';
 
 /** API の失敗。message はサーバが返した日本語の説明 */
@@ -26,6 +27,16 @@ export const api = {
   tree: (path: string) => getJson<Tree>(`/api/tree?${q(path)}`),
   probe: (path: string) => getJson<Probe>(`/api/probe?${q(path)}`),
   history: () => getJson<History>('/api/history'),
+  /** ライブウィンドウの録画を始める・止める(L7)。止めたときは保存したファイルを返す */
+  record: async (window: number, on: boolean): Promise<RecordResult> => {
+    const res = await fetch('/api/live/record', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ window, on }),
+    });
+    if (!res.ok) throw new ApiError(res.status, await res.text());
+    return (await res.json()) as RecordResult;
+  },
   /** 開いたファイルを履歴に加える。失敗しても表示には響かないので待たない */
   addHistory: (paths: string[]) =>
     void fetch('/api/history', {

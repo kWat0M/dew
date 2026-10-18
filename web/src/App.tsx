@@ -120,13 +120,13 @@ export function App() {
         id: nextId.current++,
         path: '',
         media: 'video' as const,
-        live: { id: l.id, title: l.title, width: l.width, height: l.height, audio: l.audio, ended: false },
+        live: { id: l.id, title: l.title, width: l.width, height: l.height, audio: l.audio, recording: l.recording, exact: l.exact, ended: false },
       }));
       setWindows((ws) => [
         ...ws.map((w) => {
           if (!w.live) return w;
           const l = present.get(w.live.id);
-          return { ...w, live: l ? { ...w.live, title: l.title, width: l.width, height: l.height, audio: l.audio } : { ...w.live, ended: true } };
+          return { ...w, live: l ? { ...w.live, title: l.title, width: l.width, height: l.height, audio: l.audio, recording: l.recording } : { ...w.live, ended: true, recording: false } };
         }),
         ...newWins,
       ]);

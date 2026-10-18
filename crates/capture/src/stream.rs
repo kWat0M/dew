@@ -10,13 +10,14 @@ use tokio::io::AsyncReadExt;
 use tokio::process::{Child, Command};
 use tokio::sync::{broadcast, watch};
 
+use crate::encoder::Encoder;
 use crate::monitor::WindowInfo;
 use crate::session::SCREEN;
 
 /// 1秒あたりのフレーム数の上限(3.3 の L4)
 pub const FPS: u32 = 60;
-/// キーフレームの間隔(2秒。9.1)
-const GOP: u32 = FPS * 2;
+/// キーフレームの間隔(1秒。録画を押した時刻に近いキーフレームから始められるように。ADR 0015)
+const GOP: u32 = FPS;
 
 /// H.264 の1フレーム(Annex B 形式。先頭に AUD が付く)
 #[derive(Debug)]
@@ -74,20 +75,8 @@ impl Stream {
             ])
             // H.264 は幅と高さが偶数でないといけない
             .args(["-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2"])
-            .args([
-                "-c:v",
-                "libx264",
-                "-preset",
-                "ultrafast",
-                "-tune",
-                "zerolatency",
-                "-pix_fmt",
-                "yuv420p",
-                // 共有サーバでほかの人の CPU を使い切らないよう、エンコードは最大 2 スレッド(7.3)
-                "-threads",
-                "2",
-            ])
-            .args(["-g", &GOP.to_string(), "-bf", "0"])
+            // NVENC が使えればそちら、なければ libx264(ADR 0014)
+            .args(Encoder::current().args(GOP))
             // フレームの区切りが分かるよう、各フレームの先頭に AUD を入れる
             .args([
                 "-bsf:v",
@@ -191,7 +180,7 @@ async fn read_frames(stream: std::sync::Weak<Stream>, mut out: tokio::process::C
     }
 }
 
-fn now_us() -> u64 {
+pub(crate) fn now_us() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -213,6 +202,32 @@ fn nals(data: &[u8]) -> impl Iterator<Item = (usize, u8)> + '_ {
         }
         None
     })
+}
+
+/// NAL ユニットの中身(開始コードを除く)を順に返す
+pub(crate) fn nal_units(data: &[u8]) -> impl Iterator<Item = &[u8]> + '_ {
+    let starts: Vec<usize> = nals(data).map(|(p, _)| p).collect();
+    (0..starts.len()).map(move |i| {
+        let begin = starts[i] + if data[starts[i] + 2] == 1 { 3 } else { 4 };
+        let end = starts.get(i + 1).copied().unwrap_or(data.len());
+        &data[begin..end]
+    })
+}
+
+/// Annex B の H.264(各フレームの先頭に AUD)を、(キーフレームか, フレーム)に分ける(テスト用)
+#[cfg(test)]
+pub(crate) fn split_frames(data: &[u8]) -> Vec<(bool, Bytes)> {
+    let mut buf = BytesMut::from(data);
+    let mut out = Vec::new();
+    while let Some(end) = find_aud(&buf, 1) {
+        let f = buf.split_to(end).freeze();
+        out.push((has_nal(&f, 5), f));
+    }
+    if !buf.is_empty() {
+        let f = buf.freeze();
+        out.push((has_nal(&f, 5), f));
+    }
+    out
 }
 
 /// 先頭から数えて `skip` 個目より後の AUD(NAL 種類 9)の位置

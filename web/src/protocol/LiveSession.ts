@@ -15,4 +15,8 @@ env: Array<[string, string]>,
 /**
  * アプリから消す環境変数
  */
-unset: Array<string>, };
+unset: Array<string>, 
+/**
+ * 精度モード(L3)のフックがつなぐソケット(`dew run --exact` が DEW_EXACT_SOCKET で渡す)
+ */
+exactSocket: string, };
