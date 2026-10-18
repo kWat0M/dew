@@ -4,6 +4,7 @@ import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'reac
 import type { LiveConfig } from '../protocol/LiveConfig';
 import type { LiveInput } from '../protocol/LiveInput';
 import { ja } from '../i18n/ja';
+import { Icon } from '../icons';
 import { useLiveSound, type LiveAudioMix } from './liveAudio';
 import type { PlayerApi } from './PlayerWindow';
 import { WindowFrame, type FrameProps } from './WindowFrame';
@@ -21,6 +22,8 @@ type Props = FrameProps & {
   audible: boolean;
   /** 入力モード(キー・マウスをアプリへ送る。L6、5.5) */
   inputMode: boolean;
+  /** タイトルバーの入力モードのボタン */
+  onToggleInput: () => void;
   onExitInput: () => void;
   api: Ref<PlayerApi | null>;
 };
@@ -28,7 +31,7 @@ type Props = FrameProps & {
 /** キャンバスから使うライブウィンドウだけの操作(I の文字列の送信、w r の大きさ合わせ) */
 export type LiveApi = PlayerApi & { sendText?: (text: string) => void; fitApp?: () => void };
 
-export function LiveWindow({ api: apiRef, live, audioMix, audible, inputMode, onExitInput, ...p }: Props) {
+export function LiveWindow({ api: apiRef, live, audioMix, audible, inputMode, onToggleInput, onExitInput, ...p }: Props) {
   const socket = useRef<WebSocket | null>(null);
   const send = (ev: LiveInput) => {
     if (socket.current?.readyState === WebSocket.OPEN) socket.current.send(JSON.stringify(ev));
@@ -38,7 +41,9 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, inputMode, on
   const body = useRef<HTMLDivElement>(null);
   const [config, setConfig] = useState<LiveConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
-  useLiveSound(audioMix, live.audio && !live.ended ? `/ws/live-audio/${live.id}` : null, audible);
+  /** このウィンドウだけのミュート(m とバーのボタン。全体のミュートとは別。7.6) */
+  const [muted, setMuted] = useState(false);
+  useLiveSound(audioMix, live.audio && !live.ended ? `/ws/live-audio/${live.id}` : null, audible && !muted);
 
   useEffect(() => {
     if (live.ended) return;
@@ -164,7 +169,7 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, inputMode, on
     seekFraction: () => {},
     speed: () => {},
     ab: () => {},
-    toggleMute: () => {},
+    toggleMute: () => setMuted((m) => !m),
     toggleZoom: () => {},
     fullscreen: () => {
       if (document.fullscreenElement) void document.exitFullscreen();
@@ -173,10 +178,29 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, inputMode, on
   }), []);
 
   return (
-    <WindowFrame {...p} testId="live-window" name={live.title || ja.liveUntitled} icon="canvas" sectionRef={win}>
+    <WindowFrame
+      {...p}
+      testId="live-window"
+      name={live.title || ja.liveUntitled}
+      icon="canvas"
+      sectionRef={win}
+      titleButtons={
+        !live.ended && (
+          <button
+            type="button"
+            className={`icon-button small${inputMode ? ' input-on' : ''}`}
+            title={inputMode ? ja.inputModeExit : ja.inputModeEnter}
+            aria-label={inputMode ? ja.inputModeExit : ja.inputModeEnter}
+            aria-pressed={inputMode}
+            onClick={onToggleInput}
+          >
+            <Icon name="keyboard" size={18} />
+          </button>
+        )
+      }
+    >
       <div ref={body} className="window-body fit" {...mouse}>
         <canvas ref={canvas} width={live.width} height={live.height} />
-        {inputMode && <div className="input-hint">{ja.inputModeHint}</div>}
         {live.ended && <div className="window-overlay ended">{ja.liveEnded}</div>}
         {error && (
           <div className="window-overlay error" role="alert">
@@ -191,6 +215,17 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, inputMode, on
             {config.width}×{config.height}
           </span>
         )}
+        {/* 映像に重ねると、その下をアプリで選べなくなるので、下のバーに出す */}
+        {inputMode && (
+          <span className="input-hint" title={ja.inputModeHint}>
+            {ja.inputModeHint}
+          </span>
+        )}
+        <span className="live-bar-end">
+          <button type="button" className="icon-button small" title={ja.mute} aria-label={ja.mute} aria-pressed={muted} onClick={() => setMuted((m) => !m)}>
+            <Icon name={muted ? 'volumeOff' : 'volume'} size={20} />
+          </button>
+        </span>
       </footer>
     </WindowFrame>
   );

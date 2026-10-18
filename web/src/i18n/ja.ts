@@ -11,6 +11,8 @@ export const ja = {
   canvasButton: 'キャンバスへ',
   live: 'ライブ',
   inputModeHint: '入力モード: キーとマウスをアプリへ送っています(Ctrl+] で抜ける)',
+  inputModeEnter: '入力モード(i)',
+  inputModeExit: '入力モードを抜ける(Ctrl+])',
   inputNeedsLive: '入力モードと文字列の送信は、ライブ描画のウィンドウで使えます',
   fitNeedsLive: 'アプリの大きさ合わせは、ライブ描画のウィンドウで使えます',
   sendText: '文字列を送る',

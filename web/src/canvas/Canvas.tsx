@@ -571,6 +571,11 @@ export function Canvas(p: Props) {
                 audioMix={audioMix}
                 audible={audible}
                 inputMode={inputWindow === w.id}
+                onToggleInput={() => {
+                  // タイトルバーのボタンはフォーカスの操作を止めるので、ここでフォーカスする
+                  p.onFocus(w.id);
+                  setInputWindow((cur) => (cur === w.id ? null : w.id));
+                }}
                 onExitInput={exitInput}
                 api={register}
               />

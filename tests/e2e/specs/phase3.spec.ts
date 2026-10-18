@@ -90,6 +90,44 @@ test('cv2・matplotlib・pygame のサンプルが表示される', async ({ pag
   for (const title of ['cv2 sample', 'Figure 1', 'counter']) await expect(liveWindow(page, title)).toBeVisible(APPEAR);
 });
 
+// 4.2: タイトルバーのボタンでも入力モードに入れて、抜けられる。入力モードの表示は映像に重ねず、下のバーに出す
+test('タイトルバーのボタンで入力モードを切り替え、表示は下のバーに出る', async ({ page, dew }) => {
+  const keylog = join(mkdtempSync(join(tmpdir(), 'dew-keys-')), 'keys.txt');
+  writeFileSync(keylog, '');
+  await start(page, dew);
+  dew.spawnRun(['python3', appPath('counter.py'), '--tone', '0'], { DEW_TEST_KEYLOG: keylog });
+  const win = liveWindow(page, 'counter');
+  await expect(win).toBeVisible(APPEAR);
+  await page.waitForTimeout(1000);
+  await win.getByRole('button', { name: '入力モード(i)' }).click();
+  await expect(win).toHaveAttribute('data-input', 'true');
+  await expect(win.locator('.live-bar .input-hint')).toBeVisible();
+  await expect(win.locator('.window-body .input-hint')).toHaveCount(0);
+  await page.keyboard.type('ab');
+  await expect.poll(() => readFileSync(keylog, 'utf8').split('\n').filter(Boolean)).toEqual(['a', 'b']);
+  await win.getByRole('button', { name: '入力モードを抜ける(Ctrl+])' }).click();
+  await expect(win).toHaveAttribute('data-input', 'false');
+  await expect(win.locator('.input-hint')).toHaveCount(0);
+});
+
+// 7.6: ライブウィンドウにも個別のミュートがある(右下のボタンと m)
+test('ライブウィンドウを個別にミュートできる', async ({ page, dew }) => {
+  await start(page, dew);
+  dew.spawnRun(['python3', appPath('counter.py'), '--tone', '440']);
+  const win = liveWindow(page, 'counter');
+  await expect(win).toBeVisible(APPEAR);
+  await page.getByTestId('global-mute').click();
+  const peak = () => page.evaluate(() => (window as unknown as { dewTest: { audioPeakHz(): number | null } }).dewTest.audioPeakHz());
+  await expect.poll(peak, { timeout: 15_000 }).toBeGreaterThan(430);
+  const mute = win.locator('.live-bar').getByRole('button', { name: 'ミュート' });
+  await mute.click();
+  await expect(mute).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(peak, { timeout: 15_000 }).toBeNull();
+  await page.keyboard.press('m');
+  await expect(mute).toHaveAttribute('aria-pressed', 'false');
+  await expect.poll(peak, { timeout: 15_000 }).toBeGreaterThan(430);
+});
+
 // 5.5: I の送信用の入力欄から、文字列をまとめて送れる(Shift が要る文字も押した文字どおりに届く)
 test('I の入力欄から文字列を送れる', async ({ page, dew }) => {
   const keylog = join(mkdtempSync(join(tmpdir(), 'dew-keys-')), 'keys.txt');

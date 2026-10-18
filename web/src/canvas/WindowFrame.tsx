@@ -35,6 +35,8 @@ type Props = FrameProps & {
   name: string;
   icon: IconName;
   sectionRef?: Ref<HTMLElement>;
+  /** 最小化ボタンの左に足すボタン(ライブウィンドウの入力モードなど) */
+  titleButtons?: ReactNode;
   children: ReactNode;
 };
 
@@ -84,6 +86,7 @@ export function WindowFrame({ sectionRef, ...p }: Props) {
         <Icon name={p.icon} size={18} />
         <span className="window-name">{p.name}</span>
         <span className="title-controls" onPointerDown={stop} onDoubleClick={stop}>
+          {p.titleButtons}
           <button type="button" className="icon-button small" title={ja.minimize} aria-label={ja.minimize} onClick={p.onMinimize}>
             <Icon name="minimize" size={18} />
           </button>

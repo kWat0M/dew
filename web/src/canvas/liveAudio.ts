@@ -11,7 +11,7 @@ const MAX_AHEAD = 0.3;
 
 declare global {
   interface Window {
-    /** テストから読む値(受け入れ基準: 440 Hz の音がブラウザで 440 Hz として検出される)。実際に鳴っている音で測る */
+    /** テストから読む値(受け入れ基準: 440 Hz の音がブラウザで 440 Hz として検出される)。鳴らす設定の音だけで測る */
     dewTest?: { audioPeakHz(): number | null };
   }
 }
@@ -19,45 +19,56 @@ declare global {
 /** 鳴らしている音1本 */
 export type LiveSound = { setAudible(on: boolean): void; close(): void };
 
+/** 一番強い周波数と、その強さ(dB)。放物線で補間して、ビンの幅より細かく求める */
+function peakOf(analyser: AnalyserNode, sampleRate: number) {
+  const bins = new Float32Array(analyser.frequencyBinCount);
+  analyser.getFloatFrequencyData(bins);
+  let best = 1;
+  for (let i = 1; i < bins.length - 1; i++) if (bins[i]! > bins[best]!) best = i;
+  const [a, b, c] = [bins[best - 1]!, bins[best]!, bins[best + 1]!];
+  const shift = (a - c) / (2 * (a - 2 * b + c)) || 0;
+  return { hz: ((best + shift) * sampleRate) / analyser.fftSize, db: b };
+}
+
 /** 音を混ぜる場所。鳴らしている音がある間だけ AudioContext を持つ */
 export class LiveAudioMix {
   private ctx: AudioContext | null = null;
-  /** 音量をかけた後の音を測る(鳴らしていない音は入らない) */
-  private analyser: AnalyserNode | null = null;
   private users = 0;
+  /** 鳴らしている音ごとの、音量をかける前の測定(テスト用) */
+  private meters = new Map<AnalyserNode, { audible: boolean }>();
 
   private open() {
     const ctx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' });
-    const analyser = ctx.createAnalyser();
-    analyser.fftSize = 8192;
-    analyser.connect(ctx.destination);
-    // 一番強い周波数(放物線で補間して、ビンの幅より細かく求める)
+    // 鳴らす設定になっている音のうち、一番強い周波数。音量の後で測ると、Chrome は音量 0 の後ろの測定を
+    // 止めて最後の値を返し続けることがあるため、音ごとに音量の前で測る
     window.dewTest = {
       audioPeakHz: () => {
-        const bins = new Float32Array(analyser.frequencyBinCount);
-        analyser.getFloatFrequencyData(bins);
-        let best = 1;
-        for (let i = 1; i < bins.length - 1; i++) if (bins[i]! > bins[best]!) best = i;
-        if (bins[best]! < -90) return null;
-        const [a, b, c] = [bins[best - 1]!, bins[best]!, bins[best + 1]!];
-        const shift = (a - c) / (2 * (a - 2 * b + c)) || 0;
-        return ((best + shift) * ctx.sampleRate) / analyser.fftSize;
+        let best: { hz: number; db: number } | null = null;
+        for (const [analyser, m] of this.meters) {
+          if (!m.audible) continue;
+          const p = peakOf(analyser, ctx.sampleRate);
+          if (!best || p.db > best.db) best = p;
+        }
+        return best && best.db >= -90 ? best.hz : null;
       },
     };
     void ctx.resume();
     this.ctx = ctx;
-    this.analyser = analyser;
-    return { ctx, analyser };
+    return ctx;
   }
 
   /** `path` の WebSocket の音を鳴らし始める。最初は鳴らさない(setAudible で切り替える) */
   play(path: string): LiveSound {
     if (typeof AudioDecoder === 'undefined') return { setAudible: () => {}, close: () => {} };
-    const { ctx, analyser } = this.ctx && this.analyser ? { ctx: this.ctx, analyser: this.analyser } : this.open();
+    const ctx = this.ctx ?? this.open();
     this.users += 1;
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 8192;
     const gain = ctx.createGain();
     gain.gain.value = 0;
-    gain.connect(analyser);
+    analyser.connect(gain).connect(ctx.destination);
+    const meter = { audible: false };
+    this.meters.set(analyser, meter);
     let playhead = 0;
     const decoder = new AudioDecoder({
       output: (data) => {
@@ -72,7 +83,7 @@ export class LiveAudioMix {
         if (playhead < now || playhead - now > MAX_AHEAD) playhead = now + LEAD;
         const src = ctx.createBufferSource();
         src.buffer = buffer;
-        src.connect(gain);
+        src.connect(analyser);
         src.start(playhead);
         playhead += buffer.duration;
       },
@@ -94,16 +105,17 @@ export class LiveAudioMix {
     return {
       setAudible: (on) => {
         gain.gain.value = on ? 1 : 0;
+        meter.audible = on;
       },
       close: () => {
         ws.close();
         if (decoder.state !== 'closed') decoder.close();
         gain.disconnect();
+        this.meters.delete(analyser);
         this.users -= 1;
         if (this.users === 0) {
           void ctx.close();
           this.ctx = null;
-          this.analyser = null;
         }
       },
     };
