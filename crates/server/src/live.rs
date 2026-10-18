@@ -178,9 +178,11 @@ pub(crate) async fn session(State(app): State<Arc<App>>) -> Result<Json<LiveSess
             Ok(i) => *app.live_windows.input.lock().unwrap() = Some(i),
             Err(e) => tracing::warn!("入力を注入できません: {e:#}"),
         }
-        match Audio::start(&s.pulse_socket, Audio::SESSION_SINK) {
-            Ok(a) => *app.live_windows.audio.lock().unwrap() = Some(a),
-            Err(e) => tracing::warn!("音声を取り込めません: {e:#}"),
+        if let Some(p) = &s.pulse {
+            match Audio::start(&p.socket, Audio::SESSION_SINK) {
+                Ok(a) => *app.live_windows.audio.lock().unwrap() = Some(a),
+                Err(e) => tracing::warn!("音声を取り込めません: {e:#}"),
+            }
         }
         // 精度モード(L3)の受け口
         let (etx, erx) = mpsc::unbounded_channel();
@@ -189,12 +191,14 @@ pub(crate) async fn session(State(app): State<Arc<App>>) -> Result<Json<LiveSess
             Err(e) => tracing::warn!("精度モードの受け口を作れません: {e:#}"),
         }
         tokio::spawn(app.live_windows.clone().follow_exact(erx));
-        let router = tokio::spawn(
-            app.live_windows
-                .clone()
-                .route(Cli::new(s.pulse_cli.clone()), s.pulse_socket.clone()),
-        );
-        *app.live_windows.router.lock().unwrap() = Some(router);
+        if let Some(p) = &s.pulse {
+            let router = tokio::spawn(
+                app.live_windows
+                    .clone()
+                    .route(Cli::new(p.cli.clone()), p.socket.clone()),
+            );
+            *app.live_windows.router.lock().unwrap() = Some(router);
+        }
         *live = Some(s);
     }
     let s = live.as_ref().unwrap();
@@ -203,6 +207,7 @@ pub(crate) async fn session(State(app): State<Arc<App>>) -> Result<Json<LiveSess
         env: s.env(),
         unset: Session::UNSET.iter().map(|v| (*v).to_owned()).collect(),
         exact_socket: exact_socket(&app).to_string_lossy().into_owned(),
+        audio: s.pulse.is_some(),
     }))
 }
 
@@ -230,6 +235,12 @@ pub(crate) async fn record(
         return Ok(Json(RecordResult {
             path: Some(shown.to_string_lossy().into_owned()),
         }));
+    }
+    // 録画は ffmpeg で MP4 にする(ADR 0015)。始める前に、なければ入れ方を伝える
+    if req.on && !dew_media::has_tool("ffmpeg") {
+        return Err(ApiError::Unavailable(
+            "録画には ffmpeg が要ります(導入: sudo apt-get install -y ffmpeg)".into(),
+        ));
     }
     if exact::is_exact(req.window) {
         return Err(ApiError::Forbidden(

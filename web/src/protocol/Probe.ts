@@ -33,4 +33,9 @@ frameTimes: Array<number>,
 /**
  * シークバーのプレビュー(`GET /api/sprite?path=`)の並び。映像がなければ None
  */
-sprite: Sprite | null, };
+sprite: Sprite | null, 
+/**
+ * 足りないために、分からないこと・できないことがあるツール(ffprobe がなければ長さやフレームの時刻が
+ * 分からない、ffmpeg がなければプレビューや変換ができない)。画面はそれを知らせる
+ */
+missing: Array<string>, };

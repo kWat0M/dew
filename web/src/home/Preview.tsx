@@ -52,7 +52,8 @@ export function Preview({ dir, entry, showHidden }: { dir: string; entry: Entry 
             </ul>
           )
         ) : entry.media === 'image' ? (
-          <Thumb src={api.thumbUrl(path, entry.mtime)} fallback={<Icon name="image" size={64} />} />
+          // サムネイルを作れない(ffmpeg がない)ときは、元の画像をそのまま出す
+          <Thumb src={api.thumbUrl(path, entry.mtime)} fallback={<img src={api.mediaUrl(path)} alt="" />} />
         ) : entry.media === 'video' ? (
           // 再生できる形式は無音でループ再生し、変換が必要なものはサムネイルだけ出す
           info && !info.needsTranscode ? (
@@ -79,7 +80,23 @@ export function Preview({ dir, entry, showHidden }: { dir: string; entry: Entry 
             <dd>{ja.items(kids.length)}</dd>
           </>
         )}
-        {info && (
+        {info?.missing.includes('ffprobe') && (
+          <>
+            <dt />
+            <dd className="tool-missing" data-testid="tool-missing">
+              {ja.noProbeInfo}({ja.installFfmpeg})
+            </dd>
+          </>
+        )}
+        {info?.missing.includes('ffmpeg') && (
+          <>
+            <dt />
+            <dd className="tool-missing" data-testid="tool-missing">
+              {ja.noThumbs}({ja.installFfmpeg})
+            </dd>
+          </>
+        )}
+        {info && !info.missing.includes('ffprobe') && (
           <>
             <dt>{ja.duration}</dt>
             <dd>{formatTime(info.duration)}</dd>

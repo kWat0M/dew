@@ -30,6 +30,47 @@ const CACHE_VERSION: u32 = 1;
 /// 項目の意味を変えたときは読めてしまうので、名前を変えて使わないようにする)
 const PROBE_KIND: &str = "probe2";
 
+/// 外部のツール(ffmpeg、ffprobe など)が PATH にあるか
+pub fn has_tool(name: &str) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::env::var_os("PATH").is_some_and(|paths| {
+        std::env::split_paths(&paths).any(|d| {
+            d.join(name)
+                .metadata()
+                .is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+        })
+    })
+}
+
+/// 機能に要るツールがない。サーバはこの説明をそのまま見せる(何が使えないか、何を入れればよいか)
+#[derive(Debug)]
+pub struct MissingTool {
+    pub tool: &'static str,
+    /// 使えない機能(「サムネイル」など)
+    pub feature: &'static str,
+}
+
+impl std::fmt::Display for MissingTool {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // ffmpeg と ffprobe は同じパッケージ
+        write!(
+            f,
+            "{}には {} が要ります(導入: sudo apt-get install -y ffmpeg)",
+            self.feature, self.tool
+        )
+    }
+}
+
+impl std::error::Error for MissingTool {}
+
+fn require(tool: &'static str, feature: &'static str) -> anyhow::Result<()> {
+    if has_tool(tool) {
+        Ok(())
+    } else {
+        Err(MissingTool { tool, feature }.into())
+    }
+}
+
 pub struct Media {
     dir: PathBuf,
     limit_bytes: u64,
@@ -58,7 +99,39 @@ impl Media {
 
     /// 長さ・コーデック・フレームごとの時刻など(7.5)。
     /// キャッシュが読めないとき(Probe に項目を足す前に作った古いもの、壊れたもの)は消して作り直す
+    /// ffprobe がなければ、何も分からないことを示す結果を返す(ブラウザはそのまま再生を試す)。
+    /// ffmpeg がなければ、シークバーのプレビューを出さない
     pub async fn probe(&self, src: &Path) -> anyhow::Result<Probe> {
+        if !has_tool("ffprobe") {
+            return Ok(Probe {
+                duration: 0.0,
+                fps: 0.0,
+                width: 0,
+                height: 0,
+                video_codec: None,
+                audio_codec: None,
+                needs_transcode: false,
+                bit_depth: 8,
+                segment_secs: SEGMENT_SECS,
+                segment_count: 0,
+                frame_times: Vec::new(),
+                sprite: None,
+                missing: ["ffprobe", "ffmpeg"]
+                    .into_iter()
+                    .filter(|t| !has_tool(t))
+                    .map(String::from)
+                    .collect(),
+            });
+        }
+        let mut probe = self.probe_cached(src).await?;
+        if !has_tool("ffmpeg") {
+            probe.sprite = None;
+            probe.missing.push("ffmpeg".into());
+        }
+        Ok(probe)
+    }
+
+    async fn probe_cached(&self, src: &Path) -> anyhow::Result<Probe> {
         for _ in 0..2 {
             let (path, _) = self
                 .cached(src, PROBE_KIND, "json", |out| async move {
@@ -80,6 +153,7 @@ impl Media {
 
     /// 幅 320px の WebP。動画は 10% の位置の画面
     pub async fn thumb(&self, src: &Path, video: bool) -> anyhow::Result<PathBuf> {
+        require("ffmpeg", "サムネイル")?;
         let at = if video {
             self.probe(src).await?.duration * 0.1
         } else {
@@ -116,6 +190,7 @@ impl Media {
 
     /// シークバー用のサムネイル列(1枚の WebP)。並びは probe の `sprite`
     pub async fn sprite(&self, src: &Path) -> anyhow::Result<PathBuf> {
+        require("ffmpeg", "シークバーのプレビュー")?;
         let probe = self.probe(src).await?;
         let Some(sp) = probe.sprite else {
             bail!("映像がありません")
@@ -158,6 +233,7 @@ impl Media {
 
     /// ブラウザで正確に表示できない画像(TIFF、16bit など)を、表示用の 8bit RGBA の PNG にする
     pub async fn display_png(&self, src: &Path) -> anyhow::Result<PathBuf> {
+        require("ffmpeg", "TIFF・16bit の画像の表示")?;
         let (path, _) = self
             .cached(src, "display", "png", |out| async move {
                 let args = [
@@ -182,6 +258,7 @@ impl Media {
 
     /// 画像の元の画素値(16bit RGBA、リトルエンディアン、左上から行ごと)。ピクセル値の表示に使う(F8)
     pub async fn pixels16(&self, src: &Path) -> anyhow::Result<PathBuf> {
+        require("ffmpeg", "16bit の画素値の表示")?;
         let (path, _) = self
             .cached(src, "rgba64", "raw", |out| async move {
                 let args = [
@@ -207,6 +284,7 @@ impl Media {
     /// ブラウザは SourceBuffer の timestampOffset を `index * SEGMENT_SECS` にして並べる
     /// (fragmented MP4 では -output_ts_offset が効かないため)
     pub async fn segment(&self, src: &Path, index: u32) -> anyhow::Result<(PathBuf, Cache)> {
+        require("ffmpeg", "ブラウザで再生できない形式の変換")?;
         let probe = self.probe(src).await?;
         if index >= probe.segment_count {
             bail!(
@@ -363,6 +441,7 @@ async fn run_probe(src: &Path) -> anyhow::Result<Probe> {
     // 画像: ブラウザで正確に表示できない形式だけを変換の対象にする(F8、2.6)
     if is_image(src) {
         return Ok(Probe {
+            missing: Vec::new(),
             duration: 0.0,
             fps: 0.0,
             width,
@@ -410,6 +489,7 @@ async fn run_probe(src: &Path) -> anyhow::Result<Probe> {
     }
     let sprite = (width > 0 && duration > 0.0).then(|| sprite_layout(duration, width, height));
     Ok(Probe {
+        missing: Vec::new(),
         duration,
         fps,
         width,

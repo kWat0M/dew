@@ -135,12 +135,21 @@ fn start(args: &ServeArgs, path: Option<&Path>) -> anyhow::Result<()> {
             s
         }
         None => {
-            let missing = doctor::missing_required();
-            if !missing.is_empty() {
+            // ツールが足りなくても起動する(閲覧と、ブラウザで再生できる形式の再生はツールなしで使える。ADR 0019)
+            let unavailable = doctor::unavailable();
+            if !unavailable.is_empty() {
+                let mut pkgs: Vec<&str> = Vec::new();
+                for (name, ps) in &unavailable {
+                    eprintln!("dew: 注意: 使えない機能: {name}");
+                    for p in ps {
+                        if !pkgs.contains(p) {
+                            pkgs.push(p);
+                        }
+                    }
+                }
                 eprintln!(
-                    "dew: 警告: {} がありません。動画の変換とサムネイルが使えません。導入: {}",
-                    missing.join(", "),
-                    doctor::install_command(&missing)
+                    "dew: ファイルの閲覧と再生はできます。全部使うには: {}(dew doctor で詳しく)",
+                    doctor::install_command(&pkgs)
                 );
             }
             let s = spawn(args)?;
@@ -229,9 +238,15 @@ fn check_live_deps() -> anyhow::Result<()> {
     let missing = doctor::missing_live();
     if !missing.is_empty() {
         bail!(
-            "ライブ描画に要る {} がありません。次のコマンドで入れてください:\n  {}",
+            "ライブ描画(dew run / dew env)に要る {} がありません。次のコマンドで入れてください:\n  {}",
             missing.join("・"),
             doctor::install_command(&missing)
+        );
+    }
+    if !doctor::has_audio() {
+        eprintln!(
+            "dew: 注意: pulseaudio がないので、アプリの音は出ません(映像は映します)。音も出すには: {}",
+            doctor::install_command(&["pulseaudio"])
         );
     }
     Ok(())

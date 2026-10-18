@@ -456,7 +456,7 @@ Ubuntu サーバ / WSL2(Docker コンテナ内も可)
 ### 7.10 配布と依存の導入
 
 - dew は単一バイナリで、L3 の Python フックもバイナリに同梱し、初回実行時に `~/.cache/dew/python/` へ展開する(pip install 不要)
-- 実行時の依存(ffmpeg、Xvfb、pulseaudio)がコンテナにない場合、`dew doctor` が apt のインストールコマンドを表示する。ファイル閲覧だけなら ffmpeg があれば動き、Xvfb と pulseaudio はライブ描画を使うときだけ必要
+- 実行時の依存(ffmpeg、Xvfb、pulseaudio)がコンテナにない場合、`dew doctor` が機能ごとに要るツールと apt のインストールコマンドを表示する。ツールが足りなくても、そのツールを使わない機能は動く(ADR 0019): ファイルの閲覧とブラウザで再生できる形式の再生はツール不要、動画の情報・コマ送りは ffprobe、サムネイル・変換・TIFF は ffmpeg、ライブ描画は Xvfb と ffmpeg(なければ dew run が入れ方を出して止まる)、ライブ描画の音は pulseaudio(なければ音なしで映す)、録画は ffmpeg(なければ始めるときに入れ方を出す)
 - 配布経路:
   - 自分の環境: 非公開リポジトリの GitHub Releases に置き、`gh release download` で取得
   - 知り合いへの配布(少人数): バイナリ1ファイルを直接渡す。受け取った人は `~/.local/bin` などに置いて `chmod +x` する
@@ -533,7 +533,7 @@ Rust だけ(Leptos 等)でも書けるが、(1) 動画のデコードと描画�
 | WSL2 の扱い | 特別扱いしない。どの環境でも URL をワンクリックで開く | 決定 |
 | ffmpeg の扱い | ライブラリとしてリンクせず、CLI(ffmpeg / ffprobe)をサブプロセスで呼ぶ。ライブ描画の取り込みとエンコードも ffmpeg(ADR 0009) | 既定 |
 | バイナリ | x86_64 Linux 1本。静的リンク(musl)を目標、無理なら Ubuntu 20.04 相当の glibc でビルド。フロントエンドを埋め込む | 既定 |
-| 実行時の外部依存 | ffmpeg、Xvfb、pulseaudio または pipewire。起動時に確認し、足りなければ導入コマンドを表示 | 既定 |
+| 実行時の外部依存 | ffmpeg、Xvfb、pulseaudio または pipewire。どれも必須ではなく、足りないツールを使う機能だけが使えない。起動時に使えない機能と導入コマンドを表示(ADR 0019) | 既定 |
 | 待ち受けポート | 8765。使用中なら 8766 以降の空きを使う | 既定 |
 | 仮想ディスプレイ番号 | `:100` から空きを使う | 既定 |
 | 設定ファイル | `~/.config/dew/config.toml`(キーマップも同じファイル) | 既定 |

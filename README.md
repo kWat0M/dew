@@ -9,12 +9,21 @@ Linux(WSL2・リモートの Ubuntu サーバ・それらの中の Docker コン
 
 ## 必要なもの
 
-| 場所 | 必要なもの |
-|---|---|
-| dew を動かす Linux(x86_64) | `ffmpeg`(必須)。GUI のウィンドウを映すときは、加えて `xvfb` と `pulseaudio` |
-| 見る側(Windows) | Chrome / Edge / Firefox 系(Zen など)の最新版 |
+見る側(Windows)は、Chrome / Edge / Firefox 系(Zen など)の最新版があれば十分です。
 
-Ubuntu / Debian なら、次で入ります(`dew doctor` でも、足りないものと入れ方が出ます)。
+dew を動かす Linux(x86_64)では、**何も入れなくても、ファイルの閲覧と、ブラウザが再生できる形式(MP4・WebM・PNG・JPEG など)の再生はできます**。ほかの機能は、次のツールを入れると使えるようになります。足りないときは、その機能を使おうとした場所で、何が足りないかと入れ方が出ます。
+
+| 機能 | 要るツール |
+|---|---|
+| ファイルの閲覧・再生(MP4・WebM・PNG・JPEG など) | なし |
+| 動画の情報(長さ・解像度)・フレーム番号・コマ送り | `ffprobe`(ffmpeg に入っています) |
+| サムネイル・シークバーのプレビュー | `ffmpeg` |
+| ブラウザで再生できない形式(mp4v・AVI・TIFF・16bit など)の変換 | `ffmpeg` |
+| GUI のウィンドウを映す(`dew run`) | `xvfb`・`ffmpeg` |
+| 映したアプリの音 | `pulseaudio`(なくても映像は映ります) |
+| 録画 | `ffmpeg` |
+
+Ubuntu / Debian なら、全部を次で入れられます(`dew doctor` で、使える機能と足りないものが分かります)。
 
 ```bash
 sudo apt-get install -y ffmpeg xvfb pulseaudio

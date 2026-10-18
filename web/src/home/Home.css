@@ -237,6 +237,11 @@
   color: var(--md-sys-color-on-surface-variant);
 }
 
+/* 外部のツールが足りないために表示できないことの案内 */
+.preview-meta .tool-missing {
+  color: var(--md-sys-color-error);
+}
+
 .preview-meta dd {
   margin: 0;
   overflow-wrap: anywhere;

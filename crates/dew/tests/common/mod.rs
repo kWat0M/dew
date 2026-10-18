@@ -46,13 +46,30 @@ pub fn free_port() -> u16 {
 /// HOME を分けた dew の1インスタンス(1つのコンテナに相当)。Drop で `dew stop` する
 pub struct Instance {
     pub home: TempDir,
+    /// dew に渡す PATH(None なら今の PATH)。外部のツールがない環境の確認に使う
+    path: Option<String>,
 }
 
 impl Instance {
     pub fn new() -> Self {
         Self {
             home: TempDir::new().unwrap(),
+            path: None,
         }
+    }
+
+    /// PATH を `path` にした dew
+    pub fn with_path(path: &Path) -> Self {
+        Self {
+            home: TempDir::new().unwrap(),
+            path: Some(path.to_string_lossy().into_owned()),
+        }
+    }
+
+    fn path(&self) -> String {
+        self.path
+            .clone()
+            .unwrap_or_else(|| std::env::var("PATH").unwrap_or_default())
     }
 
     /// dew を実行して終わるまで待つ。環境変数は開発コンテナのものを持ち込まない
@@ -79,7 +96,7 @@ impl Instance {
             .args(args)
             .env_clear()
             .env("HOME", self.home.path())
-            .env("PATH", std::env::var("PATH").unwrap())
+            .env("PATH", self.path())
             .output()
             .unwrap()
     }
@@ -137,7 +154,7 @@ impl Drop for Instance {
             .arg("stop")
             .env_clear()
             .env("HOME", self.home.path())
-            .env("PATH", std::env::var("PATH").unwrap_or_default())
+            .env("PATH", self.path())
             .output();
     }
 }

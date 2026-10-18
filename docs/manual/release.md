@@ -35,8 +35,11 @@ docker run --rm -it -p 18765:8765 -e DEW_PUBLIC_HOST=<サーバの IP> -e DEW_PU
 tar xzf dew-*-x86_64-linux.tar.gz && cd dew-*-x86_64-linux
 sha256sum -c SHA256SUMS            # dew: OK
 ./dew --version
-./dew doctor                       # ✗ が並び、apt のコマンドが出る
-./dew run true                     # 「ライブ描画に要る … がありません」と入れ方が出て止まる
+./dew doctor                       # 機能ごとに ✓ / ✗ が並び、apt のコマンドが出る(閲覧・再生だけ ✓)
+./dew run true                     # 「ライブ描画(dew run / dew env)に要る … がありません」と入れ方が出て止まる
+./dew                              # 使えない機能が並び、「ファイルの閲覧と再生はできます」と出て起動する
+                                   # ブラウザで開き、MP4 が再生でき、情報の欄に ffprobe がないと出ることを確かめる
+./dew stop
 apt-get update && apt-get install -y ffmpeg xvfb pulseaudio python3-tk
 ./dew doctor                       # ✓ になる
 ./dew                              # URL が出る。Windows のブラウザで開ける

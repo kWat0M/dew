@@ -1,6 +1,6 @@
 // E2E 用のテスト部品: dew をテスト用の HOME と素材の複製で起動し、ページを開く
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
-import { cpSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -36,14 +36,28 @@ function freePort(): Promise<number> {
   });
 }
 
-export const test = base.extend<{ dew: Dew }>({
-  dew: async ({}, use, testInfo) => {
+/** 外部ツール(ffmpeg など)のうち見えるもの。null ならふつうの PATH。配列なら PATH をそれだけにする(何も入っていない環境の確認) */
+type Options = { tools: string[] | null };
+
+/** `tools` だけを置いた PATH 用のディレクトリ(sh・kill・nice・python3 はふつうの Linux に必ずあり、dew とテスト用アプリが使うので置く) */
+function toolsPath(tools: string[]) {
+  const dir = mkdtempSync(join(tmpdir(), 'dew-bin-'));
+  for (const t of ['sh', 'kill', 'nice', 'python3', ...tools]) {
+    const real = execFileSync('sh', ['-c', `command -v ${t}`], { encoding: 'utf8' }).trim();
+    symlinkSync(real, join(dir, t));
+  }
+  return dir;
+}
+
+export const test = base.extend<Options & { dew: Dew }>({
+  tools: [null, { option: true }],
+  dew: async ({ tools }, use, testInfo) => {
     const home = mkdtempSync(join(tmpdir(), 'dew-home-'));
     const root = mkdtempSync(join(tmpdir(), 'dew-root-'));
     // scripts/gen-fixtures.sh が作るものだけを複製する(手で置いたファイルが一覧の検査を乱さないように)
     for (const name of FIXTURES) cpSync(join(repo, 'tests/fixtures', name), join(root, name), { recursive: true });
     // 開発コンテナの DEW_PUBLIC_* などを持ち込まない
-    const env = { HOME: home, PATH: process.env.PATH ?? '', DEW_PUBLIC_HOST: '127.0.0.1' };
+    const env = { HOME: home, PATH: tools ? toolsPath(tools) : (process.env.PATH ?? ''), DEW_PUBLIC_HOST: '127.0.0.1' };
     const port = await freePort();
     // 起動したディレクトリは Home の初期位置と録画の保存先(dew-recordings/)になるので、素材の複製の中で起動する
     execFileSync(bin, ['--port', String(port), '--root', root], { env, cwd: root });
