@@ -12,7 +12,7 @@ git switch main && git pull
 scripts/release.sh
 ```
 
-`dist/dew-<版>-<コミット>-x86_64-linux.tar.gz` ができる。中身は `dew`(静的リンクの単一バイナリ)、`README.md`、`LICENSE`、`SHA256SUMS`。
+`dist/dew-<版>-<コミット>-x86_64-linux.tar.gz` ができる。中身は `dew`(静的リンクの単一バイナリ)、`README.md`、`LICENSE`、`CHANGELOG.md`、`SHA256SUMS`。
 
 配布物そのもので E2E を流すときは:
 
