@@ -118,9 +118,10 @@ test('精度モードの waitKey に入力モードのキーが届く', async ({
   await expect(win.locator('.live-bar')).toContainText('終了');
 });
 
-/** MP4 の最初のフレームに焼き込まれたフレーム番号(counter.py の上端 16px の白黒ブロック) */
-function firstFrameNumber(file: string) {
-  const row = execFileSync('ffmpeg', ['-v', 'error', '-i', file, '-frames:v', '1', '-vf', 'crop=320:16:0:0', '-f', 'rawvideo', '-pix_fmt', 'gray', '-']);
+/** MP4 の最初(last なら最後のあたり)のフレームに焼き込まれたフレーム番号(counter.py の上端 16px の白黒ブロック) */
+function firstFrameNumber(file: string, last = false) {
+  const from = last ? ['-sseof', '-0.3'] : [];
+  const row = execFileSync('ffmpeg', ['-v', 'error', ...from, '-i', file, '-frames:v', '1', '-vf', 'crop=320:16:0:0', '-f', 'rawvideo', '-pix_fmt', 'gray', '-']);
   let n = 0;
   for (let bit = 0; bit < 20; bit++) if (row[8 * 320 + bit * 16 + 8]! > 128) n += 2 ** bit;
   return n;
@@ -173,16 +174,76 @@ test('ヒントの帯がライブウィンドウの状態に合わせて変わ�
   await expect(hints).toContainText('録画を止める');
   await page.keyboard.press('R');
   await expect(hints).not.toContainText('録画を止める');
-  // 巻き戻し中: 移動のキーとライブへ戻る(G)が出る
+  // 巻き戻し中: 移動のキーとライブへ戻る(q)が出る
   await page.waitForTimeout(1500);
   await page.keyboard.press('k');
   await expect(hints).toContainText('ライブへ戻る');
   await expect(hints).toContainText('±5秒');
-  await page.keyboard.press('G');
+  await page.keyboard.press('q');
   await expect(win).toHaveAttribute('data-rewind', 'live');
   await expect(hints).not.toContainText('ライブへ戻る');
   // 入力モード中は抜けるキーだけ
   await page.keyboard.press('i');
   await expect(hints).toContainText('入力モードを抜ける');
   await expect(hints).not.toContainText('録画');
+});
+
+// 複数のアプリを同時に動かしたとき: 録画・巻き戻しはウィンドウごとで、ほかのウィンドウのライブ表示や録画に響かない
+test('複数のライブウィンドウで録画と巻き戻しがそれぞれに効く', async ({ page, dew }) => {
+  test.setTimeout(90_000);
+  await start(page, dew);
+  dew.spawnRun(['python3', appPath('counter.py'), '--tone', '0', '--fps', '30', '--title', 'a']);
+  dew.spawnRun(['python3', appPath('counter.py'), '--tone', '0', '--fps', '30', '--title', 'b']);
+  const a = liveWindow(page, 'a');
+  const b = liveWindow(page, 'b');
+  await expect(a).toBeVisible(APPEAR);
+  await expect(b).toBeVisible(APPEAR);
+  const frame = (w: typeof a) => liveBits(w, 0, 20);
+  const advancing = async (w: typeof a) => {
+    const f = await frame(w);
+    await expect.poll(() => frame(w)).toBeGreaterThan(f + 10);
+  };
+  await page.waitForTimeout(8000);
+
+  // a を録画しても、a・b とも画面は進む
+  await a.click();
+  await page.keyboard.press('R');
+  await expect(a).toHaveAttribute('data-recording', 'true');
+  await expect(b).toHaveAttribute('data-recording', 'false');
+  await advancing(a);
+  await advancing(b);
+
+  // a を巻き戻して再生する。b はライブのまま進む
+  const aLive = await frame(a);
+  await page.keyboard.press('k');
+  await page.keyboard.press('j');
+  await page.keyboard.press('k');
+  await expect(a).toHaveAttribute('data-rewind', 'playing');
+  await expect.poll(() => frame(a)).toBeLessThan(aLive - 100);
+  await expect(b).toHaveAttribute('data-rewind', 'live');
+  await advancing(b);
+
+  // a を巻き戻したまま b を録画する。b の録画は b のライブ
+  await b.click();
+  const bAtStart = await frame(b);
+  await page.keyboard.press('R');
+  await expect(b).toHaveAttribute('data-recording', 'true');
+  await page.waitForTimeout(2000);
+  await page.keyboard.press('R');
+  await expect(b).toHaveAttribute('data-recording', 'false');
+  await a.click();
+  const aShown = await frame(a);
+  const aLiveNow = aShown + 150; // 巻き戻しは 5 秒(150 フレーム)遅れ
+  await page.keyboard.press('R');
+  await expect(a).toHaveAttribute('data-recording', 'false');
+
+  const dir = join(dew.root, 'dew-recordings');
+  await expect.poll(() => readdirSync(dir).filter((f) => f.endsWith('.mp4')).length, { timeout: 10_000 }).toBe(2);
+  const fileOf = (title: string) => join(dir, readdirSync(dir).find((f) => f.startsWith(`${title}-`))!);
+  const bFirst = firstFrameNumber(fileOf('b'));
+  expect(Math.abs(bFirst - bAtStart)).toBeLessThanOrEqual(45);
+  // a の録画の終わりは、巻き戻した映像(ライブより 5 秒前)
+  const aLast = firstFrameNumber(fileOf('a'), true);
+  expect(Math.abs(aLast - aShown)).toBeLessThanOrEqual(45);
+  expect(aLast).toBeLessThan(aLiveNow - 100);
 });

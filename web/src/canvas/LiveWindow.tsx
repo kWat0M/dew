@@ -41,7 +41,7 @@ export type LiveApi = PlayerApi & {
   fitApp?: () => void;
   closeApp?: () => void;
   toggleRecord?: () => void;
-  /** 巻き戻し中ならライブに戻る(G) */
+  /** 巻き戻し中なら、巻き戻しを終えてライブに戻る(q) */
   goLive?: () => void;
 };
 

@@ -126,7 +126,10 @@ fn start(args: &ServeArgs, path: Option<&Path>) -> anyhow::Result<()> {
         })
         .transpose()?;
     let server = match alive() {
-        Some(s) => s,
+        Some(s) => {
+            warn_if_stale(&s);
+            s
+        }
         None => {
             let missing = doctor::missing_required();
             if !missing.is_empty() {
@@ -167,6 +170,7 @@ fn start(args: &ServeArgs, path: Option<&Path>) -> anyhow::Result<()> {
 /// 動いているサーバを返す。なければ起動する
 fn ensure_server(args: &ServeArgs) -> anyhow::Result<ServerFile> {
     if let Some(s) = alive() {
+        warn_if_stale(&s);
         return Ok(s);
     }
     let s = spawn(args)?;
@@ -241,6 +245,18 @@ fn shell_quote(s: &str) -> String {
 }
 
 /// 記録があり、実際に応答するサーバ
+/// 動いているサーバが、今の dew より前のビルドなら知らせる。dew は動いているサーバを使い回すので、
+/// ビルドし直しても `dew stop` するまでは古いサーバのまま(開発ビルドでは画面だけ新しくなり、食い違う)
+fn warn_if_stale(s: &ServerFile) {
+    if let (Some(server), Some(me)) = (s.exe_mtime, state::exe_mtime())
+        && server != me
+    {
+        eprintln!(
+            "dew: 警告: 動いているサーバは、この dew より前にビルドしたものです。新しい dew を使うには dew stop してから起動し直してください"
+        );
+    }
+}
+
 fn alive() -> Option<ServerFile> {
     let s = state::read()?;
     Api::new(&s).alive(&s.instance_id).then_some(s)
@@ -354,6 +370,7 @@ fn foreground(args: &ServeArgs) -> anyhow::Result<()> {
         args.bind.to_string()
     };
     let pid = std::process::id();
+    let exe_mtime = state::exe_mtime();
 
     let rt = tokio::runtime::Runtime::new()?;
     let result = rt.block_on(dew_server::serve(cfg, |r| {
@@ -365,6 +382,7 @@ fn foreground(args: &ServeArgs) -> anyhow::Result<()> {
             local_host,
             url: r.url.clone(),
             warnings: r.warnings.clone(),
+            exe_mtime,
         };
         if let Err(e) = state::write(&s) {
             tracing::error!("server.json を書けません: {e:#}");
