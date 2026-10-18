@@ -1,1 +1,8 @@
-//! Xvfb、ウィンドウキャプチャ、エンコード、入力注入(フェーズ3で実装)
+//! ライブ描画(フェーズ3): 仮想ディスプレイ(Xvfb)と音声サーバ(pulseaudio)、ウィンドウの取り込み、入力の注入
+
+pub mod audio;
+pub mod input;
+pub mod monitor;
+pub mod pulse;
+pub mod session;
+pub mod stream;

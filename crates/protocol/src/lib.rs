@@ -120,6 +120,19 @@ pub struct HistoryAdd {
     pub paths: Vec<String>,
 }
 
+/// `POST /api/live/session` の応答: ライブ描画のセッション(仮想ディスプレイと音声サーバ)につなぐ設定(6.1)
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LiveSession {
+    /// 例: ":100"
+    pub display: String,
+    /// アプリに渡す環境変数
+    pub env: Vec<(String, String)>,
+    /// アプリから消す環境変数
+    pub unset: Vec<String>,
+}
+
 /// `POST /api/open` の要求(F10)
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -150,11 +163,86 @@ pub enum ServerEvent {
     DirChanged { dir: String, name: String },
     /// 監視を登録した(Watch への応答)。ブラウザはこれを受けて一覧を読み直す
     Watching { dirs: Vec<String> },
+    /// ライブ描画のウィンドウの一覧(つないだとき、増減・変化したとき。L1、L2)
+    LiveWindows { windows: Vec<LiveWindow> },
     /// CLI からの表示指示(F10)。ファイルはキャンバスに開き、ディレクトリは Home で開く
     Open {
         path: String,
         kind: EntryKind,
         media: MediaKind,
+    },
+}
+
+/// ライブ描画のウィンドウ1つ(アプリが仮想ディスプレイに開いたトップレベルのウィンドウ)
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LiveWindow {
+    /// X のウィンドウ ID。`WS /ws/live/{id}` で映像を受け取る
+    pub id: u32,
+    pub title: String,
+    pub width: u32,
+    pub height: u32,
+    /// そのウィンドウのアプリの音がある(`WS /ws/live-audio/{id}` で受け取る。7.6)
+    pub audio: bool,
+}
+
+/// `WS /ws/live/{id}` で最初に送る、映像の復号の設定。続けてフレームをバイナリで送る
+/// (1バイト目の bit0 がキーフレーム、続く8バイトがタイムスタンプ(µs、ビッグエンディアン)、残りが H.264 Annex B)
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LiveConfig {
+    /// WebCodecs のコーデック名(例 avc1.64001F)
+    pub codec: String,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// `WS /ws/live-audio` で最初に送る、セッション音声の復号の設定。続けて Opus のパケットをバイナリで送る
+/// (先頭8バイトがタイムスタンプ(µs、ビッグエンディアン)、残りが Opus のパケット)
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LiveAudioConfig {
+    pub codec: String,
+    pub sample_rate: u32,
+    pub number_of_channels: u32,
+}
+
+/// 入力モード(L6、5.5)で `WS /ws/live/{id}` にブラウザから送る入力。座標はアプリのウィンドウの中の画素
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+#[ts(export)]
+pub enum LiveInput {
+    /// キー(`key` は KeyboardEvent.key)
+    Key {
+        key: String,
+        down: bool,
+    },
+    Move {
+        x: i32,
+        y: i32,
+    },
+    /// マウスのボタン(1 左、2 中、3 右、4・5 ホイール)
+    Button {
+        button: u8,
+        down: bool,
+        x: i32,
+        y: i32,
+    },
+    /// 入力モードを抜けた。押したままのキーを離す
+    Release,
+    /// キャンバスでウィンドウを閉じた。デスクトップの × と同じく、アプリに閉じるよう頼む(7.9)
+    Close,
+    /// アプリのウィンドウの大きさを変える(w r。ブラウザ側の大きさに合わせる。7.9)
+    Resize {
+        width: u32,
+        height: u32,
     },
 }
 

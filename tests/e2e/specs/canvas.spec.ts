@@ -109,3 +109,13 @@ test('タイル配置でタイトルバーをドラッグすると並び順と�
   await page.getByRole('button', { name: 'タイル配置' }).click();
   await expect(page.getByRole('button', { name: '自由配置' })).toBeVisible();
 });
+
+test('キャンバスのバーの並び: 全体ミュート・同期・配置・履歴・キー一覧・操作パネル・停止', async ({ page, dew }) => {
+  await start(page, dew);
+  await openFour(page);
+  const bar = page.locator('.canvas-bar');
+  const x = async (name: string) => (await bar.getByRole('button', { name, exact: true }).boundingBox())!.x;
+  const order = ['ミュートを解除', '同期再生', 'タイル配置', '履歴', 'キー一覧', '操作パネル', 'サーバを停止'];
+  const xs = await Promise.all(order.map(x));
+  expect([...xs].sort((a, b) => a - b)).toEqual(xs);
+});

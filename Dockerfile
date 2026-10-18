@@ -187,6 +187,11 @@ COPY --from=claude-config --chmod=755 bin/claude-sync /usr/local/bin/claude-sync
 
 USER root
 
+# ステータスライン（~/.claude/statusline.sh）が JSON を読むのに使う jq
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    jq \
+ && rm -rf /var/lib/apt/lists/*
+
 # -----------------------------------------------------------------------------
 # [6] 言語固有（dew: Rust + TypeScript）
 # -----------------------------------------------------------------------------

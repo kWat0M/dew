@@ -100,7 +100,8 @@ test('差分表示で違うところだけが明るく出る', async ({ page, de
   await win.getByRole('radio', { name: '差分' }).click();
   const media = win.getByTestId('compare-media');
   await expect.poll(async () => isBlack(await colorAt(page, media, 0.2, 0.3))).toBe(true);
-  expect(isBlack(await colorAt(page, media, 0.6875, 0.639))).toBe(false);
+  // 2枚目の読み込み前は全体が黒いので、違うところが明るくなるまで待つ(負荷が高いと間に合わないことがあった)
+  await expect.poll(async () => isBlack(await colorAt(page, media, 0.6875, 0.639))).toBe(false);
 });
 
 // 基準3: 画像の等倍表示で、指定したピクセルの値が元画像と一致する

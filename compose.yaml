@@ -7,9 +7,9 @@ services:
     build:
       context: .
       args:
-        # --- [1] 基本設定: ホストと同じ UID/GID でユーザーを作る（dev.sh が id -u / id -g を渡す）---
-        UID: ${HOST_UID:?dev.sh から起動してください}
-        GID: ${HOST_GID:?dev.sh から起動してください}
+        # --- [1] 基本設定: ホストと同じ UID/GID でユーザーを作る（dev.sh が id -u / id -g を .env に書き込む）---
+        UID: ${HOST_UID:?一度 ./dev.sh を実行してください（.env に HOST_UID を書き込みます）}
+        GID: ${HOST_GID:?一度 ./dev.sh を実行してください（.env に HOST_GID を書き込みます）}
         # --- [5] Claude Code: dotfiles の場所（Claude の設定をホストと同じパスにコピーするため）---
         DOTFILES: ${DOTFILES}
       # プロジェクト外にある設定（dotfiles）をビルドに渡す（Dockerfile の COPY --from=<名前> で受け取る）

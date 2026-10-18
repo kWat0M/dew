@@ -47,6 +47,14 @@ enum Sub {
     Stop,
     /// 依存(ffmpeg、Xvfb、音声サーバ、GPU)を確認する
     Doctor,
+    /// 仮想ディスプレイと音声を用意してコマンドを実行し、ウィンドウをブラウザに出す
+    Run {
+        /// 実行するコマンドと引数
+        #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
+        command: Vec<String>,
+    },
+    /// 仮想ディスプレイと音声につなぐ環境変数を出す(eval "$(dew env)" で、以降のコマンドをすべてライブ描画へ)
+    Env,
 }
 
 #[derive(Args, Clone)]
@@ -70,6 +78,16 @@ struct ServeArgs {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    // dew run はアプリの終了コードをそのまま返す
+    if let Some(Sub::Run { command }) = &cli.command {
+        return match run(&cli.serve, command) {
+            Ok(code) => ExitCode::from(code),
+            Err(e) => {
+                eprintln!("dew: {e:#}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     let result = match cli.command {
         Some(Sub::Url) => running().map(|s| print_url(&s)),
         Some(Sub::Status) => running().map(|s| {
@@ -81,6 +99,8 @@ fn main() -> ExitCode {
             doctor::run();
             Ok(())
         }
+        Some(Sub::Env) => env(&cli.serve),
+        Some(Sub::Run { .. }) => unreachable!(),
         None if cli.serve.foreground => foreground(&cli.serve),
         None => start(&cli.serve, cli.path.as_deref()),
     };
@@ -138,6 +158,67 @@ fn start(args: &ServeArgs, path: Option<&Path>) -> anyhow::Result<()> {
     }
     print_url(&server);
     Ok(())
+}
+
+/// 動いているサーバを返す。なければ起動する
+fn ensure_server(args: &ServeArgs) -> anyhow::Result<ServerFile> {
+    if let Some(s) = alive() {
+        return Ok(s);
+    }
+    let s = spawn(args)?;
+    for w in &s.warnings {
+        eprintln!("dew: 警告: {w}");
+    }
+    eprintln!("dew: サーバを起動しました。ブラウザで次の URL を開いてください");
+    eprintln!("\x1b]8;;{0}\x1b\\{0}\x1b]8;;\x1b\\", s.url);
+    Ok(s)
+}
+
+/// `dew run`: 仮想ディスプレイと音声につないでコマンドを実行し、終わるまで待つ(6.1)
+fn run(args: &ServeArgs, command: &[String]) -> anyhow::Result<u8> {
+    let server = ensure_server(args)?;
+    let live = Api::new(&server).live_session()?;
+    let mut cmd = Command::new(&command[0]);
+    cmd.args(&command[1..])
+        .envs(live.env.iter().map(|(k, v)| (k, v)));
+    for k in &live.unset {
+        cmd.env_remove(k);
+    }
+    let status = cmd
+        .status()
+        .with_context(|| format!("{} を実行できません", command[0]))?;
+    // シグナルで終わったときはシェルと同じく 128+番号
+    use std::os::unix::process::ExitStatusExt;
+    Ok(status
+        .code()
+        .map(|c| c as u8)
+        .or_else(|| status.signal().map(|s| (128 + s) as u8))
+        .unwrap_or(1))
+}
+
+/// `dew env`: シェルで eval できる形で、つなぐ設定を出す
+fn env(args: &ServeArgs) -> anyhow::Result<()> {
+    let server = ensure_server(args)?;
+    let live = Api::new(&server).live_session()?;
+    for (k, v) in &live.env {
+        println!("export {k}={}", shell_quote(v));
+    }
+    for k in &live.unset {
+        println!("unset {k}");
+    }
+    Ok(())
+}
+
+/// シェルで安全に使える形にする。記号の少ない値はそのまま、それ以外は単一引用符で囲む
+fn shell_quote(s: &str) -> String {
+    let plain = !s.is_empty()
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || "_:/.,=+-@".contains(c));
+    if plain {
+        s.to_owned()
+    } else {
+        format!("'{}'", s.replace('\'', "'\\''"))
+    }
 }
 
 /// 記録があり、実際に応答するサーバ
