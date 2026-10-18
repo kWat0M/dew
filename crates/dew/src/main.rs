@@ -184,6 +184,7 @@ fn ensure_server(args: &ServeArgs) -> anyhow::Result<ServerFile> {
 
 /// `dew run`: 仮想ディスプレイと音声につないでコマンドを実行し、終わるまで待つ(6.1)
 fn run(args: &ServeArgs, exact: bool, command: &[String]) -> anyhow::Result<u8> {
+    check_live_deps()?;
     let server = ensure_server(args)?;
     let live = Api::new(&server).live_session()?;
     let mut cmd = Command::new(&command[0]);
@@ -219,8 +220,22 @@ fn run(args: &ServeArgs, exact: bool, command: &[String]) -> anyhow::Result<u8> 
         .unwrap_or(1))
 }
 
+/// ライブ描画に要るもの(ffmpeg、Xvfb、pulseaudio)がそろっているか。足りなければ入れ方を出して止める
+fn check_live_deps() -> anyhow::Result<()> {
+    let missing = doctor::missing_live();
+    if !missing.is_empty() {
+        bail!(
+            "ライブ描画に要る {} がありません。次のコマンドで入れてください:\n  {}",
+            missing.join("・"),
+            doctor::install_command(&missing)
+        );
+    }
+    Ok(())
+}
+
 /// `dew env`: シェルで eval できる形で、つなぐ設定を出す
 fn env(args: &ServeArgs) -> anyhow::Result<()> {
+    check_live_deps()?;
     let server = ensure_server(args)?;
     let live = Api::new(&server).live_session()?;
     for (k, v) in &live.env {

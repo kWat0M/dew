@@ -61,6 +61,17 @@ pub fn missing_required() -> Vec<&'static str> {
     pkgs
 }
 
+/// ライブ描画(dew run / dew env)に要るもので足りないもの
+pub fn missing_live() -> Vec<&'static str> {
+    let mut pkgs: Vec<_> = DEPS
+        .iter()
+        .filter(|d| !d.commands.iter().any(|c| found(c)))
+        .map(|d| d.package)
+        .collect();
+    pkgs.dedup();
+    pkgs
+}
+
 pub fn install_command(pkgs: &[&str]) -> String {
     format!("sudo apt-get install -y {}", pkgs.join(" "))
 }

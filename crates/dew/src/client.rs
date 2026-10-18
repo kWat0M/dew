@@ -81,15 +81,19 @@ impl Api {
 
     /// ライブ描画のセッションにつなぐ設定(なければサーバが作る)
     pub fn live_session(&self) -> anyhow::Result<LiveSession> {
-        Ok(self
+        let res = self
             .client
             .post(format!("{}/api/live/session", self.base))
             .bearer_auth(&self.token)
             // 仮想ディスプレイと音声サーバの起動を待つ
             .timeout(Duration::from_secs(30))
-            .send()?
-            .error_for_status()?
-            .json()?)
+            .send()?;
+        // 失敗したら、HTTP の番号ではなくサーバの説明を出す
+        if !res.status().is_success() {
+            let msg = res.text().unwrap_or_default();
+            anyhow::bail!("ライブ描画を始められません: {}", msg.trim());
+        }
+        Ok(res.json()?)
     }
 
     pub fn shutdown(&self) -> anyhow::Result<()> {
