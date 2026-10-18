@@ -76,7 +76,7 @@ export function PlayerWindow({ api: apiRef, ...p }: Props) {
   // 音声があるかをキャンバスへ知らせる(全体のミュートボタンの表示に使う)
   const { onHasAudio, id } = p;
   const onProbe = useCallback((pr: Probe) => onHasAudio(id, !!pr.audioCodec), [onHasAudio, id]);
-  const { probe, ranges } = useVideoSource(video, p.path, timed, { onProbe, onError: fail });
+  const { probe, ranges } = useVideoSource(video, p.path, timed, { video: p.media === 'video', onProbe, onError: fail });
 
   // 表示中のフレームを追う(7.5)。A-B ループの折り返しもここで行う
   useEffect(() => {
@@ -195,7 +195,8 @@ export function PlayerWindow({ api: apiRef, ...p }: Props) {
           <video
             ref={video}
             playsInline
-            onLoadedData={() => setStatus({ kind: 'ready' })}
+            // 先に出した失敗(映像を出せない形式など)は消さない
+            onLoadedData={() => setStatus((s) => (s.kind === 'error' ? s : { kind: 'ready' }))}
             onPlay={() => setPlaying(true)}
             onPause={() => setPlaying(false)}
             onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}

@@ -19,4 +19,8 @@ unset: Array<string>,
 /**
  * 精度モード(L3)のフックがつなぐソケット(`dew run --exact` が DEW_EXACT_SOCKET で渡す)
  */
-exactSocket: string, };
+exactSocket: string, 
+/**
+ * 音を映せるか(pulseaudio がなければ false で、映像だけを映す)
+ */
+audio: boolean, };

@@ -143,6 +143,8 @@ export function ImageView({ path, api: apiRef, onError, onReady }: { path: strin
   const onLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     onReady();
     const img = e.currentTarget;
+    // ffprobe がないと大きさが分からないので、読み込んだ画像から取る
+    if (probe?.missing.includes('ffprobe')) setProbe({ ...probe, width: img.naturalWidth, height: img.naturalHeight });
     if (probe?.bitDepth === 16) return;
     const c = document.createElement('canvas');
     c.width = img.naturalWidth;
@@ -162,7 +164,7 @@ export function ImageView({ path, api: apiRef, onError, onReady }: { path: strin
             alt=""
             draggable={false}
             onLoad={onLoad}
-            onError={() => onError(ja.imageFailed)}
+            onError={() => onError(probe?.missing.includes('ffprobe') || probe?.missing.includes('ffmpeg') ? ja.imageNeedsFfmpeg : ja.imageFailed)}
             // 拡大したときは補間しない(画素をそのまま大きくする)
             style={{ left: x, top: y, width: w * scale, height: h * scale, imageRendering: scale > actual ? 'pixelated' : 'auto' }}
           />

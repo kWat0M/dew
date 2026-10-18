@@ -4,6 +4,7 @@ mod client;
 mod doctor;
 mod hooks;
 mod state;
+mod update;
 
 use std::fs::File;
 use std::io::Read;
@@ -25,7 +26,7 @@ const START_TIMEOUT: Duration = Duration::from_secs(15);
 #[derive(Parser)]
 #[command(
     name = "dew",
-    version = concat!(env!("CARGO_PKG_VERSION"), " (", env!("DEW_BUILD_DATE"), ")"),
+    version = concat!(env!("CARGO_PKG_VERSION"), " (", env!("DEW_COMMIT"), ", ", env!("DEW_BUILD_DATE"), ")"),
     about = "コンテナ内の画像・動画を Windows のブラウザで見る",
     args_conflicts_with_subcommands = true
 )]
@@ -48,6 +49,8 @@ enum Sub {
     Stop,
     /// 依存(ffmpeg、Xvfb、音声サーバ、GPU)を確認する
     Doctor,
+    /// 新しい版を取得して、この dew を置き換える(GitHub の Releases から)
+    Update,
     /// 仮想ディスプレイと音声を用意してコマンドを実行し、ウィンドウをブラウザに出す
     Run {
         /// 精度モード: cv2.imshow の画像を圧縮せずに送る(L3。プログラムは変えない)
@@ -104,6 +107,7 @@ fn main() -> ExitCode {
             Ok(())
         }
         Some(Sub::Env) => env(&cli.serve),
+        Some(Sub::Update) => update::run(),
         Some(Sub::Run { .. }) => unreachable!(),
         None if cli.serve.foreground => foreground(&cli.serve),
         None => start(&cli.serve, cli.path.as_deref()),
@@ -131,12 +135,21 @@ fn start(args: &ServeArgs, path: Option<&Path>) -> anyhow::Result<()> {
             s
         }
         None => {
-            let missing = doctor::missing_required();
-            if !missing.is_empty() {
+            // ツールが足りなくても起動する(閲覧と、ブラウザで再生できる形式の再生はツールなしで使える。ADR 0019)
+            let unavailable = doctor::unavailable();
+            if !unavailable.is_empty() {
+                let mut pkgs: Vec<&str> = Vec::new();
+                for (name, ps) in &unavailable {
+                    eprintln!("dew: 注意: 使えない機能: {name}");
+                    for p in ps {
+                        if !pkgs.contains(p) {
+                            pkgs.push(p);
+                        }
+                    }
+                }
                 eprintln!(
-                    "dew: 警告: {} がありません。動画の変換とサムネイルが使えません。導入: {}",
-                    missing.join(", "),
-                    doctor::install_command(&missing)
+                    "dew: ファイルの閲覧と再生はできます。全部使うには: {}(dew doctor で詳しく)",
+                    doctor::install_command(&pkgs)
                 );
             }
             let s = spawn(args)?;
@@ -184,6 +197,7 @@ fn ensure_server(args: &ServeArgs) -> anyhow::Result<ServerFile> {
 
 /// `dew run`: 仮想ディスプレイと音声につないでコマンドを実行し、終わるまで待つ(6.1)
 fn run(args: &ServeArgs, exact: bool, command: &[String]) -> anyhow::Result<u8> {
+    check_live_deps()?;
     let server = ensure_server(args)?;
     let live = Api::new(&server).live_session()?;
     let mut cmd = Command::new(&command[0]);
@@ -219,8 +233,28 @@ fn run(args: &ServeArgs, exact: bool, command: &[String]) -> anyhow::Result<u8> 
         .unwrap_or(1))
 }
 
+/// ライブ描画に要るもの(ffmpeg、Xvfb、pulseaudio)がそろっているか。足りなければ入れ方を出して止める
+fn check_live_deps() -> anyhow::Result<()> {
+    let missing = doctor::missing_live();
+    if !missing.is_empty() {
+        bail!(
+            "ライブ描画(dew run / dew env)に要る {} がありません。次のコマンドで入れてください:\n  {}",
+            missing.join("・"),
+            doctor::install_command(&missing)
+        );
+    }
+    if !doctor::has_audio() {
+        eprintln!(
+            "dew: 注意: pulseaudio がないので、アプリの音は出ません(映像は映します)。音も出すには: {}",
+            doctor::install_command(&["pulseaudio"])
+        );
+    }
+    Ok(())
+}
+
 /// `dew env`: シェルで eval できる形で、つなぐ設定を出す
 fn env(args: &ServeArgs) -> anyhow::Result<()> {
+    check_live_deps()?;
     let server = ensure_server(args)?;
     let live = Api::new(&server).live_session()?;
     for (k, v) in &live.env {

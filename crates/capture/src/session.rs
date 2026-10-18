@@ -18,19 +18,24 @@ const START_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub struct Session {
     pub display: u32,
-    /// pulseaudio のソケット(`PULSE_SERVER=unix:<ここ>`)
-    pub pulse_socket: PathBuf,
-    /// pulseaudio を操作するソケット(module-cli-protocol-unix。ウィンドウごとの音の振り分けに使う)
-    pub pulse_cli: PathBuf,
+    /// 音声サーバ。pulseaudio がないときは None で、映像だけを映す(音は出ない)
+    pub pulse: Option<Pulse>,
     xvfb: Child,
-    pulse: Child,
+}
+
+pub struct Pulse {
+    /// pulseaudio のソケット(`PULSE_SERVER=unix:<ここ>`)
+    pub socket: PathBuf,
+    /// pulseaudio を操作するソケット(module-cli-protocol-unix。ウィンドウごとの音の振り分けに使う)
+    pub cli: PathBuf,
+    child: Child,
 }
 
 impl Drop for Session {
     /// SIGTERM で止める(SIGKILL だと Xvfb がロックファイルとソケットを残し、次から番号がずれていくため)
     fn drop(&mut self) {
-        let pids: Vec<u32> = [&self.xvfb, &self.pulse]
-            .iter()
+        let pids: Vec<u32> = std::iter::once(&self.xvfb)
+            .chain(self.pulse.as_ref().map(|p| &p.child))
             .filter_map(|c| c.id())
             .collect();
         for pid in &pids {
@@ -60,33 +65,45 @@ fn zombie(pid: u32) -> bool {
 }
 
 impl Session {
-    /// 仮想ディスプレイと音声サーバを起動する。`dir` に音声サーバのソケットなどを置く
+    /// 仮想ディスプレイと音声サーバを起動する。`dir` に音声サーバのソケットなどを置く。
+    /// 音声サーバ(pulseaudio)がない・起動できないときは、映像だけのセッションにする
     pub async fn start(dir: &Path) -> anyhow::Result<Self> {
         let (number, xvfb) = start_xvfb().await?;
-        let (pulse_socket, pulse_cli, pulse) = start_pulse(dir).await?;
-        tracing::info!(display = number, socket = %pulse_socket.display(), "ライブ描画のセッションを作りました");
+        let pulse = match start_pulse(dir).await {
+            Ok((socket, cli, child)) => Some(Pulse { socket, cli, child }),
+            Err(e) => {
+                tracing::warn!("音声サーバを起動できないので、音なしで映します: {e:#}");
+                None
+            }
+        };
+        tracing::info!(
+            display = number,
+            audio = pulse.is_some(),
+            "ライブ描画のセッションを作りました"
+        );
         Ok(Self {
             display: number,
-            pulse_socket,
-            pulse_cli,
-            xvfb,
             pulse,
+            xvfb,
         })
     }
 
     /// アプリに渡す環境変数
     pub fn env(&self) -> Vec<(String, String)> {
-        vec![
-            ("DISPLAY".into(), format!(":{}", self.display)),
-            (
+        let mut env = vec![("DISPLAY".into(), format!(":{}", self.display))];
+        if let Some(p) = &self.pulse {
+            env.push((
                 "PULSE_SERVER".into(),
-                format!("unix:{}", self.pulse_socket.display()),
-            ),
+                format!("unix:{}", p.socket.display()),
+            ));
+        }
+        env.extend([
             // Wayland ではなく仮想ディスプレイ(X11)に出させる
             ("GDK_BACKEND".into(), "x11".into()),
             ("QT_QPA_PLATFORM".into(), "xcb".into()),
             ("SDL_VIDEODRIVER".into(), "x11".into()),
-        ]
+        ]);
+        env
     }
 
     /// 消す環境変数(ホストの Wayland や音声につながないように)

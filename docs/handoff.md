@@ -9,7 +9,8 @@
 | ブランチ | 状態 |
 |---|---|
 | `main` | フェーズ1〜3 が入っている(PR #4 で `phase-3` をマージ。`6a69af9`) |
-| `phase-4` | `origin/main` から切った。2026-10-18 に push 済み。ユーザーが Web で PR・マージする |
+| `phase-4` | PR #5 でマージ済み(`05f218c`) |
+| `release-1` | `main` から切った。配布の準備(README、`scripts/release.sh`、版にコミット)。**手元だけで、push していない** |
 
 - PR はユーザーが GitHub の Web で作ってマージしている(`gh` は未ログイン)。こちらは push までを行い、Web でのマージを頼む
 - `git push` と `git merge` は `.claude/settings.json` で確認が出る設定。ユーザーの許可を得てから行う
@@ -43,10 +44,11 @@
 
 仕様にあってまだ作っていない項目の一覧は `docs/spec.md` の 9.2(実装状況)にある。作ったら、その表から消す。
 
+0. **配布の準備**(`release-1`、2026-10-18): LICENSE(自由に使える、再配布と自作と称するのは禁止)、README、CHANGELOG(0.1.0)、`scripts/release.sh`(`dist/…-x86_64-linux.tar.gz`)、`dew update`(ADR 0018)、素の環境での案内、時間に厳しい E2E を最後に(ADR 0011 追記)。手順は `docs/manual/release.md`。次は: `release-1` を push → ユーザーが PR・マージ → `main` で `scripts/release.sh` → `v0.1.0` のタグを push → ユーザーが Web で Releases を作って tar.gz を載せる。ソースのリポジトリは非公開のまま、配布物はバイナリだけの公開リポジトリ `kWat0M/dew-releases` の Releases に置く(ユーザーが作る。`dew update` の既定もそこ。ADR 0018 追記)。`tests/fixtures/komasan.png` は著作権の都合で公開できない(git 管理外で、履歴にも入っていない)
 1. (済 2026-10-18)フェーズ4の終わりの報告と、ユーザーの確認を受けた修正(下部を動画と同じ並びに、録画は表示している映像を録る、ヒントの帯の出し分け、ライブへ戻るのは q、古いサーバの警告、精度モードの窓を閉じたら出し直さない、dew stop で1行だけ出して終わる)。人が確かめる手順は `docs/manual/phase4-check.md`。`phase-4` は push 済み
 2. GPU のある環境での NVENC の実物の確認(人が `dew doctor` と録画・巻き戻しで確かめる)
 3. 9.2 の残り: 親からはみ出した一時的な窓(ADR 0012)、ライブ映像と音声の同期、平文 HTTP のフォールバック、`dew update`、`:` のコマンドパレット、キーマップの設定ファイル、再接続時の配置の復元、「ログを見る」、LICENSE(文面は人が決める)
-4. **負荷が高いときだけ落ちる E2E**: フェーズ2の「キャンバスの s で2本を同期再生する」と、フェーズ3のライブウィンドウが 20 秒以内に出ない、がまれに起きる(単独では通る)。基準3と同じく perf プロジェクトへ移すのが候補(ADR 0011)
+4. (済 2026-10-18)負荷が高いときだけ落ちる E2E: 同期再生と巻き戻しのテストを `timing-perf.spec.ts`(timing-chrome・timing-firefox プロジェクト、perf の後)へ移した(ADR 0011 追記)。フェーズ3のライブウィンドウが 20 秒以内に出ない、もごくまれにあるが、移してからは起きていない
 5. 開発用コンテナを作り直すと Playwright の Firefox(`~/.cache/ms-playwright`)が消える(このセッションでも2回入れ直した)。Dockerfile に `npx playwright install firefox` を足すのはユーザーの判断(Docker のファイルはユーザーが手を入れている)
 6. `tests/fixtures/komasan.png` はユーザーが置いたファイル。消さない
 7. ユーザーの確認待ち: Zen で2本並べたとき、フォーカス中の右側の動画が黒くなる問題への対策が効いたか

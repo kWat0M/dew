@@ -26,6 +26,8 @@ pub(crate) struct PathQuery {
 pub(crate) enum ApiError {
     Forbidden(String),
     NotFound(String),
+    /// 機能に要るツールがない(何を入れればよいかを伝える)
+    Unavailable(String),
     Internal(String),
 }
 
@@ -34,6 +36,7 @@ impl IntoResponse for ApiError {
         let (status, msg) = match self {
             Self::Forbidden(m) => (StatusCode::FORBIDDEN, m),
             Self::NotFound(m) => (StatusCode::NOT_FOUND, m),
+            Self::Unavailable(m) => (StatusCode::SERVICE_UNAVAILABLE, m),
             Self::Internal(m) => (StatusCode::INTERNAL_SERVER_ERROR, m),
         };
         (status, msg).into_response()

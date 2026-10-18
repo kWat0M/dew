@@ -88,6 +88,10 @@ pub struct Probe {
     pub frame_times: Vec<f64>,
     /// シークバーのプレビュー(`GET /api/sprite?path=`)の並び。映像がなければ None
     pub sprite: Option<Sprite>,
+    /// 足りないために、分からないこと・できないことがあるツール(ffprobe がなければ長さやフレームの時刻が
+    /// 分からない、ffmpeg がなければプレビューや変換ができない)。画面はそれを知らせる
+    #[serde(default)]
+    pub missing: Vec<String>,
 }
 
 /// シークバー用のサムネイル列。`interval` 秒ごとの画像を `cols` 列で左上から並べた1枚の画像
@@ -133,6 +137,8 @@ pub struct LiveSession {
     pub unset: Vec<String>,
     /// 精度モード(L3)のフックがつなぐソケット(`dew run --exact` が DEW_EXACT_SOCKET で渡す)
     pub exact_socket: String,
+    /// 音を映せるか(pulseaudio がなければ false で、映像だけを映す)
+    pub audio: bool,
 }
 
 /// `POST /api/open` の要求(F10)

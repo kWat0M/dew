@@ -14,7 +14,10 @@ use crate::App;
 use crate::files::{ApiError, PathQuery, media_kind, resolve};
 
 fn failed(e: anyhow::Error) -> ApiError {
-    ApiError::Internal(format!("{e:#}"))
+    match e.downcast_ref::<dew_media::MissingTool>() {
+        Some(m) => ApiError::Unavailable(m.to_string()),
+        None => ApiError::Internal(format!("{e:#}")),
+    }
 }
 
 fn file(app: &App, path: &str) -> Result<std::path::PathBuf, ApiError> {

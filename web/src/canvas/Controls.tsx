@@ -110,6 +110,11 @@ export function Controls(p: Props) {
           <span className="time">
             {formatTime(p.time)} / {formatTime(p.probe?.duration ?? 0)}
           </span>
+          {p.probe?.missing.includes('ffprobe') && (
+            <span className="muted" title={`${ja.noFrameInfo}(${ja.installFfmpeg})`} data-testid="tool-missing">
+              {ja.noFrameInfoShort}
+            </span>
+          )}
           {stepable && (
             <span className="frame" data-testid="frame-number">
               {ja.frame(p.frame, p.probe!.frameTimes.length)}
