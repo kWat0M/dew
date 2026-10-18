@@ -27,13 +27,18 @@ class _Conn:
         self.lock = threading.Lock()
         self.keys = []
         self.closed = set()
+        # dew のサーバとの接続が切れた(dew stop など)
+        self.gone = False
         self.cond = threading.Condition()
         threading.Thread(target=self._read, daemon=True).start()
 
     def send(self, header, payload=b""):
         head = json.dumps(dict(header, size=len(payload))).encode()
-        with self.lock:
-            self.sock.sendall(struct.pack(">I", len(head)) + head + payload)
+        try:
+            with self.lock:
+                self.sock.sendall(struct.pack(">I", len(head)) + head + payload)
+        except OSError:
+            _quit()
 
     def _recv_exact(self, n):
         buf = b""
@@ -57,16 +62,28 @@ class _Conn:
                     self.cond.notify_all()
         except (OSError, ConnectionError, ValueError):
             pass
+        with self.cond:
+            self.gone = True
+            self.cond.notify_all()
 
     def wait_key(self, delay_ms):
         deadline = None if delay_ms <= 0 else time.monotonic() + delay_ms / 1000
         with self.cond:
             while not self.keys:
+                if self.gone:
+                    _quit()
                 timeout = None if deadline is None else deadline - time.monotonic()
                 if timeout is not None and timeout <= 0:
                     return -1
                 self.cond.wait(timeout)
             return self.keys.pop(0)
+
+
+def _quit():
+    """dew のサーバが止まった。表示先がなくなったので、長いエラーを出さずに1行だけ出して終わる
+    (X のアプリが、仮想ディスプレイが止まると終わるのと同じ)"""
+    print("dew: dew のサーバが止まったので終了します", file=sys.stderr, flush=True)
+    raise SystemExit(1)
 
 
 def _to_uint8(cv2, np, mat):

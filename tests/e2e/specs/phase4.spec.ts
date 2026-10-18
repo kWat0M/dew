@@ -261,3 +261,16 @@ test('精度モードの窓を閉じるボタンで閉じられる', async ({ pa
   await expect(page.getByTestId('live-window')).toHaveCount(0);
   expect(child.exitCode).toBeNull();
 });
+
+// 精度モードのアプリは、dew のサーバが止まったら(dew stop)、長いエラーを出さずに1行だけ出して終わる
+test('精度モードのアプリは dew stop で1行だけ出して終わる', async ({ page, dew }) => {
+  await start(page, dew);
+  const child = dew.spawnRun(['--exact', 'python3', appPath('exact_sample.py')]);
+  let stderr = '';
+  child.stderr?.on('data', (d: Buffer) => (stderr += d.toString()));
+  await expect(liveWindow(page, 'exact')).toBeVisible(APPEAR);
+  dew.run(['stop']);
+  await expect.poll(() => child.exitCode, { timeout: 10_000 }).toBe(1);
+  expect(stderr).toContain('dew: dew のサーバが止まったので終了します');
+  expect(stderr).not.toContain('Traceback');
+});
