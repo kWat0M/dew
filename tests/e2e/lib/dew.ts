@@ -45,7 +45,8 @@ export const test = base.extend<{ dew: Dew }>({
     // 開発コンテナの DEW_PUBLIC_* などを持ち込まない
     const env = { HOME: home, PATH: process.env.PATH ?? '', DEW_PUBLIC_HOST: '127.0.0.1' };
     const port = await freePort();
-    execFileSync(bin, ['--port', String(port), '--root', root], { env });
+    // 起動したディレクトリは Home の初期位置と録画の保存先(dew-recordings/)になるので、素材の複製の中で起動する
+    execFileSync(bin, ['--port', String(port), '--root', root], { env, cwd: root });
     const server = JSON.parse(readFileSync(join(home, '.cache/dew/server.json'), 'utf8'));
     const run = (args: string[]) => execFileSync(bin, args, { env, encoding: 'utf8' });
     const children: ChildProcess[] = [];
