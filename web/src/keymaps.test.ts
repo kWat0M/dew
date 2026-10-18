@@ -41,7 +41,8 @@ describe('キー一覧に全キーが載っている', () => {
 describe('ヒントの帯に主なキーが載っている', () => {
   test.each([
     ['Home', homeBindings, ja.homeHints],
-    ['キャンバス', normal, ja.canvasHints],
+    // キャンバスの帯はウィンドウの種類で出し分けるので、全部の組を合わせて調べる
+    ['キャンバス', normal, Object.values(ja.canvasHints).flat()],
     ['ウィンドウ操作モード', windowKeys, ja.windowHints],
   ] as const)('%s', (_, bindings, rows) => {
     const listed = keysIn(rows);

@@ -18,8 +18,6 @@ use crate::session::SCREEN;
 pub const FPS: u32 = 60;
 /// キーフレームの間隔(1秒。録画を押した時刻に近いキーフレームから始められるように。ADR 0015)
 const GOP: u32 = FPS;
-/// キーフレームの間隔(マイクロ秒)
-pub const GOP_US: u64 = 1_000_000;
 
 /// H.264 の1フレーム(Annex B 形式。先頭に AUD が付く)
 #[derive(Debug)]

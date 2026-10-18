@@ -1,5 +1,6 @@
-//! ライブ表示の録画(L7)。配っている H.264 のフレームを、そのまま(再エンコードせず)MP4 に保存する。
-//! フレームに受け取った時刻を付けて FLV にし、ffmpeg に `-c copy` で MP4 へ詰め替えさせる(ADR 0015)
+//! ライブ表示の録画(L7)。ブラウザに表示している H.264 のフレームを、そのまま(再エンコードせず)MP4 に保存する。
+//! 録画を始めたブラウザが、表示のために復号したフレームを表示した時刻付きで送り返してくる(巻き戻し中なら巻き戻した映像)。
+//! それを FLV にし、ffmpeg に `-c copy` で MP4 へ詰め替えさせる(ADR 0015)
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -8,38 +9,46 @@ use std::sync::Arc;
 use anyhow::{Context, bail};
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
-use tokio::sync::{broadcast, watch};
+use tokio::sync::{mpsc, watch};
 
-use crate::stream::{Frame, GOP_US, Stream, nal_units, now_us};
+use crate::stream::{Frame, nal_units, now_us};
 
 pub struct Recorder {
     pub path: PathBuf,
+    frames: mpsc::UnboundedSender<Frame>,
     stop: watch::Sender<bool>,
     /// 書き終わったら Some(結果)
     done: watch::Sender<Option<Result<(), String>>>,
 }
 
 impl Recorder {
-    /// `stream` の録画を `path` に始める。押した時刻に近いキーフレームから録る(長さが録画時間に合うように)
-    pub fn start(stream: Arc<Stream>, path: PathBuf) -> anyhow::Result<Arc<Self>> {
+    /// `path` への録画を始める。フレームは `push` で渡す(最初のキーフレームから書く)
+    pub fn start(path: PathBuf) -> anyhow::Result<Arc<Self>> {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)
                 .with_context(|| format!("{} を作れません", dir.display()))?;
         }
+        let (tx, rx) = mpsc::unbounded_channel();
         let rec = Arc::new(Self {
             path,
+            frames: tx,
             stop: watch::channel(false).0,
             done: watch::channel(None).0,
         });
         let me = rec.clone();
         tokio::spawn(async move {
-            let r = me.run(&stream).await.map_err(|e| format!("{e:#}"));
+            let r = me.run(rx).await.map_err(|e| format!("{e:#}"));
             if let Err(e) = &r {
                 tracing::warn!(path = %me.path.display(), "録画できません: {e}");
             }
             me.done.send_replace(Some(r));
         });
         Ok(rec)
+    }
+
+    /// 表示したフレームを1つ渡す(時刻は表示した時刻)
+    pub fn push(&self, frame: Frame) {
+        let _ = self.frames.send(frame);
     }
 
     /// 録画を止め、書き終わるまで待つ
@@ -56,7 +65,7 @@ impl Recorder {
         self.stop.send_replace(true);
     }
 
-    /// 書き終わるまで待つ(止めたとき、または映像が終わったとき)
+    /// 書き終わるまで待つ
     pub async fn finished(&self) -> Result<(), String> {
         let mut rx = self.done.subscribe();
         let r = rx.wait_for(Option::is_some).await;
@@ -66,7 +75,7 @@ impl Recorder {
         }
     }
 
-    async fn run(&self, stream: &Stream) -> anyhow::Result<()> {
+    async fn run(&self, mut rx: mpsc::UnboundedReceiver<Frame>) -> anyhow::Result<()> {
         let mut child = Command::new("ffmpeg")
             .args(["-hide_banner", "-loglevel", "error", "-nostdin", "-y"])
             .args([
@@ -89,47 +98,37 @@ impl Recorder {
         let mut stdin = child.stdin.take().expect("stdin");
         let mut flv = Flv::default();
         stdin.write_all(&flv.header()).await?;
-
-        let (_, backlog, mut rx) = stream.subscribe();
-        // 最後のキーフレームが半分の間隔より新しければそこから、古ければ次のキーフレームから録る
-        let mut pending: Vec<Arc<Frame>> = match backlog.first() {
-            Some(f) if f.key && now_us().saturating_sub(f.timestamp_us) <= GOP_US / 2 => backlog,
-            _ => Vec::new(),
-        };
         let mut stop = self.stop.subscribe();
         let mut wrote = 0usize;
-        'rec: loop {
-            for f in pending.drain(..) {
-                if wrote == 0 && !f.key {
-                    continue;
-                }
-                stdin.write_all(&flv.frame(&f)).await?;
-                wrote += 1;
-            }
+        loop {
             tokio::select! {
                 // wait_for の戻り値(読み取りの guard)を持ち越さないよう、中で捨てる
-                _ = async { let _ = stop.wait_for(|s| *s).await; } => break 'rec,
-                _ = stream.ended() => break 'rec,
+                _ = async { let _ = stop.wait_for(|s| *s).await; } => break,
                 f = rx.recv() => match f {
-                    Ok(f) => pending.push(f),
-                    // 書くのが遅れたら次のキーフレームまで飛ばす(壊れた映像にしない)
-                    Err(broadcast::error::RecvError::Lagged(_)) => {
-                        while let Ok(f) = rx.recv().await {
-                            if f.key {
-                                pending.push(f);
-                                break;
-                            }
+                    Some(f) => {
+                        // キーフレームから始める(途中のフレームからは復号できない)
+                        if wrote == 0 && !f.key {
+                            continue;
                         }
+                        stdin.write_all(&flv.frame(&f)).await?;
+                        wrote += 1;
                     }
-                    Err(_) => break 'rec,
+                    None => break,
                 },
+            }
+        }
+        // 止めるまでに届いていた分も書く
+        while let Ok(f) = rx.try_recv() {
+            if wrote > 0 || f.key {
+                stdin.write_all(&flv.frame(&f)).await?;
+                wrote += 1;
             }
         }
         drop(stdin);
         let out = child.wait_with_output().await?;
         if wrote == 0 {
             let _ = std::fs::remove_file(&self.path);
-            bail!("録画するフレームがありませんでした");
+            bail!("録画するフレームがありませんでした(録画を始めたタブが閉じられたかもしれません)");
         }
         if !out.status.success() {
             bail!(

@@ -7,7 +7,8 @@ import { api } from '../api/http';
 import { ja } from '../i18n/ja';
 import { Icon } from '../icons';
 import { useLiveSound, type LiveAudioMix } from './liveAudio';
-import { LiveRewind } from './liveRewind';
+import { LiveControls } from './LiveControls';
+import { LiveRewind, type Chunk } from './liveRewind';
 import type { PlayerApi } from './PlayerWindow';
 import { WindowFrame, type FrameProps } from './WindowFrame';
 
@@ -24,6 +25,8 @@ type Props = FrameProps & {
   /** アプリの音を鳴らすか(フォーカス中など。動画のウィンドウと同じ決め方。7.6) */
   audible: boolean;
   onMessage: (m: string) => void;
+  /** 巻き戻しに入った・抜けた(キャンバスがヒントの帯を出し分ける) */
+  onRewind: (on: boolean) => void;
   /** 入力モード(キー・マウスをアプリへ送る。L6、5.5) */
   inputMode: boolean;
   /** タイトルバーの入力モードのボタン */
@@ -33,9 +36,16 @@ type Props = FrameProps & {
 };
 
 /** キャンバスから使うライブウィンドウだけの操作(I の文字列の送信、w r の大きさ合わせ、閉じるときにアプリへ頼む) */
-export type LiveApi = PlayerApi & { sendText?: (text: string) => void; fitApp?: () => void; closeApp?: () => void; toggleRecord?: () => void };
+export type LiveApi = PlayerApi & {
+  sendText?: (text: string) => void;
+  fitApp?: () => void;
+  closeApp?: () => void;
+  toggleRecord?: () => void;
+  /** 巻き戻し中ならライブに戻る(G) */
+  goLive?: () => void;
+};
 
-export function LiveWindow({ api: apiRef, live, audioMix, audible, onMessage, inputMode, onToggleInput, onExitInput, ...p }: Props) {
+export function LiveWindow({ api: apiRef, live, audioMix, audible, onMessage, onRewind, inputMode, onToggleInput, onExitInput, ...p }: Props) {
   const socket = useRef<WebSocket | null>(null);
   const send = (ev: LiveInput) => {
     if (socket.current?.readyState === WebSocket.OPEN) socket.current.send(JSON.stringify(ev));
@@ -47,7 +57,10 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, onMessage, in
   const [error, setError] = useState<string | null>(null);
   /** このウィンドウだけのミュート(m とバーのボタン。全体のミュートとは別。7.6) */
   const [muted, setMuted] = useState(false);
-  useLiveSound(audioMix, live.audio && !live.ended ? `/ws/live-audio/${live.id}` : null, audible && !muted);
+  const [volume, setVolume] = useState(1);
+  useLiveSound(audioMix, live.audio && !live.ended ? `/ws/live-audio/${live.id}` : null, audible && !muted ? volume : 0);
+  /** フィット / 等倍(z) */
+  const [fit, setFit] = useState(true);
 
   // 一時停止・巻き戻し(L7)。受け取ったフレームを直近 30 秒ぶん持ち、ライブでない間はそこから描く
   const [, setTick] = useState(0);
@@ -57,10 +70,38 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, onMessage, in
     return () => rewind.close();
   }, [rewind]);
   const rw = rewind.state();
+
+  // 録画(L7、ADR 0015): 録画を始めたタブが、表示のために復号したフレームを、表示した時刻を付けてサーバへ
+  // 送り返す。巻き戻し中なら巻き戻した映像が録れる(ウィンドウに描いているものを録る)
+  const recHere = useRef<{ last: number } | null>(null);
+  /** このタブで始めた録画を止める(映像の作り直しやアプリの終了のとき。下で中身を入れる) */
+  const stopRecordRef = useRef<() => void>(() => {});
+  const recordChunk = (c: Chunk) => {
+    const r = recHere.current;
+    const ws = socket.current;
+    if (!r || ws?.readyState !== WebSocket.OPEN) return;
+    // 表示した時刻。シークで追いつくために続けて復号したフレームは 1 ms ずつにして、録画では見えないようにする
+    const ts = Math.max(r.last + 1000, Math.round((performance.timeOrigin + performance.now()) * 1000));
+    r.last = ts;
+    const out = new Uint8Array(9 + c.data.byteLength);
+    const view = new DataView(out.buffer);
+    view.setUint8(0, c.key ? 1 : 0);
+    view.setBigUint64(1, BigInt(ts));
+    out.set(c.data, 9);
+    ws.send(out);
+  };
+  useEffect(() => {
+    rewind.setFeedListener(recordChunk);
+  });
+  const onRewindRef = useRef(onRewind);
+  useEffect(() => {
+    onRewindRef.current = onRewind;
+  });
   // ライブでない間は、バーの位置を進めるために描き直す
   useEffect(() => {
     win.current?.setAttribute('data-paused', String(rw.mode === 'paused'));
     win.current?.setAttribute('data-rewind', rw.mode);
+    onRewindRef.current(rw.mode !== 'live');
     if (rw.mode === 'live') return;
     const t = setInterval(() => setTick((n) => n + 1), 250);
     return () => clearInterval(t);
@@ -119,6 +160,8 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, onMessage, in
         setConfig(c);
         png = c.codec === 'png';
         if (png) return;
+        // 映像が作り直された(大きさが変わったなど)ら、録画はそこで終える(途中で解像度が変わる MP4 は扱いにくい)
+        if (recHere.current) stopRecordRef.current();
         const cfg = { codec: c.codec, codedWidth: c.width, codedHeight: c.height, optimizeForLatency: true };
         decoder.configure(cfg);
         rewind.configure(cfg);
@@ -141,6 +184,7 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, onMessage, in
         return;
       }
       waitKey = false;
+      recordChunk({ key, ts: timestamp, data });
       decoder.decode(new EncodedVideoChunk({ type: key ? 'key' : 'delta', timestamp, data }));
     };
     return () => {
@@ -154,20 +198,43 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, onMessage, in
   const recording = live.recording && !live.ended;
   useEffect(() => {
     win.current?.setAttribute('data-recording', String(recording));
+    // 録画中は枠を赤くする
+    win.current?.classList.toggle('recording', recording);
     win.current?.setAttribute('data-exact', String(live.exact));
   }, [recording, live.exact]);
-  const toggleRecord = () => {
-    if (live.ended) return;
-    if (live.exact) return onMessage(ja.exactNoRecord);
+  const fail = (e: unknown) => onMessage(e instanceof Error ? e.message : String(e));
+  const stopRecord = () => {
+    recHere.current = null;
     api
-      .record(live.id, !live.recording)
+      .record(live.id, false)
       .then((r) => r.path && onMessage(ja.recordSaved(r.path)))
-      .catch((e: unknown) => onMessage(e instanceof Error ? e.message : String(e)));
+      .catch(fail);
+  };
+  const toggleRecord = () => {
+    if (live.exact) return onMessage(ja.exactNoRecord);
+    // 録画中なら(ほかのタブで始めたものも)止める
+    if (live.recording) return stopRecord();
+    if (live.ended) return;
+    api
+      .record(live.id, true)
+      .then(() => {
+        recHere.current = { last: 0 };
+        // 今の表示を作るのに要るフレーム(直前のキーフレームから)を先に送る
+        for (const c of rewind.buffer.framesFor(rewind.state().pos)) recordChunk(c);
+      })
+      .catch(fail);
   };
   const recordRef = useRef(toggleRecord);
   useEffect(() => {
     recordRef.current = toggleRecord;
+    stopRecordRef.current = stopRecord;
   });
+  // アプリが終わったら、このタブで始めた録画も終える。ほかのタブで止められたら送るのをやめる
+  useEffect(() => {
+    if (!recHere.current) return;
+    if (live.ended) stopRecordRef.current();
+    else if (!live.recording) recHere.current = null;
+  }, [live.ended, live.recording]);
 
   // 入力モード: ページのキー入力をすべて受け取り、アプリへ送る。Ctrl+] で抜ける(5.5)
   useEffect(() => {
@@ -222,7 +289,12 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, onMessage, in
       }
     : {};
 
-  // 再生の操作はライブには効かない(録画・巻き戻しはフェーズ4)
+  const fullscreen = () => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void win.current?.requestFullscreen();
+  };
+
+  // 再生のキーは、直近 30 秒の一時停止・巻き戻しに効く(L7)
   useImperativeHandle(apiRef, (): LiveApi => ({
     // w r: アプリのウィンドウを表示領域の大きさにする。画素はディスプレイの画素(CSS px × 表示倍率)で数え、等倍で映るようにする(7.9)
     fitApp: () => {
@@ -248,12 +320,38 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, onMessage, in
     speed: () => {},
     ab: () => {},
     toggleMute: () => setMuted((m) => !m),
-    toggleZoom: () => {},
+    toggleZoom: () => setFit((f) => !f),
+    goLive: () => rewind.goLive(),
     fullscreen: () => {
       if (document.fullscreenElement) void document.exitFullscreen();
       else void win.current?.requestFullscreen();
     },
   }), [rewind]);
+
+  const recordButton = !live.ended && !live.exact && (
+    <button
+      type="button"
+      className={`icon-button small${recording ? ' record-on' : ''}`}
+      title={recording ? ja.recordStop : ja.record}
+      aria-label={recording ? ja.recordStop : ja.record}
+      aria-pressed={recording}
+      onClick={toggleRecord}
+    >
+      <Icon name={recording ? 'stopRecord' : 'record'} size={18} />
+    </button>
+  );
+  const inputButton = !live.ended && (
+    <button
+      type="button"
+      className={`icon-button small${inputMode ? ' input-on' : ''}`}
+      title={inputMode ? ja.inputModeExit : ja.inputModeEnter}
+      aria-label={inputMode ? ja.inputModeExit : ja.inputModeEnter}
+      aria-pressed={inputMode}
+      onClick={onToggleInput}
+    >
+      <Icon name="keyboard" size={18} />
+    </button>
+  );
 
   return (
     <WindowFrame
@@ -263,22 +361,20 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, onMessage, in
       icon="canvas"
       sectionRef={win}
       titleButtons={
-        !live.ended && (
-          <button
-            type="button"
-            className={`icon-button small${inputMode ? ' input-on' : ''}`}
-            title={inputMode ? ja.inputModeExit : ja.inputModeEnter}
-            aria-label={inputMode ? ja.inputModeExit : ja.inputModeEnter}
-            aria-pressed={inputMode}
-            onClick={onToggleInput}
-          >
-            <Icon name="keyboard" size={18} />
-          </button>
-        )
+        <>
+          {recordButton}
+          {inputButton}
+        </>
       }
     >
-      <div ref={body} className="window-body fit" {...mouse}>
-        <canvas ref={canvas} width={live.width} height={live.height} />
+      <div ref={body} className={`window-body ${fit ? 'fit' : 'actual'}`} {...mouse}>
+        <canvas
+          ref={canvas}
+          width={live.width}
+          height={live.height}
+          // 等倍: Windows の表示倍率を打ち消して、ディスプレイの1画素に合わせる(7.9)
+          style={fit || !config ? undefined : { width: config.width / devicePixelRatio, height: config.height / devicePixelRatio }}
+        />
         {live.ended && <div className="window-overlay ended">{ja.liveEnded}</div>}
         {error && (
           <div className="window-overlay error" role="alert">
@@ -286,68 +382,50 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, onMessage, in
           </div>
         )}
       </div>
-      <footer className="live-bar">
-        {live.exact && <span className="exact-badge" title={ja.exactHint}>{ja.exactMode}</span>}
-        <button
-          type="button"
-          className="icon-button small"
-          hidden={live.exact}
-          title={rw.mode === 'paused' ? ja.play : ja.pause}
-          aria-label={rw.mode === 'paused' ? ja.playLabel : ja.pauseLabel}
-          onClick={() => rewind.toggle()}
-        >
-          <Icon name={rw.mode === 'paused' ? 'play' : 'pause'} size={20} />
-        </button>
-        {rw.mode === 'live' ? (
-          <span className={`live-badge${live.ended ? ' ended' : ''}`}>{live.ended ? ja.liveEnded : ja.live}</span>
-        ) : (
+      <LiveControls
+        mode={rw.mode}
+        start={rw.start}
+        end={rw.end}
+        pos={rw.pos}
+        rewindable={!live.exact}
+        info={
           <>
-            {/* 直近のバッファ(L7)。ドラッグでその位置へ */}
-            <input
-              className="rewind-bar"
-              type="range"
-              min={0}
-              max={Math.max(1, rw.end - rw.start)}
-              value={rw.pos - rw.start}
-              aria-label={ja.rewindBar}
-              onChange={(e) => rewind.seekTo(rw.start + Number(e.target.value))}
-            />
-            <span className="muted">{ja.behind((rw.end - rw.pos) / 1e6)}</span>
-            <button type="button" className="text-button" onClick={() => rewind.goLive()}>
-              {ja.backToLive}
-            </button>
+            {rw.mode === 'live' && <span className={`live-badge${live.ended ? ' ended' : ''}`}>{live.ended ? ja.liveEnded : ja.live}</span>}
+            {live.exact && (
+              <span className="exact-badge" title={ja.exactHint}>
+                {ja.exactMode}
+              </span>
+            )}
+            {recording && <span className="recording-badge">{ja.recording}</span>}
+            {config && (
+              <span className="muted">
+                {config.width}×{config.height}
+              </span>
+            )}
+            {/* 映像に重ねると、その下をアプリで選べなくなるので、下のバーに出す */}
+            {inputMode && (
+              <span className="input-hint" title={ja.inputModeHint}>
+                {ja.inputModeHint}
+              </span>
+            )}
           </>
-        )}
-        {config && (
-          <span className="muted">
-            {config.width}×{config.height}
-          </span>
-        )}
-        {/* 映像に重ねると、その下をアプリで選べなくなるので、下のバーに出す */}
-        {inputMode && (
-          <span className="input-hint" title={ja.inputModeHint}>
-            {ja.inputModeHint}
-          </span>
-        )}
-        {recording && <span className="recording-badge">{ja.recording}</span>}
-        <span className="live-bar-end">
-          {!live.ended && !live.exact && (
-            <button
-              type="button"
-              className="icon-button small"
-              title={recording ? ja.recordStop : ja.record}
-              aria-label={recording ? ja.recordStop : ja.record}
-              aria-pressed={recording}
-              onClick={toggleRecord}
-            >
-              <Icon name={recording ? 'stopRecord' : 'record'} size={20} />
-            </button>
-          )}
-          <button type="button" className="icon-button small" title={ja.mute} aria-label={ja.mute} aria-pressed={muted} onClick={() => setMuted((m) => !m)}>
-            <Icon name={muted ? 'volumeOff' : 'volume'} size={20} />
-          </button>
-        </span>
-      </footer>
+        }
+        muted={muted}
+        volume={volume}
+        fit={fit}
+        onToggle={() => rewind.toggle()}
+        onSeek={(ts) => rewind.seekTo(ts)}
+        onSeekBy={(sec) => rewind.seekBy(sec)}
+        onStep={(dir) => rewind.step(dir)}
+        onLive={() => rewind.goLive()}
+        onMute={() => setMuted((m) => !m)}
+        onVolume={(v) => {
+          setVolume(v);
+          setMuted(v === 0);
+        }}
+        onZoom={() => setFit((f) => !f)}
+        onFullscreen={fullscreen}
+      />
     </WindowFrame>
   );
 }

@@ -236,20 +236,20 @@ pub(crate) async fn record(
             "精度モードの窓は録画できません(ふつうの dew run で録画してください)".into(),
         ));
     }
-    let Some((info, stream)) = live.stream(req.window) else {
+    let Some((info, _)) = live.stream(req.window) else {
         return Err(ApiError::NotFound("そのウィンドウはありません".into()));
     };
     if live.recordings.lock().unwrap().contains_key(&req.window) {
         return Ok(Json(RecordResult { path: None }));
     }
     let path = record::path_for(&app.home.join("dew-recordings"), &info.title);
-    let rec = Recorder::start(stream, path).map_err(|e| ApiError::Internal(format!("{e:#}")))?;
+    let rec = Recorder::start(path).map_err(|e| ApiError::Internal(format!("{e:#}")))?;
     live.recordings
         .lock()
         .unwrap()
         .insert(req.window, rec.clone());
     live.publish();
-    // 映像が終わった(アプリが閉じた、大きさが変わった)ら、録画もそこで終わる
+    // 書けなくなった(ffmpeg が落ちたなど)ら、録画中の印を消す
     tokio::spawn(async move {
         let _ = rec.finished().await;
         let mut recs = live.recordings.lock().unwrap();
@@ -294,10 +294,16 @@ pub(crate) async fn ws(
         };
         // 入力モードのキー・マウスを受け取って注入する(L6)
         let input = async {
-            while let Some(Ok(Message::Text(t))) = stream_in.next().await {
-                match serde_json::from_str::<LiveInput>(&t) {
-                    Ok(ev) => live.inject(window, ev),
-                    Err(e) => tracing::warn!("入力を読めません: {e}"),
+            while let Some(Ok(msg)) = stream_in.next().await {
+                match msg {
+                    Message::Text(t) => match serde_json::from_str::<LiveInput>(&t) {
+                        Ok(ev) => live.inject(window, ev),
+                        Err(e) => tracing::warn!("入力を読めません: {e}"),
+                    },
+                    // 録画中のタブが、表示したフレームを送り返してくる(ADR 0015)
+                    Message::Binary(b) => live.record_frame(window, b),
+                    Message::Close(_) => break,
+                    _ => {}
                 }
             }
         };
@@ -398,6 +404,21 @@ impl Live {
             }
         }
         None
+    }
+
+    /// [フラグ 1バイト][表示した時刻 µs 8バイト][H.264] を録画へ渡す
+    fn record_frame(&self, window: u32, b: axum::body::Bytes) {
+        if b.len() < 9 {
+            return;
+        }
+        let Some(rec) = self.recordings.lock().unwrap().get(&window).cloned() else {
+            return;
+        };
+        rec.push(Frame {
+            key: b[0] & 1 == 1,
+            timestamp_us: u64::from_be_bytes(b[1..9].try_into().unwrap()),
+            data: b.slice(9..),
+        });
     }
 
     fn inject(&self, window: u32, ev: LiveInput) {

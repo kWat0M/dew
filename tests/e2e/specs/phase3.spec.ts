@@ -164,6 +164,12 @@ test('ライブウィンドウを個別にミュートできる', async ({ page,
   await page.keyboard.press('m');
   await expect(mute).toHaveAttribute('aria-pressed', 'false');
   await expect.poll(peak, { timeout: 15_000 }).toBeGreaterThan(430);
+  // 音量のバーを 0 にすると鳴らず、戻すと鳴る
+  const volume = win.locator('.live-bar').getByRole('slider', { name: '音量' });
+  await volume.fill('0');
+  await expect.poll(peak, { timeout: 15_000 }).toBeNull();
+  await volume.fill('1');
+  await expect.poll(peak, { timeout: 15_000 }).toBeGreaterThan(430);
 });
 
 // 5.5: I の送信用の入力欄から、文字列をまとめて送れる(Shift が要る文字も押した文字どおりに届く)

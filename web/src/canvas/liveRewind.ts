@@ -75,6 +75,8 @@ export class LiveRewind {
   /** 描く先(ライブの映像と同じ canvas) */
   private canvas: HTMLCanvasElement | null = null;
   private onChange: () => void;
+  /** 表示のために復号器へ渡したフレーム(録画が使う) */
+  private onFeed: ((c: Chunk) => void) | null = null;
 
   constructor(onChange: () => void) {
     this.onChange = onChange;
@@ -82,6 +84,10 @@ export class LiveRewind {
 
   setCanvas(canvas: HTMLCanvasElement | null) {
     this.canvas = canvas;
+  }
+
+  setFeedListener(f: ((c: Chunk) => void) | null) {
+    this.onFeed = f;
   }
 
   private draw(frame: VideoFrame) {
@@ -205,6 +211,7 @@ export class LiveRewind {
   }
 
   private feed(c: Chunk) {
+    this.onFeed?.(c);
     this.decoder?.decode(new EncodedVideoChunk({ type: c.key ? 'key' : 'delta', timestamp: c.ts, data: c.data }));
   }
 

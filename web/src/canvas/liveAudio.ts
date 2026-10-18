@@ -17,7 +17,7 @@ declare global {
 }
 
 /** 鳴らしている音1本 */
-export type LiveSound = { setAudible(on: boolean): void; close(): void };
+export type LiveSound = { setVolume(v: number): void; close(): void };
 
 /** 一番強い周波数と、その強さ(dB)。放物線で補間して、ビンの幅より細かく求める */
 function peakOf(analyser: AnalyserNode, sampleRate: number) {
@@ -57,9 +57,9 @@ export class LiveAudioMix {
     return ctx;
   }
 
-  /** `path` の WebSocket の音を鳴らし始める。最初は鳴らさない(setAudible で切り替える) */
+  /** `path` の WebSocket の音を鳴らし始める。最初は鳴らさない(setVolume で音量を決める。0 で鳴らさない) */
   play(path: string): LiveSound {
-    if (typeof AudioDecoder === 'undefined') return { setAudible: () => {}, close: () => {} };
+    if (typeof AudioDecoder === 'undefined') return { setVolume: () => {}, close: () => {} };
     const ctx = this.ctx ?? this.open();
     this.users += 1;
     const analyser = ctx.createAnalyser();
@@ -103,9 +103,9 @@ export class LiveAudioMix {
       decoder.decode(new EncodedAudioChunk({ type: 'key', timestamp, data: new Uint8Array(buf, 8) }));
     };
     return {
-      setAudible: (on) => {
-        gain.gain.value = on ? 1 : 0;
-        meter.audible = on;
+      setVolume: (v) => {
+        gain.gain.value = v;
+        meter.audible = v > 0;
       },
       close: () => {
         ws.close();
@@ -122,8 +122,8 @@ export class LiveAudioMix {
   }
 }
 
-/** `path` の音を、`audible` の間だけ鳴らす(path が null なら何もしない) */
-export function useLiveSound(mix: LiveAudioMix, path: string | null, audible: boolean) {
+/** `path` の音を `volume`(0〜1。0 で鳴らさない)で鳴らす(path が null なら何もしない) */
+export function useLiveSound(mix: LiveAudioMix, path: string | null, volume: number) {
   const sound = useRef<LiveSound | null>(null);
   useEffect(() => {
     if (!path) return;
@@ -135,6 +135,6 @@ export function useLiveSound(mix: LiveAudioMix, path: string | null, audible: bo
     };
   }, [mix, path]);
   useEffect(() => {
-    sound.current?.setAudible(audible);
+    sound.current?.setVolume(volume);
   });
 }

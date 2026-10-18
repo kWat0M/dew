@@ -10,7 +10,7 @@ import { SeekBar } from './SeekBar';
 export const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 
 
-function IconButton({ icon, label, title, size = 22, onClick }: { icon: IconName; label: string; title: string; size?: number; onClick: () => void }) {
+export function IconButton({ icon, label, title, size = 22, onClick }: { icon: IconName; label: string; title: string; size?: number; onClick: () => void }) {
   return (
     <button type="button" className="icon-button" aria-label={label} title={title} onClick={onClick}>
       <Icon name={icon} size={size} />
@@ -19,7 +19,7 @@ function IconButton({ icon, label, title, size = 22, onClick }: { icon: IconName
 }
 
 /** 5秒 / 30秒の戻り・送り(Material Symbols の replay_5 などを使う) */
-function SeekButton({ sec, back, label, onClick }: { sec: 5 | 30; back?: boolean; label: string; onClick: () => void }) {
+export function SeekButton({ sec, back, label, onClick }: { sec: 5 | 30; back?: boolean; label: string; onClick: () => void }) {
   const icon: IconName = back ? (sec === 5 ? 'back5' : 'back30') : sec === 5 ? 'fwd5' : 'fwd30';
   return <IconButton icon={icon} label={label} title={label} size={26} onClick={onClick} />;
 }

@@ -38,7 +38,7 @@ export type NormalAction =
   | PlayAction
   | { do: 'maximize' } | { do: 'all' } | { do: 'home' } | { do: 'homeInitial' } | { do: 'help' } | { do: 'history' }
   | { do: 'windowMode' } | { do: 'sync' } | { do: 'compareMode' } | { do: 'globalMute' } | { do: 'input' } | { do: 'sendText' }
-  | { do: 'record' } | { do: 'escape' };
+  | { do: 'record' } | { do: 'live' } | { do: 'escape' };
 
 /** ウィンドウ操作モードのキー */
 export type WindowAction =
@@ -55,7 +55,7 @@ export const normal: Record<string, NormalAction> = {
   '[': { do: 'speed', dir: -1 }, ']': { do: 'speed', dir: 1 },
   b: { do: 'ab' }, m: { do: 'mute' }, z: { do: 'zoom' }, '+': { do: 'zoomBy', f: 1.25 }, '-': { do: 'zoomBy', f: 0.8 }, f: { do: 'maximize' }, K: { do: 'all' },
   h: { do: 'home' }, H: { do: 'homeInitial' }, Tab: { do: 'home' }, '?': { do: 'help' },
-  w: { do: 'windowMode' }, r: { do: 'history' }, s: { do: 'sync' }, c: { do: 'compareMode' }, M: { do: 'globalMute' }, i: { do: 'input' }, I: { do: 'sendText' }, R: { do: 'record' }, Escape: { do: 'escape' },
+  w: { do: 'windowMode' }, r: { do: 'history' }, s: { do: 'sync' }, c: { do: 'compareMode' }, M: { do: 'globalMute' }, i: { do: 'input' }, I: { do: 'sendText' }, R: { do: 'record' }, G: { do: 'live' }, Escape: { do: 'escape' },
 };
 for (let n = 0; n <= 9; n++) normal[String(n)] = { do: 'percent', n };
 
@@ -87,7 +87,7 @@ export const canvasCommands: CommandDef<NormalAction>[] = [
   { id: { do: 'home' }, key: 'h', label: 'Home へ戻る' }, { id: { do: 'homeInitial' }, key: 'H', label: 'Home の初期位置へ' },
   { id: { do: 'maximize' }, key: 'f', label: 'ウィンドウ最大化' }, { id: { do: 'windowMode' }, key: 'w', label: 'ウィンドウ操作モード' },
   { id: { do: 'globalMute' }, key: 'M', label: '全体のミュート' }, { id: { do: 'sync' }, key: 's', label: '同期再生' },
-  { id: { do: 'input' }, key: 'i', label: '入力モード(ライブ)' }, { id: { do: 'sendText' }, key: 'I', label: '文字列を送る(ライブ)' }, { id: { do: 'record' }, key: 'R', label: '録画の開始 / 停止(ライブ)' }, { id: { do: 'compareMode' }, key: 'c', label: '比較の表示を切替' },
+  { id: { do: 'input' }, key: 'i', label: '入力モード(ライブ)' }, { id: { do: 'sendText' }, key: 'I', label: '文字列を送る(ライブ)' }, { id: { do: 'record' }, key: 'R', label: '録画の開始 / 停止(ライブ)' }, { id: { do: 'live' }, key: 'G', label: 'ライブへ戻る(巻き戻し中)' }, { id: { do: 'compareMode' }, key: 'c', label: '比較の表示を切替' },
 ];
 export const windowCommands: CommandDef<WindowAction>[] = [
   { id: { do: 'focusDir', dir: 'h' }, key: 'w h', label: '左のウィンドウへ' }, { id: { do: 'focusDir', dir: 'l' }, key: 'w l', label: '右のウィンドウへ' },
@@ -185,6 +185,33 @@ export function Canvas(p: Props) {
   /** I の送信用の入力欄 */
   const [textBox, setTextBox] = useState<string | null>(null);
   const focusedLive = ws.find((w) => w.id === p.focused && w.live && !w.live.ended);
+  /** 巻き戻し中のライブウィンドウ(ヒントの帯の出し分けに使う) */
+  const [rewinding, setRewinding] = useState<Set<number>>(new Set());
+  const onRewind = useCallback(
+    (id: number, on: boolean) =>
+      setRewinding((s) => {
+        if (s.has(id) === on) return s;
+        const n = new Set(s);
+        if (on) n.add(id);
+        else n.delete(id);
+        return n;
+      }),
+    [],
+  );
+  /** ヒントの帯: フォーカス中のウィンドウの種類と状態で効くキー、続けてキャンバス共通のキー(4.4) */
+  const canvasHints = (): [string, string][] => {
+    const H = ja.canvasHints;
+    const w = ws.find((x) => x.id === p.focused);
+    let own: [string, string][] = [];
+    if (w?.live) {
+      if (inputWindow === w.id) return H.input;
+      own = w.live.exact ? H.exact : rewinding.has(w.id) ? H.rewind : H.live;
+      if (w.live.recording) own = own.map(([k, l]) => [k, k === 'R' ? ja.hintRecordStop : l]);
+    } else if (w?.members) own = [...H.video, ...H.compare];
+    else if (w?.media === 'image') own = H.image;
+    else if (w) own = H.video;
+    return [...own, ...H.common];
+  };
   // フォーカスが移ったり、ウィンドウが終わったりしたら入力モードを抜ける
   if (inputWindow !== null && focusedLive?.id !== inputWindow) setInputWindow(null);
   const exitInput = useCallback(() => setInputWindow(null), []);
@@ -194,7 +221,7 @@ export function Canvas(p: Props) {
   // 常に鳴らし、アプリの音はそのウィンドウで鳴らす(7.6、ADR 0013)
   const liveRunning = ws.some((w) => w.live && !w.live.ended);
   const [audioMix] = useState(() => new LiveAudioMix());
-  useLiveSound(audioMix, liveRunning ? '/ws/live-audio' : null, p.visible && !p.globalMuted);
+  useLiveSound(audioMix, liveRunning ? '/ws/live-audio' : null, p.visible && !p.globalMuted ? 1 : 0);
   const hasAudio = ws.some((w) => withAudio.has(w.id)) || liveRunning;
   // ウィンドウの読み込み処理をやり直させないよう、変わらない関数にしてウィンドウの ID と一緒に呼んでもらう
   const onHasAudio = useCallback(
@@ -325,6 +352,7 @@ export function Canvas(p: Props) {
       case 'record':
         if (!focusedLive) return p.onMessage(ja.recordNeedsLive);
         return (apis.current.get(focusedLive.id) as LiveApi | null | undefined)?.toggleRecord?.();
+      case 'live': return targets().forEach((t) => (t as LiveApi).goLive?.());
       case 'compareMode': return focusedApi()?.cycleMode?.();
       case 'escape': return;
       default: return runPlay(a);
@@ -580,6 +608,7 @@ export function Canvas(p: Props) {
                 audioMix={audioMix}
                 audible={audible}
                 onMessage={p.onMessage}
+                onRewind={(on) => onRewind(w.id, on)}
                 inputMode={inputWindow === w.id}
                 onToggleInput={() => {
                   // タイトルバーのボタンはフォーカスの操作を止めるので、ここでフォーカスする
@@ -631,7 +660,7 @@ export function Canvas(p: Props) {
           />
         </Dialog>
       )}
-      {p.hints && <HintBar items={windowMode ? ja.windowHints : ja.canvasHints} onHide={p.onHideHints} />}
+      {p.hints && <HintBar items={windowMode ? ja.windowHints : canvasHints()} onHide={p.onHideHints} />}
     </div>
   );
 }
