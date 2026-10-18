@@ -9,7 +9,8 @@
 | ブランチ | 状態 |
 |---|---|
 | `main` | フェーズ1〜3 が入っている(PR #4 で `phase-3` をマージ。`6a69af9`) |
-| `phase-4` | `origin/main` から切った。2026-10-18 に push 済み。ユーザーが Web で PR・マージする |
+| `phase-4` | PR #5 でマージ済み(`05f218c`) |
+| `release-1` | `main` から切った。配布の準備(README、`scripts/release.sh`、版にコミット)。**手元だけで、push していない** |
 
 - PR はユーザーが GitHub の Web で作ってマージしている(`gh` は未ログイン)。こちらは push までを行い、Web でのマージを頼む
 - `git push` と `git merge` は `.claude/settings.json` で確認が出る設定。ユーザーの許可を得てから行う
@@ -43,6 +44,7 @@
 
 仕様にあってまだ作っていない項目の一覧は `docs/spec.md` の 9.2(実装状況)にある。作ったら、その表から消す。
 
+0. **配布の準備**(`release-1`): 友人にバイナリを直接渡す。`scripts/release.sh` で `dist/dew-<版>-<コミット>-x86_64-linux.tar.gz`(dew・README.md・SHA256SUMS)を作る。配布物で E2E を流すときは `DEW_BIN=<dist の dew> npx playwright test`。LICENSE の文面はユーザーが決める(spec 7.10)
 1. (済 2026-10-18)フェーズ4の終わりの報告と、ユーザーの確認を受けた修正(下部を動画と同じ並びに、録画は表示している映像を録る、ヒントの帯の出し分け、ライブへ戻るのは q、古いサーバの警告、精度モードの窓を閉じたら出し直さない、dew stop で1行だけ出して終わる)。人が確かめる手順は `docs/manual/phase4-check.md`。`phase-4` は push 済み
 2. GPU のある環境での NVENC の実物の確認(人が `dew doctor` と録画・巻き戻しで確かめる)
 3. 9.2 の残り: 親からはみ出した一時的な窓(ADR 0012)、ライブ映像と音声の同期、平文 HTTP のフォールバック、`dew update`、`:` のコマンドパレット、キーマップの設定ファイル、再接続時の配置の復元、「ログを見る」、LICENSE(文面は人が決める)
