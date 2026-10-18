@@ -11,7 +11,8 @@ use anyhow::{Context, bail};
 use serde::Deserialize;
 
 /// 更新元のリポジトリ(`DEW_UPDATE_REPO` で変えられる)
-const DEFAULT_REPO: &str = "kWat0M/DevView";
+/// バイナリだけを置く公開リポジトリ(ソースのリポジトリは非公開。ADR 0018)
+const DEFAULT_REPO: &str = "kWat0M/dew-releases";
 /// 配布物の名前の終わり(scripts/release.sh)
 const ASSET_SUFFIX: &str = "-x86_64-linux.tar.gz";
 
