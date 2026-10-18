@@ -192,10 +192,12 @@ impl ExactHub {
             data: png,
         });
         let mut ws = self.windows.lock().unwrap();
-        // キャンバスで閉じた窓に、アプリがまた描いたときは、新しいウィンドウとして出し直す
         let id = match names.get(name) {
             Some(&id) if ws.contains_key(&id) => id,
-            _ => {
+            // キャンバスで閉じた窓には、アプリがまた描いても出し直さない(X のウィンドウを閉じたときと同じく、
+            // 表示はキャンバスから消し、アプリは動かしたままにする。7.9)。destroyWindow の後に描いたら新しい窓
+            Some(_) => return,
+            None => {
                 let id = self.next_id.fetch_add(1, Ordering::Relaxed);
                 names.insert(name.to_owned(), id);
                 let info = ExactWindow {
@@ -295,8 +297,32 @@ mod tests {
         let msg: Value = serde_json::from_slice(&head).unwrap();
         assert_eq!(msg, json!({"t":"key","key":113}));
 
-        drop(app);
+        // キャンバスで閉じたら、アプリがまた描いても出し直さない
+        hub.close(w.id);
         assert!(matches!(events.recv().await.unwrap(), ExactEvent::Closed(id) if id == w.id));
-        assert!(hub.window(w.id).is_none());
+        app.write_all(&send(
+            json!({"t":"frame","name":"img","w":2,"h":1,"size":3}),
+            b"png",
+        ))
+        .await
+        .unwrap();
+        // destroyWindow の後に描いたら、新しい窓として出す
+        app.write_all(&send(json!({"t":"destroy","name":"img","size":0}), b""))
+            .await
+            .unwrap();
+        app.write_all(&send(
+            json!({"t":"frame","name":"img","w":2,"h":1,"size":3}),
+            b"png",
+        ))
+        .await
+        .unwrap();
+        let ExactEvent::Changed(again) = events.recv().await.unwrap() else {
+            panic!()
+        };
+        assert_ne!(again.id, w.id);
+
+        drop(app);
+        assert!(matches!(events.recv().await.unwrap(), ExactEvent::Closed(id) if id == again.id));
+        assert!(hub.window(again.id).is_none());
     }
 }

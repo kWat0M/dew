@@ -247,3 +247,17 @@ test('複数のライブウィンドウで録画と巻き戻しがそれぞれ�
   expect(Math.abs(aLast - aShown)).toBeLessThanOrEqual(45);
   expect(aLast).toBeLessThan(aLiveNow - 100);
 });
+
+// 7.9: 精度モードの窓も閉じるボタンで閉じられる。閉じたことを確かめずに imshow を続けるアプリでも、出し直さない
+test('精度モードの窓を閉じるボタンで閉じられる', async ({ page, dew }) => {
+  await start(page, dew);
+  const child = dew.spawnRun(['--exact', 'python3', appPath('exact_sample.py')]);
+  const win = liveWindow(page, 'exact');
+  await expect(win).toBeVisible(APPEAR);
+  await win.getByRole('button', { name: '閉じる', exact: true }).click();
+  await expect(win).toHaveCount(0);
+  // アプリは描き続けているが、窓は戻ってこない
+  await page.waitForTimeout(2000);
+  await expect(page.getByTestId('live-window')).toHaveCount(0);
+  expect(child.exitCode).toBeNull();
+});
