@@ -25,7 +25,7 @@ const START_TIMEOUT: Duration = Duration::from_secs(15);
 #[derive(Parser)]
 #[command(
     name = "dew",
-    version = concat!(env!("CARGO_PKG_VERSION"), " (", env!("DEW_BUILD_DATE"), ")"),
+    version = concat!(env!("CARGO_PKG_VERSION"), " (", env!("DEW_COMMIT"), ", ", env!("DEW_BUILD_DATE"), ")"),
     about = "コンテナ内の画像・動画を Windows のブラウザで見る",
     args_conflicts_with_subcommands = true
 )]
