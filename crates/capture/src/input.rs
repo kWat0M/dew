@@ -7,8 +7,9 @@ use std::collections::HashMap;
 use anyhow::Context;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{
-    BUTTON_PRESS_EVENT, BUTTON_RELEASE_EVENT, ConfigureWindowAux, ConnectionExt, InputFocus,
-    KEY_PRESS_EVENT, KEY_RELEASE_EVENT, Keycode, Keysym, MOTION_NOTIFY_EVENT, Window,
+    AtomEnum, BUTTON_PRESS_EVENT, BUTTON_RELEASE_EVENT, ClientMessageEvent, ConfigureWindowAux,
+    ConnectionExt, EventMask, InputFocus, KEY_PRESS_EVENT, KEY_RELEASE_EVENT, Keycode, Keysym,
+    MOTION_NOTIFY_EVENT, Window,
 };
 use x11rb::protocol::xtest::ConnectionExt as _;
 use x11rb::rust_connection::RustConnection;
@@ -164,6 +165,38 @@ impl Injector {
         );
         self.conn
             .configure_window(window, &ConfigureWindowAux::new().width(w).height(h))?;
+        self.conn.flush()?;
+        Ok(())
+    }
+
+    /// キャンバスでウィンドウを閉じたとき、デスクトップの × と同じく WM_DELETE_WINDOW でアプリに閉じるよう頼む
+    /// (ICCCM 4.2.8)。どうするかはアプリが決める(図を閉じる、終わる、無視する)。対応していないアプリは無理に止めない
+    pub fn close(&mut self, window: Window) -> anyhow::Result<()> {
+        let atom = |name: &[u8]| -> anyhow::Result<u32> {
+            Ok(self.conn.intern_atom(false, name)?.reply()?.atom)
+        };
+        let (protocols, delete) = (atom(b"WM_PROTOCOLS")?, atom(b"WM_DELETE_WINDOW")?);
+        let supported = self
+            .conn
+            .get_property(false, window, protocols, AtomEnum::ATOM, 0, 64)?
+            .reply()?
+            .value32()
+            .is_some_and(|mut v| v.any(|a| a == delete));
+        if !supported {
+            tracing::info!(
+                window,
+                "WM_DELETE_WINDOW に対応していないアプリなので、閉じるよう頼めません"
+            );
+            return Ok(());
+        }
+        let event = ClientMessageEvent::new(
+            32,
+            window,
+            protocols,
+            [delete, x11rb::CURRENT_TIME, 0, 0, 0],
+        );
+        self.conn
+            .send_event(false, window, EventMask::NO_EVENT, event)?;
         self.conn.flush()?;
         Ok(())
     }

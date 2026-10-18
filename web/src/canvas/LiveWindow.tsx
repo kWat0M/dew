@@ -28,8 +28,8 @@ type Props = FrameProps & {
   api: Ref<PlayerApi | null>;
 };
 
-/** キャンバスから使うライブウィンドウだけの操作(I の文字列の送信、w r の大きさ合わせ) */
-export type LiveApi = PlayerApi & { sendText?: (text: string) => void; fitApp?: () => void };
+/** キャンバスから使うライブウィンドウだけの操作(I の文字列の送信、w r の大きさ合わせ、閉じるときにアプリへ頼む) */
+export type LiveApi = PlayerApi & { sendText?: (text: string) => void; fitApp?: () => void; closeApp?: () => void };
 
 export function LiveWindow({ api: apiRef, live, audioMix, audible, inputMode, onToggleInput, onExitInput, ...p }: Props) {
   const socket = useRef<WebSocket | null>(null);
@@ -154,6 +154,8 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, inputMode, on
       const r = body.current!.getBoundingClientRect();
       send({ type: 'resize', width: Math.round(r.width * devicePixelRatio), height: Math.round(r.height * devicePixelRatio) });
     },
+    // 閉じるボタンなど: デスクトップの × と同じく、アプリに閉じるよう頼む(止めるかはアプリが決める。7.9)
+    closeApp: () => send({ type: 'close' }),
     sendText: (text) => {
       for (const ch of text) {
         send({ type: 'key', key: ch, down: true });

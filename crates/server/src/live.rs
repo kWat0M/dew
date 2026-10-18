@@ -291,6 +291,7 @@ impl Live {
             }
             LiveInput::Release => inj.release_all(),
             LiveInput::Resize { width, height } => inj.resize(window, width, height),
+            LiveInput::Close => inj.close(window),
         };
         if let Err(e) = r {
             tracing::warn!("入力を注入できません: {e:#}");

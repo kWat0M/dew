@@ -80,6 +80,24 @@ test('はみ出した一時的な窓がほかのウィンドウに映り込ま�
   }
 });
 
+// 7.9: キャンバスで閉じると、デスクトップの × と同じくアプリに閉じるよう頼む(pygame は終わり、matplotlib は図を閉じて終わる)
+test('閉じるボタンでアプリに閉じるよう頼む', async ({ page, dew }) => {
+  await start(page, dew);
+  const apps = [
+    { title: 'counter', child: dew.spawnRun(['python3', appPath('counter.py'), '--tone', '0']) },
+    { title: 'Figure 1', child: dew.spawnRun(['python3', appPath('mpl_sample.py')]) },
+  ];
+  for (const { title, child } of apps) {
+    const win = liveWindow(page, title);
+    await expect(win).toBeVisible(APPEAR);
+    await page.waitForTimeout(500);
+    await win.getByRole('button', { name: '閉じる', exact: true }).click();
+    await expect(win).toHaveCount(0);
+    // dew run はアプリの終了コードを返す(アプリが自分で終わった)
+    await expect.poll(() => child.exitCode, { timeout: 15_000 }).toBe(0);
+  }
+});
+
 // 基準5: 入力モードで押したキーをアプリが受け取り、Ctrl+] で抜けた後のキーは受け取らない
 test('入力モードのキーだけがアプリに届く', async ({ page, dew }) => {
   const keylog = join(mkdtempSync(join(tmpdir(), 'dew-keys-')), 'keys.txt');

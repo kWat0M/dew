@@ -277,7 +277,12 @@ export function Canvas(p: Props) {
   const updateFree = (id: number, f: (r: Rect) => Rect) =>
     setFree((m) => new Map(m).set(id, f(m.get(id) ?? rectOf.get(id) ?? full)));
 
-  const closeIds = (list: number[]) => list.length && p.onClose(list);
+  const closeIds = (list: number[]) => {
+    if (!list.length) return;
+    // 動いているライブウィンドウは、アプリにも閉じるよう頼む(WM_DELETE_WINDOW。7.9)
+    for (const w of ws) if (list.includes(w.id) && w.live && !w.live.ended) (apis.current.get(w.id) as LiveApi | null | undefined)?.closeApp?.();
+    p.onClose(list);
+  };
 
   const runPlay = (a: PlayAction) => {
     for (const t of targets()) {
@@ -549,7 +554,7 @@ export function Canvas(p: Props) {
             free: mode === 'free' && shown.length > 1 && maximized !== w.id,
             dropTarget: reorder?.target === w.id,
             onFocus: () => p.onFocus(w.id),
-            onClose: () => p.onClose([w.id]),
+            onClose: () => closeIds([w.id]),
             onToggleSelect: () => toggleSelect(w.id),
             onMinimize: () => minimize(w.id),
             onToggleMaximize: () => toggleMaximize(w.id),
