@@ -1,4 +1,7 @@
 {
+  "env": {
+    "DEW_BUDGET_PCT": "60"
+  },
   "permissions": {
     "allow": [
       "Bash(cargo:*)",
@@ -47,12 +50,9 @@
       "Bash(git push -f:*)"
     ]
   },
-  "env": {
-    "DEW_BUDGET_PCT": "40"
-  },
   "statusLine": {
     "type": "command",
-    "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/statusline.py\""
+    "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/statusline.sh\""
   },
   "hooks": {
     "PreToolUse": [
@@ -61,7 +61,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/budget_guard.py\""
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/budget_guard.sh\""
           }
         ]
       }
