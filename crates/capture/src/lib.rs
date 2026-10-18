@@ -5,5 +5,6 @@ pub mod encoder;
 pub mod input;
 pub mod monitor;
 pub mod pulse;
+pub mod record;
 pub mod session;
 pub mod stream;

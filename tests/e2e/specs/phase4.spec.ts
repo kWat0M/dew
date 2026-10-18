@@ -33,7 +33,7 @@ test.fixme('精度モードの cv2.imshow が画素単位で一致する', async
 });
 
 // 基準2: 録画した MP4 が再生でき、長さが録画時間と ±1秒以内
-test.fixme('録画した MP4 の長さが録画時間と ±1秒以内', async ({ page, dew }) => {
+test('録画した MP4 の長さが録画時間と ±1秒以内', async ({ page, dew }) => {
   await start(page, dew);
   dew.spawnRun(['python3', appPath('counter.py'), '--tone', '0']);
   const win = liveWindow(page, 'counter');
@@ -52,6 +52,7 @@ test.fixme('録画した MP4 の長さが録画時間と ±1秒以内', async ({
   const file = join(dir, readdirSync(dir).find((f) => f.endsWith('.mp4'))!);
   const probe = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration:stream=codec_name', '-of', 'json', file], { encoding: 'utf8' }));
   expect(probe.streams[0].codec_name).toBe('h264');
+  console.log(`録画の長さ ${Number(probe.format.duration).toFixed(2)} 秒、録画時間 ${seconds.toFixed(2)} 秒`);
   expect(Math.abs(Number(probe.format.duration) - seconds)).toBeLessThanOrEqual(1);
   // 最後まで復号できる(壊れていない)
   execFileSync('ffmpeg', ['-v', 'error', '-xerror', '-i', file, '-f', 'null', '-']);

@@ -13,9 +13,12 @@ use dew_capture::encoder::Encoder;
 use dew_capture::input::Injector;
 use dew_capture::monitor::{self, WindowEvent, WindowInfo};
 use dew_capture::pulse::{self, Cli};
+use dew_capture::record::{self, Recorder};
 use dew_capture::session::Session;
 use dew_capture::stream::{Frame, Stream};
-use dew_protocol::{LiveAudioConfig, LiveConfig, LiveInput, LiveSession, LiveWindow};
+use dew_protocol::{
+    LiveAudioConfig, LiveConfig, LiveInput, LiveSession, LiveWindow, RecordRequest, RecordResult,
+};
 use futures_util::{SinkExt, StreamExt};
 use tokio::sync::{broadcast, mpsc, watch};
 
@@ -31,6 +34,8 @@ pub(crate) struct Live {
     audio: Mutex<Option<Arc<Audio>>>,
     /// アプリ(ウィンドウの `_NET_WM_PID`)ごとの音。同じアプリのウィンドウは同じ音を共有する(7.6、ADR 0013)
     apps: Mutex<HashMap<u32, Arc<Audio>>>,
+    /// 録画中のウィンドウ(L7)
+    recordings: Mutex<HashMap<u32, Arc<Recorder>>>,
     /// 音の振り分け(`route`)のタスク
     router: Mutex<Option<tokio::task::JoinHandle<()>>>,
     /// 入力モードのキー・マウスの注入
@@ -44,6 +49,7 @@ impl Live {
             list: watch::channel(Vec::new()).0,
             audio: Mutex::default(),
             apps: Mutex::default(),
+            recordings: Mutex::default(),
             router: Mutex::default(),
             input: Mutex::default(),
         }
@@ -51,6 +57,7 @@ impl Live {
 
     fn publish(&self) {
         let apps = self.apps.lock().unwrap();
+        let recordings = self.recordings.lock().unwrap();
         let mut list: Vec<LiveWindow> = self
             .windows
             .lock()
@@ -62,9 +69,11 @@ impl Live {
                 width: w.width,
                 height: w.height,
                 audio: w.pid.is_some_and(|p| apps.contains_key(&p)),
+                recording: recordings.contains_key(&w.id),
             })
             .collect();
         drop(apps);
+        drop(recordings);
         list.sort_by_key(|w| w.id);
         self.list.send_replace(list);
     }
@@ -118,6 +127,9 @@ impl Live {
         for (_, a) in self.apps.lock().unwrap().drain() {
             a.stop();
         }
+        for (_, r) in self.recordings.lock().unwrap().drain() {
+            r.request_stop();
+        }
         self.input.lock().unwrap().take();
         for (_, (_, s)) in self.windows.lock().unwrap().drain() {
             s.stop();
@@ -160,6 +172,53 @@ pub(crate) async fn session(State(app): State<Arc<App>>) -> Result<Json<LiveSess
         env: s.env(),
         unset: Session::UNSET.iter().map(|v| (*v).to_owned()).collect(),
     }))
+}
+
+/// `POST /api/live/record`: ライブウィンドウの録画を始める・止める(L7、ADR 0015)。
+/// 保存先は最初に dew を起動したディレクトリの dew-recordings/(9.1)
+pub(crate) async fn record(
+    State(app): State<Arc<App>>,
+    Json(req): Json<RecordRequest>,
+) -> Result<Json<RecordResult>, ApiError> {
+    let live = app.live_windows.clone();
+    if !req.on {
+        let Some(rec) = live.recordings.lock().unwrap().remove(&req.window) else {
+            return Ok(Json(RecordResult { path: None }));
+        };
+        live.publish();
+        let path = rec
+            .stop()
+            .await
+            .map_err(|e| ApiError::Internal(format!("{e:#}")))?;
+        let shown = path.strip_prefix(&app.root).unwrap_or(&path);
+        return Ok(Json(RecordResult {
+            path: Some(shown.to_string_lossy().into_owned()),
+        }));
+    }
+    let Some((info, stream)) = live.stream(req.window) else {
+        return Err(ApiError::NotFound("そのウィンドウはありません".into()));
+    };
+    if live.recordings.lock().unwrap().contains_key(&req.window) {
+        return Ok(Json(RecordResult { path: None }));
+    }
+    let path = record::path_for(&app.home.join("dew-recordings"), &info.title);
+    let rec = Recorder::start(stream, path).map_err(|e| ApiError::Internal(format!("{e:#}")))?;
+    live.recordings
+        .lock()
+        .unwrap()
+        .insert(req.window, rec.clone());
+    live.publish();
+    // 映像が終わった(アプリが閉じた、大きさが変わった)ら、録画もそこで終わる
+    tokio::spawn(async move {
+        let _ = rec.finished().await;
+        let mut recs = live.recordings.lock().unwrap();
+        if recs.get(&req.window).is_some_and(|r| Arc::ptr_eq(r, &rec)) {
+            recs.remove(&req.window);
+            drop(recs);
+            live.publish();
+        }
+    });
+    Ok(Json(RecordResult { path: None }))
 }
 
 /// `GET /ws/live/{id}`: ウィンドウの映像。最初に復号の設定、続けてキーフレーム以降のフレーム

@@ -3,6 +3,7 @@
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import type { LiveConfig } from '../protocol/LiveConfig';
 import type { LiveInput } from '../protocol/LiveInput';
+import { api } from '../api/http';
 import { ja } from '../i18n/ja';
 import { Icon } from '../icons';
 import { useLiveSound, type LiveAudioMix } from './liveAudio';
@@ -13,13 +14,14 @@ import { WindowFrame, type FrameProps } from './WindowFrame';
 const MAX_QUEUE = 3;
 
 /** audio: そのウィンドウのアプリの音がある(7.6) */
-export type LiveInfo = { id: number; title: string; width: number; height: number; audio: boolean; ended: boolean };
+export type LiveInfo = { id: number; title: string; width: number; height: number; audio: boolean; recording: boolean; ended: boolean };
 
 type Props = FrameProps & {
   live: LiveInfo;
   audioMix: LiveAudioMix;
   /** アプリの音を鳴らすか(フォーカス中など。動画のウィンドウと同じ決め方。7.6) */
   audible: boolean;
+  onMessage: (m: string) => void;
   /** 入力モード(キー・マウスをアプリへ送る。L6、5.5) */
   inputMode: boolean;
   /** タイトルバーの入力モードのボタン */
@@ -29,9 +31,9 @@ type Props = FrameProps & {
 };
 
 /** キャンバスから使うライブウィンドウだけの操作(I の文字列の送信、w r の大きさ合わせ、閉じるときにアプリへ頼む) */
-export type LiveApi = PlayerApi & { sendText?: (text: string) => void; fitApp?: () => void; closeApp?: () => void };
+export type LiveApi = PlayerApi & { sendText?: (text: string) => void; fitApp?: () => void; closeApp?: () => void; toggleRecord?: () => void };
 
-export function LiveWindow({ api: apiRef, live, audioMix, audible, inputMode, onToggleInput, onExitInput, ...p }: Props) {
+export function LiveWindow({ api: apiRef, live, audioMix, audible, onMessage, inputMode, onToggleInput, onExitInput, ...p }: Props) {
   const socket = useRef<WebSocket | null>(null);
   const send = (ev: LiveInput) => {
     if (socket.current?.readyState === WebSocket.OPEN) socket.current.send(JSON.stringify(ev));
@@ -93,6 +95,23 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, inputMode, on
       if (decoder.state !== 'closed') decoder.close();
     };
   }, [live.id, live.ended]);
+
+  // 録画(L7)。録画中かはサーバが一覧で知らせる(ほかのタブで始めたものも出る)
+  const recording = live.recording && !live.ended;
+  useEffect(() => {
+    win.current?.setAttribute('data-recording', String(recording));
+  }, [recording]);
+  const toggleRecord = () => {
+    if (live.ended) return;
+    api
+      .record(live.id, !live.recording)
+      .then((r) => r.path && onMessage(ja.recordSaved(r.path)))
+      .catch((e: unknown) => onMessage(e instanceof Error ? e.message : String(e)));
+  };
+  const recordRef = useRef(toggleRecord);
+  useEffect(() => {
+    recordRef.current = toggleRecord;
+  });
 
   // 入力モード: ページのキー入力をすべて受け取り、アプリへ送る。Ctrl+] で抜ける(5.5)
   useEffect(() => {
@@ -156,6 +175,7 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, inputMode, on
     },
     // 閉じるボタンなど: デスクトップの × と同じく、アプリに閉じるよう頼む(止めるかはアプリが決める。7.9)
     closeApp: () => send({ type: 'close' }),
+    toggleRecord: () => recordRef.current(),
     sendText: (text) => {
       for (const ch of text) {
         send({ type: 'key', key: ch, down: true });
@@ -223,7 +243,20 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, inputMode, on
             {ja.inputModeHint}
           </span>
         )}
+        {recording && <span className="recording-badge">{ja.recording}</span>}
         <span className="live-bar-end">
+          {!live.ended && (
+            <button
+              type="button"
+              className="icon-button small"
+              title={recording ? ja.recordStop : ja.record}
+              aria-label={recording ? ja.recordStop : ja.record}
+              aria-pressed={recording}
+              onClick={toggleRecord}
+            >
+              <Icon name={recording ? 'stopRecord' : 'record'} size={20} />
+            </button>
+          )}
           <button type="button" className="icon-button small" title={ja.mute} aria-label={ja.mute} aria-pressed={muted} onClick={() => setMuted((m) => !m)}>
             <Icon name={muted ? 'volumeOff' : 'volume'} size={20} />
           </button>

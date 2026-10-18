@@ -38,7 +38,7 @@ export type NormalAction =
   | PlayAction
   | { do: 'maximize' } | { do: 'all' } | { do: 'home' } | { do: 'homeInitial' } | { do: 'help' } | { do: 'history' }
   | { do: 'windowMode' } | { do: 'sync' } | { do: 'compareMode' } | { do: 'globalMute' } | { do: 'input' } | { do: 'sendText' }
-  | { do: 'escape' };
+  | { do: 'record' } | { do: 'escape' };
 
 /** ウィンドウ操作モードのキー */
 export type WindowAction =
@@ -55,7 +55,7 @@ export const normal: Record<string, NormalAction> = {
   '[': { do: 'speed', dir: -1 }, ']': { do: 'speed', dir: 1 },
   b: { do: 'ab' }, m: { do: 'mute' }, z: { do: 'zoom' }, '+': { do: 'zoomBy', f: 1.25 }, '-': { do: 'zoomBy', f: 0.8 }, f: { do: 'maximize' }, K: { do: 'all' },
   h: { do: 'home' }, H: { do: 'homeInitial' }, Tab: { do: 'home' }, '?': { do: 'help' },
-  w: { do: 'windowMode' }, r: { do: 'history' }, s: { do: 'sync' }, c: { do: 'compareMode' }, M: { do: 'globalMute' }, i: { do: 'input' }, I: { do: 'sendText' }, Escape: { do: 'escape' },
+  w: { do: 'windowMode' }, r: { do: 'history' }, s: { do: 'sync' }, c: { do: 'compareMode' }, M: { do: 'globalMute' }, i: { do: 'input' }, I: { do: 'sendText' }, R: { do: 'record' }, Escape: { do: 'escape' },
 };
 for (let n = 0; n <= 9; n++) normal[String(n)] = { do: 'percent', n };
 
@@ -87,7 +87,7 @@ export const canvasCommands: CommandDef<NormalAction>[] = [
   { id: { do: 'home' }, key: 'h', label: 'Home へ戻る' }, { id: { do: 'homeInitial' }, key: 'H', label: 'Home の初期位置へ' },
   { id: { do: 'maximize' }, key: 'f', label: 'ウィンドウ最大化' }, { id: { do: 'windowMode' }, key: 'w', label: 'ウィンドウ操作モード' },
   { id: { do: 'globalMute' }, key: 'M', label: '全体のミュート' }, { id: { do: 'sync' }, key: 's', label: '同期再生' },
-  { id: { do: 'input' }, key: 'i', label: '入力モード(ライブ)' }, { id: { do: 'sendText' }, key: 'I', label: '文字列を送る(ライブ)' }, { id: { do: 'compareMode' }, key: 'c', label: '比較の表示を切替' },
+  { id: { do: 'input' }, key: 'i', label: '入力モード(ライブ)' }, { id: { do: 'sendText' }, key: 'I', label: '文字列を送る(ライブ)' }, { id: { do: 'record' }, key: 'R', label: '録画の開始 / 停止(ライブ)' }, { id: { do: 'compareMode' }, key: 'c', label: '比較の表示を切替' },
 ];
 export const windowCommands: CommandDef<WindowAction>[] = [
   { id: { do: 'focusDir', dir: 'h' }, key: 'w h', label: '左のウィンドウへ' }, { id: { do: 'focusDir', dir: 'l' }, key: 'w l', label: '右のウィンドウへ' },
@@ -322,6 +322,9 @@ export function Canvas(p: Props) {
       case 'sendText':
         if (!focusedLive) return p.onMessage(ja.inputNeedsLive);
         return setTextBox('');
+      case 'record':
+        if (!focusedLive) return p.onMessage(ja.recordNeedsLive);
+        return (apis.current.get(focusedLive.id) as LiveApi | null | undefined)?.toggleRecord?.();
       case 'compareMode': return focusedApi()?.cycleMode?.();
       case 'escape': return;
       default: return runPlay(a);
@@ -575,6 +578,7 @@ export function Canvas(p: Props) {
                 live={w.live}
                 audioMix={audioMix}
                 audible={audible}
+                onMessage={p.onMessage}
                 inputMode={inputWindow === w.id}
                 onToggleInput={() => {
                   // タイトルバーのボタンはフォーカスの操作を止めるので、ここでフォーカスする
