@@ -4,6 +4,7 @@ mod client;
 mod doctor;
 mod hooks;
 mod state;
+mod update;
 
 use std::fs::File;
 use std::io::Read;
@@ -48,6 +49,8 @@ enum Sub {
     Stop,
     /// 依存(ffmpeg、Xvfb、音声サーバ、GPU)を確認する
     Doctor,
+    /// 新しい版を取得して、この dew を置き換える(GitHub の Releases から)
+    Update,
     /// 仮想ディスプレイと音声を用意してコマンドを実行し、ウィンドウをブラウザに出す
     Run {
         /// 精度モード: cv2.imshow の画像を圧縮せずに送る(L3。プログラムは変えない)
@@ -104,6 +107,7 @@ fn main() -> ExitCode {
             Ok(())
         }
         Some(Sub::Env) => env(&cli.serve),
+        Some(Sub::Update) => update::run(),
         Some(Sub::Run { .. }) => unreachable!(),
         None if cli.serve.foreground => foreground(&cli.serve),
         None => start(&cli.serve, cli.path.as_deref()),

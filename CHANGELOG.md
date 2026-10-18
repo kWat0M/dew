@@ -31,5 +31,7 @@
 
 - 1つのポートの HTTPS とトークンで、WSL2・リモートのサーバ・Docker コンテナから使える。複数のコンテナで同時に使っても混ざらない
 - Material Design 3 の見た目(ライト / ダーク)、全操作をキーボードでもマウスでも
-- `dew doctor` で必要なもの(ffmpeg、Xvfb、pulseaudio)を確かめ、入れ方を出す
+- `dew doctor` で必要なもの(ffmpeg、Xvfb、pulseaudio)を確かめ、入れ方を出す。`dew run` も、足りなければ入れ方を出して止まる
+- `dew update` で新しい版に入れ替える(GitHub の Releases から。SHA256SUMS で確かめる)
+- `dew --version` にビルドしたコミットを出す
 - 静的リンクの単一バイナリ(Linux x86_64)
