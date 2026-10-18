@@ -9,6 +9,7 @@ use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse, Response};
 use dew_capture::audio::{self, Audio};
+use dew_capture::encoder::Encoder;
 use dew_capture::input::Injector;
 use dew_capture::monitor::{self, WindowEvent, WindowInfo};
 use dew_capture::pulse::{self, Cli};
@@ -132,6 +133,8 @@ pub(crate) async fn session(State(app): State<Arc<App>>) -> Result<Json<LiveSess
         let s = Session::start(&app.cache_dir.join("live"))
             .await
             .map_err(|e| ApiError::Internal(format!("{e:#}")))?;
+        // NVENC が使えるかを先に確かめておく(最初のウィンドウの取り込みを待たせないように。ADR 0014)
+        let _ = tokio::task::spawn_blocking(Encoder::current).await;
         let (tx, rx) = mpsc::unbounded_channel();
         monitor::spawn(s.display, tx).map_err(|e| ApiError::Internal(format!("{e:#}")))?;
         tokio::spawn(app.live_windows.clone().follow(s.display, rx));

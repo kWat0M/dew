@@ -10,6 +10,7 @@ use tokio::io::AsyncReadExt;
 use tokio::process::{Child, Command};
 use tokio::sync::{broadcast, watch};
 
+use crate::encoder::Encoder;
 use crate::monitor::WindowInfo;
 use crate::session::SCREEN;
 
@@ -74,20 +75,8 @@ impl Stream {
             ])
             // H.264 は幅と高さが偶数でないといけない
             .args(["-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2"])
-            .args([
-                "-c:v",
-                "libx264",
-                "-preset",
-                "ultrafast",
-                "-tune",
-                "zerolatency",
-                "-pix_fmt",
-                "yuv420p",
-                // 共有サーバでほかの人の CPU を使い切らないよう、エンコードは最大 2 スレッド(7.3)
-                "-threads",
-                "2",
-            ])
-            .args(["-g", &GOP.to_string(), "-bf", "0"])
+            // NVENC が使えればそちら、なければ libx264(ADR 0014)
+            .args(Encoder::current().args(GOP))
             // フレームの区切りが分かるよう、各フレームの先頭に AUD を入れる
             .args([
                 "-bsf:v",
