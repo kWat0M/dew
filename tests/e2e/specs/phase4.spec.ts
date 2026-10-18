@@ -1,6 +1,6 @@
 // フェーズ4の受け入れ基準(docs/spec.md 11章): 精度モード、録画、巻き戻し。NVENC の切り替えは Rust のテスト(crates/capture)
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { appPath, expect, liveBits, liveWindow, start, test } from '../lib/dew';
@@ -9,7 +9,7 @@ test.describe.configure({ timeout: 60_000 });
 const APPEAR = { timeout: 20_000 };
 
 // 基準1: 精度モードの cv2.imshow で、受信フレームが送信元の配列と画素単位で一致する
-test.fixme('精度モードの cv2.imshow が画素単位で一致する', async ({ page, dew }) => {
+test('精度モードの cv2.imshow が画素単位で一致する', async ({ page, dew }) => {
   const frame = join(mkdtempSync(join(tmpdir(), 'dew-frame-')), 'frame.rgb');
   await start(page, dew);
   dew.spawnRun(['--exact', 'python3', appPath('exact_sample.py')], { DEW_TEST_FRAME: frame });
@@ -95,4 +95,22 @@ test('直近30秒を巻き戻して再生できる', async ({ page, dew }) => {
   await expect.poll(frame).toBeGreaterThan(paused + 30);
   await win.locator('.live-bar').getByRole('button', { name: '一時停止' }).click();
   await expect(win).toHaveAttribute('data-paused', 'true');
+});
+
+// L3: 精度モードでも、入力モードで押したキーが waitKey に返る(Esc で終わるふつうのループが動く)
+test('精度モードの waitKey に入力モードのキーが届く', async ({ page, dew }) => {
+  const keylog = join(mkdtempSync(join(tmpdir(), 'dew-keys-')), 'keys.txt');
+  writeFileSync(keylog, '');
+  await start(page, dew);
+  const child = dew.spawnRun(['--exact', 'python3', appPath('exact_sample.py')], { DEW_TEST_KEYLOG: keylog });
+  const win = liveWindow(page, 'exact');
+  await expect(win).toBeVisible(APPEAR);
+  await page.keyboard.press('i');
+  await expect(win).toHaveAttribute('data-input', 'true');
+  await page.keyboard.type('q');
+  await expect.poll(() => readFileSync(keylog, 'utf8').split('\n').filter(Boolean), { timeout: 10_000 }).toEqual(['113']);
+  await page.keyboard.press('Escape');
+  await expect.poll(() => child.exitCode, { timeout: 10_000 }).toBe(0);
+  // アプリが終わると「終了」になる
+  await expect(win.locator('.live-bar')).toContainText('終了');
 });

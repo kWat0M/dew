@@ -2,6 +2,7 @@
 
 pub mod audio;
 pub mod encoder;
+pub mod exact;
 pub mod input;
 pub mod monitor;
 pub mod pulse;

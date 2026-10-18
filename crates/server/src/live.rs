@@ -10,6 +10,7 @@ use axum::extract::{Path, State};
 use axum::response::{IntoResponse, Response};
 use dew_capture::audio::{self, Audio};
 use dew_capture::encoder::Encoder;
+use dew_capture::exact::{self, ExactEvent, ExactHub, ExactWindow};
 use dew_capture::input::Injector;
 use dew_capture::monitor::{self, WindowEvent, WindowInfo};
 use dew_capture::pulse::{self, Cli};
@@ -36,6 +37,9 @@ pub(crate) struct Live {
     apps: Mutex<HashMap<u32, Arc<Audio>>>,
     /// 録画中のウィンドウ(L7)
     recordings: Mutex<HashMap<u32, Arc<Recorder>>>,
+    /// 精度モード(L3)の受け口と、その窓
+    exact: Mutex<Option<Arc<ExactHub>>>,
+    exact_windows: Mutex<HashMap<u32, ExactWindow>>,
     /// 音の振り分け(`route`)のタスク
     router: Mutex<Option<tokio::task::JoinHandle<()>>>,
     /// 入力モードのキー・マウスの注入
@@ -50,6 +54,8 @@ impl Live {
             audio: Mutex::default(),
             apps: Mutex::default(),
             recordings: Mutex::default(),
+            exact: Mutex::default(),
+            exact_windows: Mutex::default(),
             router: Mutex::default(),
             input: Mutex::default(),
         }
@@ -70,7 +76,23 @@ impl Live {
                 height: w.height,
                 audio: w.pid.is_some_and(|p| apps.contains_key(&p)),
                 recording: recordings.contains_key(&w.id),
+                exact: false,
             })
+            .chain(
+                self.exact_windows
+                    .lock()
+                    .unwrap()
+                    .values()
+                    .map(|w| LiveWindow {
+                        id: w.id,
+                        title: w.title.clone(),
+                        width: w.width,
+                        height: w.height,
+                        audio: false,
+                        recording: false,
+                        exact: true,
+                    }),
+            )
             .collect();
         drop(apps);
         drop(recordings);
@@ -130,6 +152,8 @@ impl Live {
         for (_, r) in self.recordings.lock().unwrap().drain() {
             r.request_stop();
         }
+        self.exact.lock().unwrap().take();
+        self.exact_windows.lock().unwrap().clear();
         self.input.lock().unwrap().take();
         for (_, (_, s)) in self.windows.lock().unwrap().drain() {
             s.stop();
@@ -158,6 +182,13 @@ pub(crate) async fn session(State(app): State<Arc<App>>) -> Result<Json<LiveSess
             Ok(a) => *app.live_windows.audio.lock().unwrap() = Some(a),
             Err(e) => tracing::warn!("音声を取り込めません: {e:#}"),
         }
+        // 精度モード(L3)の受け口
+        let (etx, erx) = mpsc::unbounded_channel();
+        match ExactHub::start(&exact_socket(&app), etx) {
+            Ok(h) => *app.live_windows.exact.lock().unwrap() = Some(h),
+            Err(e) => tracing::warn!("精度モードの受け口を作れません: {e:#}"),
+        }
+        tokio::spawn(app.live_windows.clone().follow_exact(erx));
         let router = tokio::spawn(
             app.live_windows
                 .clone()
@@ -171,7 +202,12 @@ pub(crate) async fn session(State(app): State<Arc<App>>) -> Result<Json<LiveSess
         display: format!(":{}", s.display),
         env: s.env(),
         unset: Session::UNSET.iter().map(|v| (*v).to_owned()).collect(),
+        exact_socket: exact_socket(&app).to_string_lossy().into_owned(),
     }))
+}
+
+fn exact_socket(app: &App) -> std::path::PathBuf {
+    app.cache_dir.join("live").join("exact.sock")
 }
 
 /// `POST /api/live/record`: ライブウィンドウの録画を始める・止める(L7、ADR 0015)。
@@ -194,6 +230,11 @@ pub(crate) async fn record(
         return Ok(Json(RecordResult {
             path: Some(shown.to_string_lossy().into_owned()),
         }));
+    }
+    if exact::is_exact(req.window) {
+        return Err(ApiError::Forbidden(
+            "精度モードの窓は録画できません(ふつうの dew run で録画してください)".into(),
+        ));
     }
     let Some((info, stream)) = live.stream(req.window) else {
         return Err(ApiError::NotFound("そのウィンドウはありません".into()));
@@ -227,6 +268,9 @@ pub(crate) async fn ws(
     Path(id): Path<u32>,
     upgrade: WebSocketUpgrade,
 ) -> Response {
+    if exact::is_exact(id) {
+        return exact_ws(app.live_windows.clone(), id, upgrade);
+    }
     let Some((info, stream)) = app.live_windows.stream(id) else {
         return (
             axum::http::StatusCode::NOT_FOUND,
@@ -329,6 +373,21 @@ impl Live {
         Ok(changed)
     }
 
+    /// 精度モードの窓の出入りを一覧に反映する
+    async fn follow_exact(self: Arc<Self>, mut rx: mpsc::UnboundedReceiver<ExactEvent>) {
+        while let Some(ev) = rx.recv().await {
+            match ev {
+                ExactEvent::Changed(w) => {
+                    self.exact_windows.lock().unwrap().insert(w.id, w);
+                }
+                ExactEvent::Closed(id) => {
+                    self.exact_windows.lock().unwrap().remove(&id);
+                }
+            }
+            self.publish();
+        }
+    }
+
     /// `old` に代わる映像。作り直しの途中で古い方が先に終わることがあるので、少し待つ
     async fn next_stream(&self, id: u32, old: &Arc<Stream>) -> Option<(WindowInfo, Arc<Stream>)> {
         for _ in 0..20 {
@@ -342,6 +401,18 @@ impl Live {
     }
 
     fn inject(&self, window: u32, ev: LiveInput) {
+        // 精度モードの窓: キーは waitKey へ、閉じたらアプリに知らせる。マウスなどは送れない
+        if exact::is_exact(window) {
+            let Some(hub) = self.exact.lock().unwrap().clone() else {
+                return;
+            };
+            match ev {
+                LiveInput::Key { key, down: true } => hub.key(window, &key),
+                LiveInput::Close => hub.close(window),
+                _ => {}
+            }
+            return;
+        }
         let mut guard = self.input.lock().unwrap();
         let Some(inj) = guard.as_mut() else { return };
         let clamp = |v: i32| v.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
@@ -362,6 +433,73 @@ impl Live {
 }
 
 type Sink = futures_util::stream::SplitSink<WebSocket, Message>;
+
+/// 精度モードの窓の映像(L3)。最初に `LiveConfig`(codec は "png")、続けて PNG を
+/// H.264 と同じ形(フラグ・タイムスタンプ・中身)で送る。大きさが変わったら設定から送り直す
+fn exact_ws(live: Arc<Live>, id: u32, upgrade: WebSocketUpgrade) -> Response {
+    let hub = live.exact.lock().unwrap().clone();
+    let Some((hub, (info, latest, mut rx))) = hub.and_then(|h| h.subscribe(id).map(|s| (h, s)))
+    else {
+        return (
+            axum::http::StatusCode::NOT_FOUND,
+            "そのウィンドウはありません",
+        )
+            .into_response();
+    };
+    upgrade.on_upgrade(move |socket| async move {
+        let (mut sink, mut stream_in) = socket.split();
+        let video = async {
+            let config = |w: &ExactWindow| {
+                let c = LiveConfig {
+                    codec: "png".into(),
+                    width: w.width,
+                    height: w.height,
+                };
+                Message::Text(serde_json::to_string(&c).unwrap().into())
+            };
+            let mut cur = info;
+            if sink.send(config(&cur)).await.is_err() {
+                return;
+            }
+            if let Some(f) = latest
+                && sink.send(Message::Binary(encode(&f))).await.is_err()
+            {
+                return;
+            }
+            loop {
+                match rx.recv().await {
+                    Ok(f) => {
+                        if let Some(w) = hub.window(id)
+                            && (w.width, w.height) != (cur.width, cur.height)
+                        {
+                            cur = w;
+                            if sink.send(config(&cur)).await.is_err() {
+                                return;
+                            }
+                        }
+                        if sink.send(Message::Binary(encode(&f))).await.is_err() {
+                            return;
+                        }
+                    }
+                    // 遅れたら古い画像は飛ばす(次の画像だけで描ける)
+                    Err(broadcast::error::RecvError::Lagged(_)) => {}
+                    Err(_) => return,
+                }
+            }
+        };
+        let input = async {
+            while let Some(Ok(Message::Text(t))) = stream_in.next().await {
+                if let Ok(ev) = serde_json::from_str::<LiveInput>(&t) {
+                    live.inject(id, ev);
+                }
+            }
+        };
+        tokio::select! {
+            _ = video => {}
+            _ = input => {}
+        }
+    })
+}
 
 /// 映像を送る。映像が終わったら true、接続が切れたら false を返す
 async fn send_video(socket: &mut Sink, info: &WindowInfo, stream: &Stream) -> bool {

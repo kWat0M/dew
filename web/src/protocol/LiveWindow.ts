@@ -15,4 +15,8 @@ audio: boolean,
 /**
  * 録画中(L7)
  */
-recording: boolean, };
+recording: boolean, 
+/**
+ * 精度モード(L3)の cv2.imshow の窓。映像は H.264 ではなく PNG(`LiveConfig.codec` が "png")
+ */
+exact: boolean, };

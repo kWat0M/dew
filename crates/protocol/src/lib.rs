@@ -131,6 +131,8 @@ pub struct LiveSession {
     pub env: Vec<(String, String)>,
     /// アプリから消す環境変数
     pub unset: Vec<String>,
+    /// 精度モード(L3)のフックがつなぐソケット(`dew run --exact` が DEW_EXACT_SOCKET で渡す)
+    pub exact_socket: String,
 }
 
 /// `POST /api/open` の要求(F10)
@@ -187,6 +189,8 @@ pub struct LiveWindow {
     pub audio: bool,
     /// 録画中(L7)
     pub recording: bool,
+    /// 精度モード(L3)の cv2.imshow の窓。映像は H.264 ではなく PNG(`LiveConfig.codec` が "png")
+    pub exact: bool,
 }
 
 /// `POST /api/live/record`: ライブウィンドウの録画を始める(`on: true`)・止める(L7)

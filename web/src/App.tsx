@@ -120,7 +120,7 @@ export function App() {
         id: nextId.current++,
         path: '',
         media: 'video' as const,
-        live: { id: l.id, title: l.title, width: l.width, height: l.height, audio: l.audio, recording: l.recording, ended: false },
+        live: { id: l.id, title: l.title, width: l.width, height: l.height, audio: l.audio, recording: l.recording, exact: l.exact, ended: false },
       }));
       setWindows((ws) => [
         ...ws.map((w) => {

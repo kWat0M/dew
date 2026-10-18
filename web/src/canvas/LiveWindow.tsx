@@ -15,7 +15,8 @@ import { WindowFrame, type FrameProps } from './WindowFrame';
 const MAX_QUEUE = 3;
 
 /** audio: そのウィンドウのアプリの音がある(7.6) */
-export type LiveInfo = { id: number; title: string; width: number; height: number; audio: boolean; recording: boolean; ended: boolean };
+/** exact: 精度モード(L3)の cv2.imshow の窓。録画・巻き戻しはできない */
+export type LiveInfo = { id: number; title: string; width: number; height: number; audio: boolean; recording: boolean; exact: boolean; ended: boolean };
 
 type Props = FrameProps & {
   live: LiveInfo;
@@ -87,20 +88,45 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, onMessage, in
       error: (e) => setError(String(e)),
     });
     let waitKey = true;
+    // 精度モード(L3)の窓は H.264 ではなく PNG が届く。色の変換をせずに描き、画素をそのまま出す
+    let png = false;
+    let shown = 0;
+    let latest = 0;
+    const drawPng = (data: Uint8Array<ArrayBuffer>) => {
+      const n = ++latest;
+      void createImageBitmap(new Blob([data], { type: 'image/png' }), { colorSpaceConversion: 'none', premultiplyAlpha: 'none' })
+        .then((bmp) => {
+          // 後から届いたものが先に描けていたら、古いものは描かない
+          if (n < shown) return bmp.close();
+          shown = n;
+          if (el.width !== bmp.width || el.height !== bmp.height) {
+            el.width = bmp.width;
+            el.height = bmp.height;
+          }
+          ctx.drawImage(bmp, 0, 0);
+          bmp.close();
+          decoded += 1;
+          win.current?.setAttribute('data-decoded', String(decoded));
+        })
+        .catch((e: unknown) => setError(String(e)));
+    };
     const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/live/${live.id}`);
     ws.binaryType = 'arraybuffer';
     socket.current = ws;
     ws.onmessage = (m) => {
       if (typeof m.data === 'string') {
         const c = JSON.parse(m.data) as LiveConfig;
+        setConfig(c);
+        png = c.codec === 'png';
+        if (png) return;
         const cfg = { codec: c.codec, codedWidth: c.width, codedHeight: c.height, optimizeForLatency: true };
         decoder.configure(cfg);
         rewind.configure(cfg);
-        setConfig(c);
         return;
       }
-      if (decoder.state !== 'configured') return;
       const buf = m.data as ArrayBuffer;
+      if (png) return drawPng(new Uint8Array(buf, 9));
+      if (decoder.state !== 'configured') return;
       const view = new DataView(buf);
       const key = (view.getUint8(0) & 1) === 1;
       const timestamp = Number(view.getBigUint64(1));
@@ -128,9 +154,11 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, onMessage, in
   const recording = live.recording && !live.ended;
   useEffect(() => {
     win.current?.setAttribute('data-recording', String(recording));
-  }, [recording]);
+    win.current?.setAttribute('data-exact', String(live.exact));
+  }, [recording, live.exact]);
   const toggleRecord = () => {
     if (live.ended) return;
+    if (live.exact) return onMessage(ja.exactNoRecord);
     api
       .record(live.id, !live.recording)
       .then((r) => r.path && onMessage(ja.recordSaved(r.path)))
@@ -259,9 +287,11 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, onMessage, in
         )}
       </div>
       <footer className="live-bar">
+        {live.exact && <span className="exact-badge" title={ja.exactHint}>{ja.exactMode}</span>}
         <button
           type="button"
           className="icon-button small"
+          hidden={live.exact}
           title={rw.mode === 'paused' ? ja.play : ja.pause}
           aria-label={rw.mode === 'paused' ? ja.playLabel : ja.pauseLabel}
           onClick={() => rewind.toggle()}
@@ -301,7 +331,7 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, onMessage, in
         )}
         {recording && <span className="recording-badge">{ja.recording}</span>}
         <span className="live-bar-end">
-          {!live.ended && (
+          {!live.ended && !live.exact && (
             <button
               type="button"
               className="icon-button small"
