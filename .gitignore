@@ -10,3 +10,6 @@ tests/e2e/playwright-report/
 __pycache__/
 dew-recordings/
 dist/
+tests/e2e/demo-results/
+# 紹介動画(scripts/demo/record.sh の出力。GitHub に上げて README から参照する)
+docs/demo/
