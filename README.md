@@ -73,7 +73,7 @@ sha256sum -c SHA256SUMS      # dew: OK(壊れていないか)
 mkdir -p ~/.local/bin
 cp dew ~/.local/bin/
 chmod +x ~/.local/bin/dew
-dew --version        # 例: dew 0.1.1 (6c83a91, 2026-10-19)
+dew --version        # 例: dew 0.1.2 (1a2b3c4, 2026-10-19)
 dew doctor           # 使える機能と、足りないツールを確かめる
 ```
 
@@ -146,9 +146,10 @@ cp dew-*-x86_64-linux/dew /usr/local/bin/
 DEBIAN_FRONTEND=noninteractive apt-get install -y ffmpeg xvfb pulseaudio
 ```
 
-起動して、端末に出た `https://<DEW_PUBLIC_HOST の値>:18765/?token=…` を Windows のブラウザで開きます。
+見たいファイルのあるディレクトリに移ってから起動し、端末に出た `https://<DEW_PUBLIC_HOST の値>:18765/?token=…` を Windows のブラウザで開きます(見られる範囲は「はじめて使う」の表のとおり。`$HOME` の外なら、起動したディレクトリの中です)。
 
 ```bash
+cd /workspace        # 例: 見たいファイルのあるディレクトリ
 dew
 ```
 
@@ -219,7 +220,15 @@ dew は裏で動き続けるので、端末はすぐ使えます。端末を閉�
 | `dew doctor` | 必要なものがそろっているか確かめる |
 | `dew update` | 新しい版があれば取得して入れ替える(上の Releases から) |
 
-見られるのは、起動したディレクトリを含む git リポジトリの中(git 管理外なら `$HOME`)だけです。変えるには、`dew stop` してから `dew --root <ディレクトリ>` で起動し直します。
+見られる範囲(閲覧範囲)は、起動したときに端末に出ます。次のように決まります。
+
+| `dew` を起動した場所 | 見られる範囲 |
+|---|---|
+| git リポジトリの中 | そのリポジトリ全体 |
+| git 管理外で、`$HOME` の中 | `$HOME` |
+| git 管理外で、`$HOME` の外(コンテナの `/workspace` など) | 起動したディレクトリ |
+
+変えるには、`dew stop` してから `dew --root <ディレクトリ>` で起動し直します(`dew --root /` でコンテナ全体)。
 
 ## GUI のウィンドウを映す
 
