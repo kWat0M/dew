@@ -58,7 +58,13 @@ dew 本体は 1 つのファイル(静的リンクのバイナリ)で、Linux �
 
 ## 入れ方
 
-https://github.com/kWat0M/dew/releases から、最新の `dew-<版>-<コミット>-x86_64-linux.tar.gz` を取って展開し、中の `dew` をパスの通った場所に置いて実行できるようにします。
+https://github.com/kWat0M/dew/releases から、最新の `dew-<版>-<コミット>-x86_64-linux.tar.gz` を取って展開し、中の `dew` をパスの通った場所に置いて実行できるようにします。ブラウザのない環境(コンテナやサーバ)では、端末で次のように取れます。
+
+```bash
+curl -fsSLO "$(curl -fsSL https://api.github.com/repos/kWat0M/dew/releases/latest | grep -o 'https://[^"]*x86_64-linux\.tar\.gz')"
+```
+
+取ったら、展開して置きます。
 
 ```bash
 tar xzf dew-*-x86_64-linux.tar.gz
@@ -67,7 +73,7 @@ sha256sum -c SHA256SUMS      # dew: OK(壊れていないか)
 mkdir -p ~/.local/bin
 cp dew ~/.local/bin/
 chmod +x ~/.local/bin/dew
-dew --version        # 例: dew 0.1.0 (05f218c, 2026-10-18)
+dew --version        # 例: dew 0.1.1 (6c83a91, 2026-10-19)
 dew doctor           # 使える機能と、足りないツールを確かめる
 ```
 
@@ -87,22 +93,36 @@ dew doctor           # 使える機能と、足りないツールを確かめる
 
 ### Docker コンテナの中で使う
 
-コンテナの中で、上の「入れ方」のとおりに dew を入れます。GUI のウィンドウを映す・音を出す・動画を変換するなら、コンテナの中に `ffmpeg` なども入れます(イメージに入れるなら、Dockerfile に次を足します)。
+コンテナの中の dew は 8765 番で待ち受けるので、**コンテナを作るときに、そのポートを公開しておきます**。あとからは足せません。
+
+**試しに使う(docker run)**: 例えば、Ubuntu のコンテナを作って入るなら次のとおりです。そのままコピーして使えます。
+
+```bash
+docker run -it -p 18765:8765 -e DEW_PUBLIC_HOST=localhost -e DEW_PUBLIC_PORT=18765 ubuntu:24.04 bash
+```
+
+- `-p 18765:8765`: ホストの 18765 番を、コンテナの dew(8765 番)につなぐ
+- `-e DEW_PUBLIC_HOST`・`-e DEW_PUBLIC_PORT`: 端末に出す URL を、外(Windows)から開ける形にする。WSL2 の中の Docker なら `localhost` のまま。リモートのサーバの Docker なら、`localhost` をサーバの名前か IP アドレス(例: `DEW_PUBLIC_HOST=192.168.1.10`)に変える
+- いつも使っているイメージやオプションがあれば、それに `-p` と 2 つの `-e` を足します(`ubuntu:24.04 bash` の代わりに、そのイメージ名とコマンドを書く)
+
+コンテナに入ったら、dew と、GUI のウィンドウを映す・音を出す・動画を変換するためのツールを入れて起動します(Ubuntu / Debian のイメージの場合。root で入っているので `sudo` は要りません)。
+
+```bash
+apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates ffmpeg xvfb pulseaudio
+curl -fsSLO "$(curl -fsSL https://api.github.com/repos/kWat0M/dew/releases/latest | grep -o 'https://[^"]*x86_64-linux\.tar\.gz')"
+tar xzf dew-*-x86_64-linux.tar.gz
+cp dew-*-x86_64-linux/dew /usr/local/bin/
+dew
+```
+
+端末に出た `https://localhost:18765/?token=…` を Windows のブラウザで開きます。ツールをイメージに入れておくなら、Dockerfile に次を足します。
 
 ```dockerfile
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg xvfb pulseaudio \
  && rm -rf /var/lib/apt/lists/*
 ```
 
-コンテナの中の dew は 8765 番で待ち受けるので、**コンテナを作るときに、そのポートを公開しておきます**。試しに使うなら、`docker run` に次を足します。
-
-```bash
-docker run -p 18765:8765 -e DEW_PUBLIC_HOST=<サーバの名前か IP> -e DEW_PUBLIC_PORT=18765 …
-```
-
-`DEW_PUBLIC_HOST` と `DEW_PUBLIC_PORT` は、端末に出す URL を、外(Windows)から開ける形にするためのものです。WSL2 の中の Docker なら、`DEW_PUBLIC_HOST` は `localhost` にします。
-
-**毎回打たずに済ませるには、compose.yaml に書きます**。`docker run -p …` はコンテナを作るたびに指定が要りますが、compose.yaml の使っているサービスに次を足しておけば、以降は `docker compose up -d` だけでポートが公開され、環境変数も渡されます。
+**毎回打たずに済ませるには、compose.yaml に書きます**。`docker run` の `-p`・`-e` はコンテナを作るたびに指定が要りますが、compose.yaml の使っているサービスに次を足しておけば、以降は `docker compose up -d` だけでポートが公開され、環境変数も渡されます。
 
 ```yaml
 services:
