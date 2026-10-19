@@ -21,6 +21,9 @@ pub struct ServerFile {
     /// 動き続けているのを見つけるのに使う
     #[serde(default)]
     pub exe_mtime: Option<u128>,
+    /// 閲覧範囲(7.2)。起動したときと dew status で出す
+    #[serde(default)]
+    pub root: String,
 }
 
 /// 今の dew の実行ファイルの更新時刻(ナノ秒)

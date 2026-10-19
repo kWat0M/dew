@@ -72,7 +72,7 @@ struct ServeArgs {
     /// 待ち受けアドレス(127.0.0.1 にすると ssh -L 専用)
     #[arg(long, default_value = "0.0.0.0")]
     bind: IpAddr,
-    /// 閲覧できる範囲。既定は起動したディレクトリの git ルート、git 管理外なら $HOME(--root / でコンテナ全体)
+    /// 閲覧できる範囲。既定は起動したディレクトリの git ルート、git 管理外なら $HOME、$HOME の外なら起動したディレクトリ(--root / でコンテナ全体)
     #[arg(long)]
     root: Option<PathBuf>,
     /// ffmpeg の同時実行数
@@ -99,6 +99,9 @@ fn main() -> ExitCode {
         Some(Sub::Url) => running().map(|s| print_url(&s)),
         Some(Sub::Status) => running().map(|s| {
             print_url(&s);
+            if let Some(line) = root_line(&s) {
+                println!("{line}");
+            }
             println!("pid: {}  ポート: {}", s.pid, s.port);
         }),
         Some(Sub::Stop) => stop(),
@@ -176,8 +179,21 @@ fn start(args: &ServeArgs, path: Option<&Path>) -> anyhow::Result<()> {
         }
         println!("接続中のブラウザがありません。次の URL を開いてください");
     }
+    if let Some(line) = root_line(&server) {
+        eprintln!("dew: {line}");
+    }
     print_url(&server);
     Ok(())
+}
+
+/// 閲覧範囲と変え方(範囲が思ったのと違うときに気づけるように)。前の版のサーバは記録がないので出さない
+fn root_line(s: &ServerFile) -> Option<String> {
+    (!s.root.is_empty()).then(|| {
+        format!(
+            "閲覧範囲: {}(変えるには dew stop の後、dew --root <ディレクトリ> で起動し直す)",
+            s.root
+        )
+    })
 }
 
 /// 動いているサーバを返す。なければ起動する
@@ -357,18 +373,17 @@ fn log_tail(path: &Path, from: u64) -> String {
     s.get(from as usize..).unwrap_or("").to_owned()
 }
 
-/// 既定の閲覧範囲(7.2): `dir` を含む git リポジトリのルート。git 管理外なら $HOME。
+/// 既定の閲覧範囲(7.2): `dir` を含む git リポジトリのルート。git 管理外なら $HOME、
+/// $HOME の外なら `dir`(コンテナでは $HOME が空の /root で、ファイルは /workspace などにあるため。ADR 0021)。
 /// git コマンドが入っていない環境もあるので、`.git` を親へたどって探す
 fn default_root(dir: &Path) -> PathBuf {
     let dir = dir.canonicalize().unwrap_or_else(|_| dir.to_owned());
-    let found = dir.ancestors().find(|d| d.join(".git").exists());
-    match found {
-        Some(d) => d.to_owned(),
-        None => {
-            let home = state::home();
-            home.canonicalize().unwrap_or(home)
-        }
+    if let Some(d) = dir.ancestors().find(|d| d.join(".git").exists()) {
+        return d.to_owned();
     }
+    let home = state::home();
+    let home = home.canonicalize().unwrap_or(home);
+    if dir.starts_with(&home) { home } else { dir }
 }
 
 /// 前面でサーバを動かす。待ち受けを始めたら server.json を書く
@@ -381,6 +396,7 @@ fn foreground(args: &ServeArgs) -> anyhow::Result<()> {
             .with_context(|| format!("{} がありません", r.display()))?,
         None => default_root(&cwd),
     };
+    let root_text = root.to_string_lossy().into_owned();
     let cfg = dew_server::Config {
         bind: args.bind,
         port: args.port,
@@ -417,6 +433,7 @@ fn foreground(args: &ServeArgs) -> anyhow::Result<()> {
             url: r.url.clone(),
             warnings: r.warnings.clone(),
             exe_mtime,
+            root: root_text,
         };
         if let Err(e) = state::write(&s) {
             tracing::error!("server.json を書けません: {e:#}");
