@@ -1,5 +1,5 @@
 // フェーズ1の受け入れ基準(docs/spec.md 11章): Home
-import { copyFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { current, expect, open, selected, start, test } from '../lib/dew';
 
@@ -48,6 +48,19 @@ test('新しいファイルが1秒以内に現れる', async ({ page, dew }) => 
   await expect(current(page).getByRole('option', { name: 'image.png' })).toBeVisible();
   copyFileSync(join(dew.root, 'image.png'), join(dew.root, 'new.png'));
   await expect(current(page).getByRole('option', { name: 'new.png' })).toBeVisible({ timeout: 1000 });
+});
+
+// 右カラムに中身を出しているディレクトリにファイルができたら、プレビューも1秒以内に変わる
+// (録画の開始で空の dew-recordings/ ができ、止めたときにできた MP4 が出ず「空のディレクトリです」のままだった)
+test('プレビュー中のディレクトリにできたファイルが1秒以内にプレビューに出る', async ({ page, dew }) => {
+  await start(page, dew);
+  mkdirSync(join(dew.root, 'out'));
+  const out = current(page).getByRole('option', { name: /^out/ });
+  await out.click();
+  const preview = page.getByTestId('col-preview');
+  await expect(preview).toContainText('空のディレクトリです');
+  copyFileSync(join(dew.root, 'image.png'), join(dew.root, 'out', 'result.png'));
+  await expect(preview).toContainText('result.png', { timeout: 1000 });
 });
 
 // キャンバスから h / Tab で戻ると Enter を押したときのまま。H では初期位置(4.1、5.3)
