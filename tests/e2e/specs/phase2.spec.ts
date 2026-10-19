@@ -105,8 +105,15 @@ test('比較ウィンドウの再生コントロールは1ファイルのウィ�
   const master = win.locator('video').first();
   await win.getByRole('button', { name: '再生速度' }).click();
   await page.getByRole('menu', { name: '再生速度' }).getByRole('menuitemradio', { name: '2x' }).click();
-  await expect.poll(() => win.locator('video').evaluateAll((vs: HTMLVideoElement[]) => vs.map((v) => v.playbackRate))).toEqual([2, 2]);
-  expect(await master.evaluate((v: HTMLVideoElement) => v.playbackRate)).toBe(2);
+  await expect.poll(() => master.evaluate((v: HTMLVideoElement) => v.playbackRate)).toBe(2);
+  // 2つ目は、ずれを再生速度の微調整(最大 ±15%。sync.ts の MAX_ADJUST)で吸収するので、2 の近くならよい
+  // (負荷が高いと、ちょうど 2 を待つ間に微調整中の 1.9 などを読んで落ちていた)
+  await expect
+    .poll(async () => {
+      const rate = await win.locator('video').nth(1).evaluate((v: HTMLVideoElement) => v.playbackRate);
+      return rate >= 2 * 0.85 && rate <= 2 * 1.15;
+    })
+    .toBe(true);
 });
 
 test('比較ウィンドウも全体のミュートに従い、解除すると1つ目だけ音を出す', async ({ page, dew }) => {
