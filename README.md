@@ -33,7 +33,7 @@ dew 本体は 1 つのファイル(静的リンクのバイナリ)で、Linux �
 
 ## 入れ方
 
-https://github.com/kWat0M/dew-releases/releases から、最新の `dew-<版>-<コミット>-x86_64-linux.tar.gz` を取って展開し、中の `dew` をパスの通った場所に置いて実行できるようにします。
+https://github.com/kWat0M/dew/releases から、最新の `dew-<版>-<コミット>-x86_64-linux.tar.gz` を取って展開し、中の `dew` をパスの通った場所に置いて実行できるようにします。
 
 ```bash
 tar xzf dew-*-x86_64-linux.tar.gz
@@ -62,9 +62,22 @@ dew doctor           # 使える機能と、足りないツールを確かめる
 
 ### Docker コンテナの中で使う
 
-コンテナの中の dew は 8765 番で待ち受けます。これをホストのポートとして公開し、端末に出す URL を外(Windows)から開ける形にするための環境変数を渡します。
+コンテナの中で、上の「入れ方」のとおりに dew を入れます。GUI のウィンドウを映す・音を出す・動画を変換するなら、コンテナの中に `ffmpeg` なども入れます(イメージに入れるなら、Dockerfile に次を足します)。
 
-**compose.yaml を使う場合**(おすすめ)は、使っているサービスに次を足します。一度書けば、以降は `docker compose up -d` で起動するたびに有効になり、`docker run -p …` を毎回打つ必要はありません。
+```dockerfile
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg xvfb pulseaudio \
+ && rm -rf /var/lib/apt/lists/*
+```
+
+コンテナの中の dew は 8765 番で待ち受けるので、**コンテナを作るときに、そのポートを公開しておきます**。試しに使うなら、`docker run` に次を足します。
+
+```bash
+docker run -p 18765:8765 -e DEW_PUBLIC_HOST=<サーバの名前か IP> -e DEW_PUBLIC_PORT=18765 …
+```
+
+`DEW_PUBLIC_HOST` と `DEW_PUBLIC_PORT` は、端末に出す URL を、外(Windows)から開ける形にするためのものです。WSL2 の中の Docker なら、`DEW_PUBLIC_HOST` は `localhost` にします。
+
+**毎回打たずに済ませるには、compose.yaml に書きます**。`docker run -p …` はコンテナを作るたびに指定が要りますが、compose.yaml の使っているサービスに次を足しておけば、以降は `docker compose up -d` だけでポートが公開され、環境変数も渡されます。
 
 ```yaml
 services:
@@ -74,30 +87,12 @@ services:
     environment:
       DEW_PUBLIC_HOST: localhost         # Windows から開くときのホスト名。リモートのサーバならその名前か IP
       DEW_PUBLIC_PORT: "18765"           # 上の ports の左側と同じ番号
-    volumes:
-      # ホストに入れた dew をコンテナから使う(イメージに入れなくてよい。dew update はホストで行う)
-      - ~/.local/bin/dew:/usr/local/bin/dew:ro
 ```
 
-足したら、コンテナを作り直して(`docker compose up -d`)中に入り、そのまま `dew` を実行します。ポートの公開はコンテナを作るときにしか変えられないので、すでに動いているコンテナには `docker compose up -d` で作り直すまで効きません。
-
-GUI のウィンドウを映す・音を出す・動画を変換するには、コンテナの中にも `ffmpeg` などが要ります。Dockerfile に次を足します。
-
-```dockerfile
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg xvfb pulseaudio \
- && rm -rf /var/lib/apt/lists/*
-```
-
-**compose.yaml を使わない場合**は、`docker run` に同じものを渡します。
-
-```bash
-docker run -p 18765:8765 -e DEW_PUBLIC_HOST=localhost -e DEW_PUBLIC_PORT=18765 \
-  -v ~/.local/bin/dew:/usr/local/bin/dew:ro …
-```
+ポートの公開はコンテナを作るときにしか変えられないので、すでに動いているコンテナには、`docker compose up -d` で作り直すまで効きません。
 
 - 複数のコンテナで使うときは、ホスト側のポート(18765 など)をコンテナごとに変えてください。トークンが違うので、ほかの人のコンテナは開けません
-- WSL2 の中の Docker なら、`DEW_PUBLIC_HOST` は `localhost` のままで Windows から開けます
-- dew の証明書はコンテナの中(`~/.local/share/dew/tls`)に作るので、コンテナを作り直すと証明書の警告がもう一度出ます。許可すればそのまま使えます
+- コンテナを作り直すと、コンテナの中に入れた dew と証明書(`~/.local/share/dew/tls`)は消えます。dew は入れ直し、証明書の警告はもう一度許可してください
 
 ### リモートのサーバで使う
 
@@ -150,9 +145,31 @@ dew は裏で動き続けるので、端末はすぐ使えます。端末を閉�
 dew run python3 main.py
 ```
 
-`main.py` が開いたウィンドウが、ブラウザのキャンバスに出ます。プログラムは変えなくてかまいません(dew が仮想ディスプレイと音声を用意して、そちらに出させます)。
+`main.py` が開いたウィンドウが、ブラウザのキャンバスに出ます。プログラムは変えなくてかまいません。dew が仮想ディスプレイと音声を用意して、そちらに出させるので、WSLg や X サーバ、画面のないサーバやコンテナでもそのまま映ります。
 
-- 以降のコマンドを全部映したいときは `eval "$(dew env)"`。そのシェルから起動したアプリはすべてブラウザに出ます
+### シェルごと映す(dew env)
+
+毎回 `dew run` を付けるのが面倒なら、シェルの設定を dew に向けます。
+
+```bash
+eval "$(dew env)"
+python3 main.py      # dew run を付けなくても、ブラウザに映る
+python3 other.py     # 以降、このシェルから起動したアプリはすべてブラウザに出る
+```
+
+`dew env` は、`DISPLAY`・`PULSE_SERVER` などを dew の仮想ディスプレイと音声に向ける設定を出します(`eval` で今のシェルに取り込みます)。ほかの端末には影響しません。
+
+元に戻すには、その端末(シェル)を閉じて開き直します。端末を閉じたくなければ、先に `bash` で子のシェルに入ってから `eval "$(dew env)"` し、終わったら `exit` すると元のシェルに戻ります。
+
+```bash
+bash                 # 子のシェルに入る
+eval "$(dew env)"
+python3 main.py      # ブラウザに映る
+exit                 # 元のシェル(dew env の前の設定)に戻る
+```
+
+### 映したウィンドウの操作
+
 - アプリにキーやマウスを送るには、ウィンドウを選んで `i`(またはタイトルバーのキーボードのボタン)。`Ctrl+]` で抜けます
 - `R`(またはタイトルバーの録画ボタン)で録画。表示している映像が、最初に `dew` を起動したディレクトリの `dew-recordings/` に MP4 で保存されます
 - `k`(または下部の中央のボタン)で一時停止すると、直近 30 秒を巻き戻して見られます。`q` でライブに戻ります

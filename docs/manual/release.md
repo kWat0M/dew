@@ -50,42 +50,42 @@ apt-get update && apt-get install -y ffmpeg xvfb pulseaudio python3-tk
 
 `exit` でコンテナは消える(`--rm`)。
 
-## 3. 版を決めて、公開のリポジトリ(kWat0M/dew-releases)の Releases に載せる
+## 3. 版を決めて、公開のリポジトリ(kWat0M/dew)の Releases に載せる
 
-ソースのリポジトリ(kWat0M/DevView)は非公開のまま、配布物は**バイナリだけを置く公開リポジトリ** `kWat0M/dew-releases` の Releases に載せる。友人はそこから取り、`dew update` もそこを見る(ADR 0018)。
+ソースのリポジトリ `kWat0M/dew` は公開していて、配布物もその Releases に載せる。友人はそこから取り、`dew update` もそこを見る(ADR 0018、0020)。
 
-### 初回だけ: 公開リポジトリを作る
+### 一度だけ: DevView を dew に改名して公開し、dew-releases を消す(ADR 0020)
 
-1. GitHub の Web で「New repository」→ 名前 `dew-releases`、**Public**、README などは作らない
-2. Settings → General → Features で、Issues と Wikis などを外す(受け付けないなら)
-3. 中身は README・LICENSE・CHANGELOG だけ(ソースは置かない)。開発用コンテナで:
+1. 公開する前に、公開できないものが履歴にないことを確かめる。`tests/fixtures/` は git 管理外。引き継ぎ文書などに、サーバの IP やホームのパスを書いたコミットを push していないか
+2. GitHub の Web で `kWat0M/DevView` の Settings → General → Repository name を `dew` にして「Rename」
+3. 同じ Settings の一番下(Danger Zone)の「Change repository visibility」で **Public** にする
+4. 開発用コンテナで、手元の push 先を新しい名前に変える(古い名前でも GitHub が転送するが、そろえておく)
 
    ```bash
-   mkdir -p /tmp/dew-releases && cd /tmp/dew-releases
-   git init -b main
-   cp ~/projects/DevView/{README.md,LICENSE,CHANGELOG.md} .
-   git add . && git commit -m "dew の配布用リポジトリ"
-   git remote add origin git@github.com:kWat0M/dew-releases.git
-   git push -u origin main
+   git remote set-url origin git@kWat0M_github:kWat0M/dew.git
    ```
+
+5. `kWat0M/dew` の「Releases」→「Draft a new release」で、既にある `v0.1.0` のタグを選び、`dist/dew-0.1.0-f15acdf-x86_64-linux.tar.gz` を載せる(本文は `CHANGELOG.md` の 0.1.0 の部分)
+6. `kWat0M/dew-releases` の Settings の Danger Zone で「Delete this repository」
+
+v0.1.0 の `dew update` は `kWat0M/dew-releases` を見るので、消したあとは「取得できない」と手で入れ替える方法を出す。0.1.0 を入れた人には、一度だけ「入れ方」の手順で入れ直してもらう(その版からは `dew update` が `kWat0M/dew` を見る)。
 
 ### リリースのたび
 
-1. ソースのリポジトリで、`CHANGELOG.md` にその版の変更点を書き、`Cargo.toml` の `version` を上げて、PR で `main` に入れる
+1. `CHANGELOG.md` にその版の変更点を書き、`Cargo.toml` の `version` を上げて、PR で `main` に入れる
 2. `main` で `scripts/release.sh` を実行する(1 の手順)
-3. ソースのリポジトリにタグを付けて push する(どのコミットから作ったかの記録)
+3. タグを付けて push する(`dew update` はこのタグ名で版を比べる)
 
    ```bash
-   git tag -a v0.1.0 -m "dew 0.1.0"
-   git push origin v0.1.0
+   git tag -a v0.2.0 -m "dew 0.2.0"
+   git push origin v0.2.0
    ```
 
-4. 公開リポジトリの README・LICENSE・CHANGELOG を新しいものに差し替えて push する(変わったときだけ)
-5. GitHub の Web で `kWat0M/dew-releases` を開き、「Releases」→「Draft a new release」
-   - 「Choose a tag」に `v0.1.0` と入れて「Create new tag」(公開リポジトリ側のタグ。`dew update` はこのタグ名で版を比べる)
-   - タイトルは `dew 0.1.0`、本文には `CHANGELOG.md` のその版の部分を貼る
-   - 「Attach binaries」に `dist/dew-0.1.0-<コミット>-x86_64-linux.tar.gz` をドラッグする
+4. GitHub の Web で `kWat0M/dew` を開き、「Releases」→「Draft a new release」
+   - 「Choose a tag」で 3 のタグを選ぶ
+   - タイトルは `dew 0.2.0`、本文には `CHANGELOG.md` のその版の部分を貼る
+   - 「Attach binaries」に `dist/dew-0.2.0-<コミット>-x86_64-linux.tar.gz` をドラッグする
    - 「Publish release」
-6. 友人には https://github.com/kWat0M/dew-releases/releases を伝える。すでに入れている人は `dew update` で入れ替わる
+5. 友人には https://github.com/kWat0M/dew/releases を伝える。すでに入れている人は `dew update` で入れ替わる
 
-`gh` にログインしていれば、5 は `gh release create v0.1.0 dist/dew-0.1.0-*-x86_64-linux.tar.gz --repo kWat0M/dew-releases --title "dew 0.1.0" --notes-file <本文のファイル>` でもできる。
+`gh` にログインしていれば、4 は `gh release create v0.2.0 dist/dew-0.2.0-*-x86_64-linux.tar.gz --repo kWat0M/dew --title "dew 0.2.0" --notes-file <本文のファイル>` でもできる。
