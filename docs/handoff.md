@@ -1,81 +1,112 @@
-# 引き継ぎ(2026-10-18 時点)
+# 引き継ぎ(2026-10-19 時点、ソースの公開後)
 
-次のセッションが、この文書だけで続きを始められるようにまとめる。仕様は `docs/spec.md`、判断の記録は `docs/decisions/` が正。
+次のセッションが、この文書だけで続きを始められるようにまとめる。仕様は `docs/spec.md`、判断の記録は `docs/decisions/`(ADR 0001〜0020)が正。迷ったら spec → ADR の順に見る。
 
 ## 1. 今どこにいるか
+
+- **フェーズ1〜4(spec 9 章)はすべて終わり、受け入れ基準(spec 11 章)は全部達成**。`main` に入っている
+- **v0.1.0 をリリースした**(2026-10-18)。ソースの `f15acdf`(PR #6)に `v0.1.0` のタグ
+- **ソースを公開し、リポジトリを1つにした**(2026-10-19、ADR 0020)
+  - 友人の意見(開発とリリースのリポジトリが分かれている違和感)を受けて、`kWat0M/DevView` を **`kWat0M/dew` に改名して Public** にし、バイナリだけの `kWat0M/dew-releases` は**削除済み**。手元の push 先も `git@kWat0M_github:kWat0M/dew.git` に変えてある
+  - `dew update` の既定の取得先、LICENSE・README の配布場所は `kWat0M/dew`(PR #7)
+  - **まだ `kWat0M/dew` に Release がない**。ユーザーはバイナリの生成と Release の作成をしていない(`v0.1.0` のタグだけある)。次のリリースで作る(3 章)
+  - 0.1.0 を入れた人の `dew update` は、なくなった dew-releases を見るので更新できない。一度だけ README の「入れ方」で入れ直してもらう(CHANGELOG の「未リリース」に書いた)
+- README を手直しした(PR #7): 入れ方の直後に「使う場所ごとの準備」(Docker は `docker run -p` → 毎回打たずに済む compose.yaml の書き方の順、リモートのサーバ)、`dew env` の使い方と戻し方。冒頭の4本の紹介動画は、ユーザーが GitHub の Web で MP4 を上げて README に入れた(`user-attachments` の URL。git には入れない)
+- 紹介動画は `scripts/demo/record.sh` で撮り直せる(5 章)
+- Home の不具合を直した(ブランチ `fix-dir-preview`、未マージ): 右カラムに中身を出しているディレクトリも監視し、ファイルができたらプレビューを読み直す(録画を始めてできた空の `dew-recordings/` が、MP4 ができても「空のディレクトリです」のままだった)
+- 最新のテスト結果(`fix-dir-preview`): web 単体 19件、E2E 137件(Chrome・Firefox・perf・timing)がすべて通る。Rust は変えていない(`ab76f8b` で 80件通過を確認)
 
 ### ブランチ
 
 | ブランチ | 状態 |
 |---|---|
-| `main` | フェーズ1〜3 が入っている(PR #4 で `phase-3` をマージ。`6a69af9`) |
-| `phase-4` | PR #5 でマージ済み(`05f218c`) |
-| `release-1` | `main` から切った。配布の準備(README、`scripts/release.sh`、版にコミット)。**手元だけで、push していない** |
+| `main` | 最新(`cfe8b54`、PR #7 と README への動画の追加)。直接コミットしない |
+| `fix-dir-preview` | プレビューの不具合の修正と、この文書の更新。push・PR はユーザーの判断 |
+| `handoff-0.1.0` | 手元だけ(push していない)。**サーバの IP とホームのパスが入っているので push しない**。中身はこの文書に取り込んだので消してよい |
+| `phase-*`・`release-1`・`public-repo`・`backup/*` | マージ済み・古い控え。消してよい(消すのはユーザーの判断) |
 
-- PR はユーザーが GitHub の Web で作ってマージしている(`gh` は未ログイン)。こちらは push までを行い、Web でのマージを頼む
-- `git push` と `git merge` は `.claude/settings.json` で確認が出る設定。ユーザーの許可を得てから行う
+- PR とマージは、ユーザーが GitHub の Web で行う(`gh` は未ログイン)。こちらは push まで。`git push` と `git merge` は `.claude/settings.json` で確認が出る。**push は毎回ユーザーの許可を得る**
+- **リポジトリは公開している**。サーバの IP・ホームのパス・個人の情報をコミットに書かない。push の前に `git log main..<ブランチ> -p | grep` などで確かめる
+- 作業を始めるときは `git switch main && git pull` してから、新しいブランチを切る
 
-### フェーズ4(精度・記録)の受け入れ基準(spec 11章)
+## 2. どこに何があるか
 
-| 基準 | 状態 | テスト |
-|---|---|---|
-| 1. 精度モードの cv2.imshow が送信元の配列と画素単位で一致する | 達成 | E2E(`phase4.spec.ts`、Chrome / Firefox) |
-| 2. 録画した MP4 が再生でき、長さが録画時間と ±1秒以内 | 達成(ずれは実測 -0.4〜+0.45 秒) | E2E |
-| 3. 直近30秒を巻き戻して再生できる | 達成 | E2E(40秒ほどかかる) |
-| 4. NVENC があれば使い、なければ libx264 | 達成(選び方) | 単体テスト(`crates/capture/src/encoder.rs`。偽の ffmpeg で両方の場合)。GPU のある環境での実物は未確認 |
-
-最新の結果(2026-10-18、`ef7c740`): Rust 73件、web 単体 19件、E2E 127件がすべて通る。全体の連続実行でも確かめた。開発ビルドの dew は画面(web/dist)を実行時に読むので、ビルドし直したら `dew stop` してから確かめる(古いサーバには警告が出る)
-
-## 2. フェーズ4で作ったもの
+全体の流れは spec 6 章。主な部品:
 
 | 場所 | 中身 |
 |---|---|
-| `crates/capture/src/encoder.rs` | h264_nvenc で1枚エンコードしてみて、使えれば NVENC、だめなら libx264(ADR 0014)。`dew doctor` にも出す |
-| `crates/capture/src/record.rs` | 録画。配っている H.264 を時刻付きの FLV にして ffmpeg の `-c copy` で MP4 へ。押した時刻に近いキーフレームから(ADR 0015)。キーフレームの間隔は1秒にした |
-| `crates/server/src/live.rs` | `POST /api/live/record`、精度モードの窓の一覧と `/ws/live/{id}`(PNG) |
-| `web/src/canvas/liveRewind.ts` | 一時停止・巻き戻し。ブラウザが直近30秒の H.264 を持ち、別の復号器でキーフレームから復号し直す(ADR 0016) |
-| `python/dew_hooks/` | 精度モードのフック(sitecustomize が cv2 の import を捕まえて imshow・waitKey を差し替え、PNG を Unix ソケットへ)。`crates/dew/src/hooks.rs` がバイナリに同梱して `~/.cache/dew/python/` へ書き出す(ADR 0017) |
-| `crates/capture/src/exact.rs` | 精度モードの受け口(窓の名前ごとに ID を 0x40000000 から振る、キーを waitKey へ返す) |
-| `tests/apps/exact_sample.py` | 乱数の画像を cv2.imshow で出し、送った画素をファイルに書く |
+| `crates/dew/` | CLI(`dew`、`dew run`・`env`・`stop`・`doctor`・`update` など)。`doctor.rs` は機能ごとに要るツールの表(ADR 0019)、`update.rs` は自己更新(ADR 0018)、`hooks.rs` は精度モードのフックの同梱、`build.rs` は版にコミットとビルド日を入れる |
+| `crates/server/` | HTTPS・WebSocket(axum)。`media.rs` はファイル、`live.rs` はライブ描画(セッション、映像、音、入力、録画、精度モード) |
+| `crates/media/` | ffmpeg / ffprobe の呼び出しとキャッシュ。`has_tool`・`MissingTool` でツールがないときの扱い(ADR 0019) |
+| `crates/capture/` | ライブ描画: `session.rs`(Xvfb・pulseaudio。pulseaudio がなければ音なし)、`monitor.rs`(X のウィンドウの監視・配置・一時的な窓)、`stream.rs`(ffmpeg で H.264)、`encoder.rs`(NVENC か libx264)、`audio.rs`・`pulse.rs`(音とウィンドウごとの振り分け)、`input.rs`(XTest)、`record.rs`(録画)、`exact.rs`(精度モードの受け口) |
+| `crates/protocol/` | 通信の型。ts-rs で `web/src/protocol/` に出力(手で書かない) |
+| `web/` | React + TypeScript。`canvas/` がキャンバス(`LiveWindow.tsx`・`LiveControls.tsx`・`liveRewind.ts`・`liveAudio.ts` がライブ)、`home/` が Home、`i18n/ja.ts` に UI の文言 |
+| `python/dew_hooks/` | 精度モードのフック(sitecustomize と cv2 の差し替え) |
+| `tests/e2e/` | Playwright。`lib/dew.ts` の fixture(`tools` オプションで外部ツールを隠せる)。時間に厳しいものは `phase3-perf.spec.ts`・`timing-perf.spec.ts` で最後に流す(ADR 0011) |
+| `tests/apps/` | テスト用の GUI アプリ(counter・popup・exact_sample など) |
+| `scripts/release.sh` | 配布物を作る(`dist/`) |
+| `scripts/demo/` | README の紹介動画を撮る: `record.sh`(素材を作って Playwright で録画し、`docs/demo/` に MP4 と GIF)、`make-media.sh`(ffmpeg で素材)、`apps/`(映すアプリ)。録画の操作は `tests/e2e/demo/`(設定は `tests/e2e/demo.config.ts`。ふつうの E2E には入らない) |
+| `docs/manual/` | 人が行う手順: `release.md`(リリース)、`remote-test.md`(リモートサーバでの確認)、`phase3-check.md`・`phase4-check.md`(見た目・操作感の確認) |
+| `README.md`・`LICENSE`・`CHANGELOG.md` | 利用者向けの説明・利用条件・変更履歴。配布物にも入れる |
 
-フェーズ3の作りは `docs/decisions/` の 0009〜0013 と、各ファイルの先頭のコメントを見る。
+## 3. 次にやること(候補。上から優先)
 
-## 3. 未解決・次にやること(上から優先)
+決まった作業はない。ユーザーに聞いてから始める。候補:
 
-仕様にあってまだ作っていない項目の一覧は `docs/spec.md` の 9.2(実装状況)にある。作ったら、その表から消す。
+0. **`kWat0M/dew` で最初の Release を出す**: 今は Release がなく、README の「入れ方」のリンク先が空。次の版(0.2.0。CHANGELOG の「未リリース」にソースの公開と README の変更、`fix-dir-preview` が入ったらその修正も書く)を下の手順で出すのが近道。0.1.0 の tar.gz を `v0.1.0` に載せ直すだけでもよい(`dist/` に残っている)
+1. **ユーザーの確認待ち**: Zen で2本並べたとき、フォーカス中の右側の動画が黒くなる問題への対策が効いたか
+2. **NVENC の実物の確認**: 開発用コンテナには GPU が渡っていない(`/dev/dxg` も `libcuda` もない)。compose.yaml に GPU の指定(`deploy.resources.reservations.devices` で `driver: nvidia`、`capabilities: [gpu, video]`)を足すかはユーザーの判断。足したら `dew doctor` で確かめる
+3. **spec 9.2 の残り**(未実装・一部だけ):
+   - 平文 HTTP + MSE へのフォールバック(2.3)
+   - `dew status` のタブ数・ライブウィンドウ数(3.1)
+   - `:` のコマンドパレット(5.3)
+   - キーマップと入力モードを抜けるキーの設定ファイル `~/.config/dew/config.toml`(5.5、5.6)。できたら `dew update` の取得先もここで変えられるようにする(今は環境変数 `DEW_UPDATE_REPO`)
+   - 再接続時のキャンバスの配置と再生位置の復元(7.7)
+   - 一時的な窓のうち、親からはみ出した部分を映す(7.9、ADR 0012)
+   - ライブ映像と音声の同期(3.3 L5)
+   - 「ログを見る」(7.11)
+4. **開発用コンテナの Firefox**: 作り直すと Playwright の Firefox(`~/.cache/ms-playwright`)が消える(何度も入れ直した: `cd tests/e2e && npx playwright install firefox`)。Dockerfile に足すかはユーザーの判断(Docker のファイルはユーザーが管理している)
+5. マージ済みのブランチの片付け(ユーザーの判断)
 
-0. **配布の準備**(`release-1`、2026-10-18): LICENSE(自由に使える、再配布と自作と称するのは禁止)、README、CHANGELOG(0.1.0)、`scripts/release.sh`(`dist/…-x86_64-linux.tar.gz`)、`dew update`(ADR 0018)、素の環境での案内、時間に厳しい E2E を最後に(ADR 0011 追記)。手順は `docs/manual/release.md`。次は: `release-1` を push → ユーザーが PR・マージ → `main` で `scripts/release.sh` → `v0.1.0` のタグを push → ユーザーが Web で Releases を作って tar.gz を載せる。ソースのリポジトリは非公開のまま、配布物はバイナリだけの公開リポジトリ `kWat0M/dew-releases` の Releases に置く(ユーザーが作る。`dew update` の既定もそこ。ADR 0018 追記)。`tests/fixtures/komasan.png` は著作権の都合で公開できない(git 管理外で、履歴にも入っていない)
-1. (済 2026-10-18)フェーズ4の終わりの報告と、ユーザーの確認を受けた修正(下部を動画と同じ並びに、録画は表示している映像を録る、ヒントの帯の出し分け、ライブへ戻るのは q、古いサーバの警告、精度モードの窓を閉じたら出し直さない、dew stop で1行だけ出して終わる)。人が確かめる手順は `docs/manual/phase4-check.md`。`phase-4` は push 済み
-2. GPU のある環境での NVENC の実物の確認(人が `dew doctor` と録画・巻き戻しで確かめる)
-3. 9.2 の残り: 親からはみ出した一時的な窓(ADR 0012)、ライブ映像と音声の同期、平文 HTTP のフォールバック、`dew update`、`:` のコマンドパレット、キーマップの設定ファイル、再接続時の配置の復元、「ログを見る」、LICENSE(文面は人が決める)
-4. (済 2026-10-18)負荷が高いときだけ落ちる E2E: 同期再生と巻き戻しのテストを `timing-perf.spec.ts`(timing-chrome・timing-firefox プロジェクト、perf の後)へ移した(ADR 0011 追記)。フェーズ3のライブウィンドウが 20 秒以内に出ない、もごくまれにあるが、移してからは起きていない
-5. 開発用コンテナを作り直すと Playwright の Firefox(`~/.cache/ms-playwright`)が消える(このセッションでも2回入れ直した)。Dockerfile に `npx playwright install firefox` を足すのはユーザーの判断(Docker のファイルはユーザーが手を入れている)
-6. `tests/fixtures/komasan.png` はユーザーが置いたファイル。消さない
-7. ユーザーの確認待ち: Zen で2本並べたとき、フォーカス中の右側の動画が黒くなる問題への対策が効いたか
+### 次のリリースの手順(`docs/manual/release.md` の 3)
+
+1. 新しいブランチで `CHANGELOG.md` に変更点を書き、`Cargo.toml` の `version` を上げ、PR で `main` に入れてもらう
+2. `main` で `scripts/release.sh`(コミットしていない変更があると止まる)。配布物で E2E を流すなら `DEW_BIN=<dist の dew> pnpm -C tests/e2e exec playwright test`
+3. タグ `v<版>` を付けて push(許可を得る。`dew update` はこのタグ名で版を比べる)
+4. ユーザーが Web で `kWat0M/dew` の Release を作り、tar.gz を載せる
+5. 前の版の配布物の dew で `dew update` を実行して、新しい版を見つけるか確かめる(0.1.0 は dew-releases を見るので使えない。最初の確認は 0.2.0 → 次の版で)
+
+README の紹介動画を撮り直すときは `scripts/demo/record.sh`(1本だけなら `record.sh 2-compare` のように名前の一部を渡す)。素材は `$DEW_DEMO_DIR`(既定 `/tmp/dew-demo`)の `my-project` に作る(Home のパンくずに出るので短いパスにしている)。出力の `docs/demo/*.mp4` を、ユーザーが GitHub の Web の編集画面へドラッグして README の URL を差し替える(git には入れない。`docs/demo/` は git 管理外)。録画にはカーソルとキーが映らないので、`tests/e2e/demo/lib.ts` がカーソル・押したキー・字幕・端末の様子を画面に重ねている
 
 ## 4. 作業の決まりと注意
 
-- **コミットはテストの結果を確かめてから**。このセッションでは、テストとコミットを `;` でつないで実行し、失敗したままコミットしたことが3回あった。検査とコミットは別のコマンドにする
+- **作業は開発用コンテナの中で行う**(`./dev.sh` で入る。HOME は `/home/dev`)。WSL の本体(コンテナの外)で Claude Code を起動すると、ffmpeg・Xvfb・Chrome がなくテストが流せない。そのときはユーザーにコンテナに入り直してもらう
+- **コミットはテストの結果を確かめてから**。テストとコミットを `;` でつながない
 - 確認のコマンド:
   ```bash
   cargo fmt && cargo clippy --all-targets -q -- -D warnings
   cargo nextest run
   pnpm -C web lint && pnpm -C web test
-  pnpm -C tests/e2e test          # web のビルドと cargo build も中でやる。Chrome と Firefox の両方
+  pnpm -C tests/e2e test          # web のビルドと cargo build も中でやる。全体で 2.5 分ほど
   ```
-- protocol の型を変えたら `cargo nextest run -p dew-protocol` で `web/src/protocol/` を作り直す(web の型検査の前に)
-- E2E は並列で流れるので、負荷が高いときだけ落ちるテストがある。直すときは `--repeat-each` や全体の連続実行で確かめる。E2E が失敗すると、`dew run` の出力とサーバのログの末尾がテストの出力に出る(`tests/e2e/lib/dew.ts`)
-- React の lint(React Compiler)は、描画中に ref を読む書き方を通さない。`useCallback` の依存に毎回作り直されるオブジェクトを入れると、動画の読み込みが毎回やり直される不具合になった(2回起きた)。変わらない関数だけを依存に入れる
-- 開発用コンテナの `/tmp/.X11-unix` は WSLg と共有していて Xvfb が使えない。Xvfb は抽象名前空間のソケットで待ち受けるので、つなぐ側もそこを見る(`session.rs` の `x_listening`、`monitor.rs` の `connect`)
+- protocol の型を変えたら `cargo nextest run -p dew-protocol` で `web/src/protocol/` を作り直す
+- 開発ビルドの dew は、画面(`web/dist`)を実行時にディスクから読む。dew は動いているサーバを使い回すので、ビルドし直したら `dew stop` してから確かめる(古いサーバには警告が出る)。ユーザーに確認を頼むときも、手順に `dew stop` を入れる
+- E2E は並列で流れるので、負荷が高いときだけ落ちるテストがまれにある。単独で流し直して確かめる(`--repeat-each` も使う)。E2E が失敗すると、`dew run` の出力とサーバのログの末尾がテストの出力に出る
+- React の lint(React Compiler)は、描画中に ref を読む・state の値を書き換える・effect の中で setState する書き方を通さない。ref は effect の中で書き換え、クラスのインスタンスは `useState(() => new …)` で持ち、メソッド経由で変える
+- 開発用コンテナの `/tmp/.X11-unix` は WSLg と共有していて Xvfb が使えない。Xvfb は抽象名前空間のソケットで待ち受けるので、つなぐ側もそこを見る(`session.rs`・`monitor.rs`)
 - pulseaudio は `--realtime=false --high-priority=false` を付けないと D-Bus を待って起動が遅れる
-- テストが読む口: `data-decoded`(ライブウィンドウの描いたフレーム数)、`data-input`(入力モード)、`data-recording`、`data-paused`・`data-rewind`(live / paused / playing)、`data-exact`、`window.dewTest.audioPeakHz()`(鳴らす設定の音だけを測る)、`data-testid="live-window"`
+- Tk などは、ウィンドウマネージャがいないと動かされた位置を知らない。dew がウィンドウを動かすときは合成の ConfigureNotify を送る(`monitor.rs` の `move_window`。ADR 0012 追記)
+- テストが読む口: `data-decoded`、`data-input`、`data-recording`、`data-paused`・`data-rewind`(live / paused / playing)、`data-exact`、`window.dewTest.audioPeakHz()`(鳴らす設定の音だけを測る)、`data-testid="live-window"`・`"hint-bar"`・`"tool-missing"`
 - E2E の dew は素材の複製(`dew.root`)の中で起動する。録画はそこの `dew-recordings/` にできる
 - 一時ファイルの削除で `rm -rf $HOME` のような変数を使うと安全装置で止まる。テストの HOME は新しいディレクトリを作って使う
+- `tests/fixtures/komasan.png` はユーザーが置いた、**著作権の都合で公開できないファイル**。消さない・公開しない(`tests/fixtures/` ごと git 管理外)
 
 ## 5. ユーザーについて
 
-- 文章・コメント・コミットメッセージは日本語。UI の文言は `web/src/i18n/ja.ts` に集める
+- 文章・コメント・コミットメッセージ・ADR は日本語。UI の文言は `web/src/i18n/ja.ts` に集める
 - vimmer だが、友人のために文字入力以外の全操作をマウスでもできるようにしたい。重ねて出す画面には閉じるボタンを付ける
 - Zen ブラウザを使う(Firefox 系)。E2E は Chrome と Firefox の両方で回す
-- 見た目は試しながら決めたい。仕様にない UI の判断は既定に近い案で進め、ADR に残して報告する
+- 見た目は試しながら決めたい。仕様にない UI の判断は既定に近い案で進め、ADR に残して報告する。実際に触って細かい直しを頼んでくることが多い(例: ライブへ戻るキーを q に、録画中は枠を赤く)
+- リモートのサーバ(VPN 経由)でも試す。接続先はユーザーに聞く(公開リポジトリなので、IP などはここに書かない)。証明書の警告は許可して使う方針
 - このプロジェクトでは、ファイルの編集やコマンドの実行に事前の確認は要らない(`CLAUDE.local.md`)。ただし、仕様の矛盾、受け入れ基準を満たせないと分かったとき、新しい外部依存(apt など)は止めて聞く。push とマージは許可を得てから
+- 配布: 友人に配る。ソースは `kWat0M/dew` で公開(ADR 0020)。開発用コンテナは作者の環境(dotfiles)用のままでよく、README に注記もしない(ユーザーの判断)。LICENSE は「自由に使える、再配布と自作と称するのは禁止、GitHub 上の閲覧・フォークは除く、AI(Claude Code)が作成し作者は内容に責任を負わない」。Issue のテンプレートや案内は作らない(Issues は既定のまま受け付ける)
