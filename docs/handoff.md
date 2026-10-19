@@ -1,6 +1,6 @@
-# 引き継ぎ(2026-10-19 時点、ソースの公開後)
+# 引き継ぎ(2026-10-19 時点、v0.1.1 のリリース後)
 
-次のセッションが、この文書だけで続きを始められるようにまとめる。仕様は `docs/spec.md`、判断の記録は `docs/decisions/`(ADR 0001〜0020)が正。迷ったら spec → ADR の順に見る。
+次のセッションが、この文書だけで続きを始められるようにまとめる。仕様は `docs/spec.md`、判断の記録は `docs/decisions/`(ADR 0001〜0021)が正。迷ったら spec → ADR の順に見る。
 
 ## 1. 今どこにいるか
 
@@ -9,21 +9,22 @@
 - **ソースを公開し、リポジトリを1つにした**(2026-10-19、ADR 0020)
   - 友人の意見(開発とリリースのリポジトリが分かれている違和感)を受けて、`kWat0M/DevView` を **`kWat0M/dew` に改名して Public** にし、バイナリだけの `kWat0M/dew-releases` は**削除済み**。手元の push 先も `git@kWat0M_github:kWat0M/dew.git` に変えてある
   - `dew update` の既定の取得先、LICENSE・README の配布場所は `kWat0M/dew`(PR #7)
-  - **まだ `kWat0M/dew` に Release がない**。ユーザーはバイナリの生成と Release の作成をしていない(`v0.1.0` のタグだけある)。次のリリースで作る(3 章)
+  - **v0.1.1 を `kWat0M/dew` の Releases に出した**(2026-10-19、`6c83a91`。プレビューの修正・ソースの公開・README)。`dew update` で「dew 0.1.1 は最新です」と出ることを確かめた
+  - **v0.1.2 を準備中**(ブランチ `root-default`): git 管理外で `$HOME` の外(コンテナの `/workspace` など)で起動したら、起動したディレクトリを閲覧範囲にする。起動時と `dew status` で範囲を出す(ADR 0021)。ユーザーがサーバ上の自分のコンテナで試したら、範囲が空の `/root` になって使えなかったため
   - 0.1.0 を入れた人の `dew update` は、なくなった dew-releases を見るので更新できない。一度だけ README の「入れ方」で入れ直してもらう(CHANGELOG の「未リリース」に書いた)
 - README を手直しした(PR #7): 入れ方の直後に「使う場所ごとの準備」(Docker は `docker run -p` → 毎回打たずに済む compose.yaml の書き方の順、リモートのサーバ)、`dew env` の使い方と戻し方。冒頭の4本の紹介動画は、ユーザーが GitHub の Web で MP4 を上げて README に入れた(`user-attachments` の URL。git には入れない)
 - 紹介動画は `scripts/demo/record.sh` で撮り直せる(5 章)
-- Home の不具合を直した(ブランチ `fix-dir-preview`、未マージ): 右カラムに中身を出しているディレクトリも監視し、ファイルができたらプレビューを読み直す(録画を始めてできた空の `dew-recordings/` が、MP4 ができても「空のディレクトリです」のままだった)
-- 最新のテスト結果(`fix-dir-preview`): web 単体 19件、E2E 137件(Chrome・Firefox・perf・timing)がすべて通る。Rust は変えていない(`ab76f8b` で 80件通過を確認)
+- Home の不具合を直した(v0.1.1): 右カラムに中身を出しているディレクトリも監視し、ファイルができたらプレビューを読み直す(録画を始めてできた空の `dew-recordings/` が、MP4 ができても「空のディレクトリです」のままだった)
+- 最新のテスト結果(`root-default`): Rust 82件、web 単体 19件、E2E 137件(Chrome・Firefox・perf・timing)がすべて通る
 
 ### ブランチ
 
 | ブランチ | 状態 |
 |---|---|
-| `main` | 最新(`cfe8b54`、PR #7 と README への動画の追加)。直接コミットしない |
-| `fix-dir-preview` | プレビューの不具合の修正と、この文書の更新。push・PR はユーザーの判断 |
+| `main` | 最新(`8e1c9ef`、PR #10 まで)。直接コミットしない |
+| `root-default` | 閲覧範囲の既定の変更と v0.1.2 の版上げ。push・PR はユーザーの判断。マージ後に v0.1.2 をリリースする |
 | `handoff-0.1.0` | 手元だけ(push していない)。**サーバの IP とホームのパスが入っているので push しない**。中身はこの文書に取り込んだので消してよい |
-| `phase-*`・`release-1`・`public-repo`・`backup/*` | マージ済み・古い控え。消してよい(消すのはユーザーの判断) |
+| `phase-*`・`release-1`・`public-repo`・`fix-dir-preview`・`readme-docker-*`・`backup/*` | マージ済み・古い控え。消してよい(消すのはユーザーの判断) |
 
 - PR とマージは、ユーザーが GitHub の Web で行う(`gh` は未ログイン)。こちらは push まで。`git push` と `git merge` は `.claude/settings.json` で確認が出る。**push は毎回ユーザーの許可を得る**
 - **リポジトリは公開している**。サーバの IP・ホームのパス・個人の情報をコミットに書かない。push の前に `git log main..<ブランチ> -p | grep` などで確かめる
@@ -53,7 +54,7 @@
 
 決まった作業はない。ユーザーに聞いてから始める。候補:
 
-0. **`kWat0M/dew` で最初の Release を出す**: v0.1.1(ソースの公開・README・プレビューの修正。CHANGELOG と Cargo.toml は 0.1.1 にした)を下の手順で出している途中。Release が出るまで、README の「入れ方」のリンク先が空。0.1.0 と同じ版で中身を変えて出すのは避けた(友人の手元の 0.1.0 と区別できなくなり、公開済みのタグの付け直しにもなるため)
+0. **v0.1.2 をリリースする**: `root-default` がマージされたら、下の手順で出す。ユーザーにサーバ上のコンテナで、`/workspace` などで起動して中身が見えるか確かめてもらう(README の Docker の手順も、まだ docker のある環境で通して確かめていない)。版の付け方: 0.1.0 と同じ版で中身を変えて出すのは避ける(友人の手元と区別できなくなり、公開済みのタグの付け直しにもなるため)
 1. **ユーザーの確認待ち**: Zen で2本並べたとき、フォーカス中の右側の動画が黒くなる問題への対策が効いたか
 2. **NVENC の実物の確認**: 開発用コンテナには GPU が渡っていない(`/dev/dxg` も `libcuda` もない)。compose.yaml に GPU の指定(`deploy.resources.reservations.devices` で `driver: nvidia`、`capabilities: [gpu, video]`)を足すかはユーザーの判断。足したら `dew doctor` で確かめる
 3. **spec 9.2 の残り**(未実装・一部だけ):
