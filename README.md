@@ -7,6 +7,31 @@ Linux(WSL2・リモートの Ubuntu サーバ・それらの中の Docker コン
 - 映したウィンドウは、録画(MP4)・直近 30 秒の巻き戻しができます
 - 1つのコマンド・1つのポートで動き、ブラウザ側に入れるものはありません
 
+## Demo
+「ファイルを開く(キーでもマウスでも)」
+
+
+https://github.com/user-attachments/assets/12732c45-21d9-4287-9c14-aeb2f5297b03
+
+  
+「並べて比べる」
+
+
+https://github.com/user-attachments/assets/d266629b-a2b2-4e3f-ac9e-76f96dab21d0
+
+
+「GUI のウィンドウを映す」
+
+
+https://github.com/user-attachments/assets/a046befa-161b-4637-9528-74e2aad027d7
+
+
+「録画と巻き戻し」
+
+
+https://github.com/user-attachments/assets/82736b2a-42cb-4993-b110-769ba91977d2
+
+
 ## 必要なもの
 
 見る側(Windows)は、Chrome / Edge / Firefox 系(Zen など)の最新版があれば十分です。
