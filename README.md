@@ -102,20 +102,57 @@ docker run -it -p 18765:8765 -e DEW_PUBLIC_HOST=localhost -e DEW_PUBLIC_PORT=187
 ```
 
 - `-p 18765:8765`: ホストの 18765 番を、コンテナの dew(8765 番)につなぐ
-- `-e DEW_PUBLIC_HOST`・`-e DEW_PUBLIC_PORT`: 端末に出す URL を、外(Windows)から開ける形にする。WSL2 の中の Docker なら `localhost` のまま。リモートのサーバの Docker なら、`localhost` をサーバの名前か IP アドレス(例: `DEW_PUBLIC_HOST=192.168.1.10`)に変える
-- いつも使っているイメージやオプションがあれば、それに `-p` と 2 つの `-e` を足します(`ubuntu:24.04 bash` の代わりに、そのイメージ名とコマンドを書く)
+- `-e DEW_PUBLIC_HOST`・`-e DEW_PUBLIC_PORT`: 端末に出す URL を、外(Windows)から開ける形にする。`DEW_PUBLIC_HOST` は、**Windows のブラウザから、Docker が動いているマシンを指す名前か IP アドレス**です(下の「DEW_PUBLIC_HOST の調べ方」)
+- `ubuntu:24.04` はイメージ名、最後の `bash` はコンテナの中で動かすコマンドです。いつも使っているイメージがあれば、その名前に置き換えます(下の「イメージ名の調べ方」)。`alpine` などの小さいイメージには bash がないことがあり、そのときは `sh` にします
 
-コンテナに入ったら、dew と、GUI のウィンドウを映す・音を出す・動画を変換するためのツールを入れて起動します(Ubuntu / Debian のイメージの場合。root で入っているので `sudo` は要りません)。
+**DEW_PUBLIC_HOST の調べ方**
+
+| Docker が動いている場所 | 入れる値 |
+|---|---|
+| 自分の PC の WSL2(Docker Desktop を含む) | `localhost` のまま |
+| リモートのサーバ | そのサーバに ssh でつなぐときの宛先(`ssh user@xxx` の `xxx`) |
+
+リモートのサーバの IP アドレスは、サーバの上で次のように調べられます。迷ったら、名前より IP アドレスのほうが確実です(Windows が名前を引けないことがあるため)。
 
 ```bash
-apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates ffmpeg xvfb pulseaudio
+hostname -I        # サーバの IP アドレスの一覧(1つ目が LAN の IP であることが多い)
+tailscale ip -4    # Tailscale などの VPN 経由でつないでいるなら、その IP
+```
+
+Windows から届くかは、PowerShell の `ping <名前か IP>` で確かめられます。dew を起動したあとなら、`Test-NetConnection <名前か IP> -Port 18765` が `True` になれば届いています。
+
+**イメージ名の調べ方**
+
+```bash
+docker images      # 手元にあるイメージの一覧。REPOSITORY と TAG を「:」でつないだもの(例: python:3.12)がイメージ名
+docker ps -a       # コンテナの一覧。IMAGE の列が、そのコンテナが使っているイメージ名
+docker compose images   # compose を使っているなら、そのサービスのイメージ名
+```
+
+compose で起動しているコンテナなら、`docker run` ではなく、下の「毎回打たずに済ませるには」の compose.yaml の書き方を使ってください。
+
+コンテナに入ったら、dew を入れます(Ubuntu / Debian のイメージの場合。root で入っているので `sudo` は要りません)。
+
+```bash
+apt-get update && apt-get install -y curl ca-certificates
 curl -fsSLO "$(curl -fsSL https://api.github.com/repos/kWat0M/dew/releases/latest | grep -o 'https://[^"]*x86_64-linux\.tar\.gz')"
 tar xzf dew-*-x86_64-linux.tar.gz
 cp dew-*-x86_64-linux/dew /usr/local/bin/
+```
+
+これだけで、ファイルの閲覧と、ブラウザで再生できる形式(MP4・PNG など)の再生ができます。GUI のウィンドウを映す・音を出す・動画を変換するなどを使うなら、ほかのツールも入れます(要らなければ入れなくてかまいません。どの機能に何が要るかは「必要なもの」の表と `dew doctor` で分かります)。
+
+```bash
+DEBIAN_FRONTEND=noninteractive apt-get install -y ffmpeg xvfb pulseaudio
+```
+
+起動して、端末に出た `https://<DEW_PUBLIC_HOST の値>:18765/?token=…` を Windows のブラウザで開きます。
+
+```bash
 dew
 ```
 
-端末に出た `https://localhost:18765/?token=…` を Windows のブラウザで開きます。ツールをイメージに入れておくなら、Dockerfile に次を足します。
+ツールをイメージに入れておくなら、Dockerfile に次を足します。
 
 ```dockerfile
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg xvfb pulseaudio \
