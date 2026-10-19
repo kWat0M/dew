@@ -91,6 +91,7 @@ export function Home(p: Props) {
   const [tree, setTree] = useState<Tree | null>(null);
   const [parent, setParent] = useState<Tree | null>(null);
   const [reload, setReload] = useState(0);
+  const [previewReload, setPreviewReload] = useState(0);
   const [selectedName, setSelectedName] = useState<string | null>(null);
 
   const [view, setView] = useState<View>('list');
@@ -165,28 +166,6 @@ export function Home(p: Props) {
     };
   }, [parentPath, reload]);
 
-  // 見ているディレクトリの変更を受け取る
-  useEffect(() => {
-    if (cwd) p.events.watch(parentPath ? [cwd, parentPath] : [cwd]);
-  }, [p.events, cwd, parentPath]);
-  useEffect(
-    () =>
-      p.events.subscribe((ev) => {
-        // 監視の登録が済んだら読み直す(登録までの変更と、再接続までの変更を拾う)
-        if (ev.type === 'watching') {
-          if (cwd && ev.dirs.includes(cwd)) setReload((n) => n + 1);
-          return;
-        }
-        if (ev.type !== 'dirChanged' || (ev.dir !== cwd && ev.dir !== parentPath)) return;
-        if (ev.dir === cwd) {
-          setChanged((s) => new Set(s).add(ev.name));
-          if (follow) followTarget.current = ev.name;
-        }
-        setReload((n) => n + 1);
-      }),
-    [p.events, cwd, parentPath, follow],
-  );
-
   const entries = useMemo(() => {
     if (!tree || tree.path !== cwd) return [];
     const f = filter.toLowerCase();
@@ -200,6 +179,34 @@ export function Home(p: Props) {
   const found = selectedName === null ? -1 : entries.findIndex((e) => e.name === selectedName);
   const selected = entries.length === 0 ? -1 : found >= 0 ? found : 0;
   const current = entries[selected];
+  /** 右カラムに中身を出しているディレクトリ */
+  const previewDir = cwd && current?.kind === 'dir' && current.readable ? join(cwd, current.name) : null;
+
+  // 見ているディレクトリの変更を受け取る。右カラムに中身を出しているディレクトリも見る
+  // (録画の開始でできた空の dew-recordings/ に、止めたときに MP4 ができても、プレビューが空のままだった)
+  useEffect(() => {
+    if (cwd) p.events.watch([cwd, parentPath, previewDir].filter((d): d is string => d !== null));
+  }, [p.events, cwd, parentPath, previewDir]);
+  useEffect(
+    () =>
+      p.events.subscribe((ev) => {
+        // 監視の登録が済んだら読み直す(登録までの変更と、再接続までの変更を拾う)
+        if (ev.type === 'watching') {
+          if (cwd && ev.dirs.includes(cwd)) setReload((n) => n + 1);
+          if (previewDir && ev.dirs.includes(previewDir)) setPreviewReload((n) => n + 1);
+          return;
+        }
+        if (ev.type !== 'dirChanged') return;
+        if (ev.dir === previewDir) setPreviewReload((n) => n + 1);
+        if (ev.dir !== cwd && ev.dir !== parentPath) return;
+        if (ev.dir === cwd) {
+          setChanged((s) => new Set(s).add(ev.name));
+          if (follow) followTarget.current = ev.name;
+        }
+        setReload((n) => n + 1);
+      }),
+    [p.events, cwd, parentPath, previewDir, follow],
+  );
 
   const select = (i: number) => {
     const e = entries[Math.max(0, Math.min(entries.length - 1, i))];
@@ -414,7 +421,7 @@ export function Home(p: Props) {
           onDoubleClick={(i) => enter(entries[i])}
           empty={tree ? ja.emptyDir : ja.loading}
         />
-        <Preview dir={cwd ?? ''} entry={current} showHidden={showHidden} />
+        <Preview dir={cwd ?? ''} entry={current} showHidden={showHidden} reload={previewReload} />
       </div>
       {p.hints && <HintBar items={ja.homeHints} onHide={p.onHideHints} />}
       <button type="button" className="fab" title={ja.toCanvas} onClick={p.onCanvas}>

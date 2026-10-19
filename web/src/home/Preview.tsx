@@ -9,7 +9,8 @@ import { ja } from '../i18n/ja';
 import { Icon } from '../icons';
 import { iconFor, Thumb } from './EntryList';
 
-export function Preview({ dir, entry, showHidden }: { dir: string; entry: Entry | undefined; showHidden: boolean }) {
+/** reload: ディレクトリの中身が変わったら増やす(読み直す) */
+export function Preview({ dir, entry, showHidden, reload }: { dir: string; entry: Entry | undefined; showHidden: boolean; reload?: number }) {
   const path = entry ? join(dir, entry.name) : null;
   const [probe, setProbe] = useState<{ path: string; probe: Probe } | null>(null);
   const [children, setChildren] = useState<{ path: string; tree: Tree } | null>(null);
@@ -25,7 +26,7 @@ export function Preview({ dir, entry, showHidden }: { dir: string; entry: Entry 
     return () => {
       alive = false;
     };
-  }, [entry, path]);
+  }, [entry, path, reload]);
 
   if (!entry || !path) return <div className="preview" data-testid="col-preview" />;
   const info = probe?.path === path ? probe.probe : null;
