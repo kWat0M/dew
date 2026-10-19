@@ -53,7 +53,7 @@
 
 決まった作業はない。ユーザーに聞いてから始める。候補:
 
-0. **`kWat0M/dew` で最初の Release を出す**: 今は Release がなく、README の「入れ方」のリンク先が空。次の版(0.2.0。CHANGELOG の「未リリース」にソースの公開と README の変更、`fix-dir-preview` が入ったらその修正も書く)を下の手順で出すのが近道。0.1.0 の tar.gz を `v0.1.0` に載せ直すだけでもよい(`dist/` に残っている)
+0. **`kWat0M/dew` で最初の Release を出す**: v0.1.1(ソースの公開・README・プレビューの修正。CHANGELOG と Cargo.toml は 0.1.1 にした)を下の手順で出している途中。Release が出るまで、README の「入れ方」のリンク先が空。0.1.0 と同じ版で中身を変えて出すのは避けた(友人の手元の 0.1.0 と区別できなくなり、公開済みのタグの付け直しにもなるため)
 1. **ユーザーの確認待ち**: Zen で2本並べたとき、フォーカス中の右側の動画が黒くなる問題への対策が効いたか
 2. **NVENC の実物の確認**: 開発用コンテナには GPU が渡っていない(`/dev/dxg` も `libcuda` もない)。compose.yaml に GPU の指定(`deploy.resources.reservations.devices` で `driver: nvidia`、`capabilities: [gpu, video]`)を足すかはユーザーの判断。足したら `dew doctor` で確かめる
 3. **spec 9.2 の残り**(未実装・一部だけ):
@@ -74,7 +74,7 @@
 2. `main` で `scripts/release.sh`(コミットしていない変更があると止まる)。配布物で E2E を流すなら `DEW_BIN=<dist の dew> pnpm -C tests/e2e exec playwright test`
 3. タグ `v<版>` を付けて push(許可を得る。`dew update` はこのタグ名で版を比べる)
 4. ユーザーが Web で `kWat0M/dew` の Release を作り、tar.gz を載せる
-5. 前の版の配布物の dew で `dew update` を実行して、新しい版を見つけるか確かめる(0.1.0 は dew-releases を見るので使えない。最初の確認は 0.2.0 → 次の版で)
+5. 前の版の配布物の dew で `dew update` を実行して、新しい版を見つけるか確かめる(0.1.0 は dew-releases を見るので使えない。最初の確認は 0.1.1 → 次の版で)
 
 README の紹介動画を撮り直すときは `scripts/demo/record.sh`(1本だけなら `record.sh 2-compare` のように名前の一部を渡す)。素材は `$DEW_DEMO_DIR`(既定 `/tmp/dew-demo`)の `my-project` に作る(Home のパンくずに出るので短いパスにしている)。出力の `docs/demo/*.mp4` を、ユーザーが GitHub の Web の編集画面へドラッグして README の URL を差し替える(git には入れない。`docs/demo/` は git 管理外)。録画にはカーソルとキーが映らないので、`tests/e2e/demo/lib.ts` がカーソル・押したキー・字幕・端末の様子を画面に重ねている
 
