@@ -50,6 +50,72 @@ dew doctor           # 使える機能と、足りないツールを確かめる
 
 `~/.local/bin` にパスが通っていない場合は、`~/.bashrc` に `export PATH="$HOME/.local/bin:$PATH"` を足してください。
 
+## 使う場所ごとの準備
+
+**「はじめて使う」の前に**、dew を動かす場所に合わせて次を済ませてください。
+
+| dew を動かす場所 | 準備 |
+|---|---|
+| WSL2 の中(Docker を使わない) | 不要。そのまま「はじめて使う」へ |
+| Docker コンテナの中 | 下の「Docker コンテナの中で使う」(ポートの公開が要ります) |
+| リモートのサーバ | 下の「リモートのサーバで使う」 |
+
+### Docker コンテナの中で使う
+
+コンテナの中の dew は 8765 番で待ち受けます。これをホストのポートとして公開し、端末に出す URL を外(Windows)から開ける形にするための環境変数を渡します。
+
+**compose.yaml を使う場合**(おすすめ)は、使っているサービスに次を足します。一度書けば、以降は `docker compose up -d` で起動するたびに有効になり、`docker run -p …` を毎回打つ必要はありません。
+
+```yaml
+services:
+  app:                                   # 使っているサービスの名前
+    ports:
+      - "18765:8765"                     # ホストの 18765 番 → コンテナの dew(8765 番)
+    environment:
+      DEW_PUBLIC_HOST: localhost         # Windows から開くときのホスト名。リモートのサーバならその名前か IP
+      DEW_PUBLIC_PORT: "18765"           # 上の ports の左側と同じ番号
+    volumes:
+      # ホストに入れた dew をコンテナから使う(イメージに入れなくてよい。dew update はホストで行う)
+      - ~/.local/bin/dew:/usr/local/bin/dew:ro
+```
+
+足したら、コンテナを作り直して(`docker compose up -d`)中に入り、そのまま `dew` を実行します。ポートの公開はコンテナを作るときにしか変えられないので、すでに動いているコンテナには `docker compose up -d` で作り直すまで効きません。
+
+GUI のウィンドウを映す・音を出す・動画を変換するには、コンテナの中にも `ffmpeg` などが要ります。Dockerfile に次を足します。
+
+```dockerfile
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg xvfb pulseaudio \
+ && rm -rf /var/lib/apt/lists/*
+```
+
+**compose.yaml を使わない場合**は、`docker run` に同じものを渡します。
+
+```bash
+docker run -p 18765:8765 -e DEW_PUBLIC_HOST=localhost -e DEW_PUBLIC_PORT=18765 \
+  -v ~/.local/bin/dew:/usr/local/bin/dew:ro …
+```
+
+- 複数のコンテナで使うときは、ホスト側のポート(18765 など)をコンテナごとに変えてください。トークンが違うので、ほかの人のコンテナは開けません
+- WSL2 の中の Docker なら、`DEW_PUBLIC_HOST` は `localhost` のままで Windows から開けます
+- dew の証明書はコンテナの中(`~/.local/share/dew/tls`)に作るので、コンテナを作り直すと証明書の警告がもう一度出ます。許可すればそのまま使えます
+
+### リモートのサーバで使う
+
+サーバの名前を Windows から引けないことが多いので、`~/.bashrc` に `export DEW_PUBLIC_HOST=<サーバの名前か IP>` を足しておくと確実です(端末に出る URL がその形になります)。
+
+サーバで `dew` を起動し、出た URL を開きます。開けないときは次を確かめてください。
+
+- URL のホスト名を Windows から引けるか。迷ったら `DEW_PUBLIC_HOST` に IP アドレスを入れる
+- ポートに届くか。Windows の PowerShell で `Test-NetConnection <サーバ> -Port 8765` が `True` になるか
+- 届かない(ファイアウォールで閉じている)場合は、ssh のポート転送を使います
+
+```powershell
+# Windows の PowerShell で
+ssh -L 8765:localhost:8765 <ユーザー>@<サーバ>
+```
+
+このときはサーバで `dew --bind 127.0.0.1` で起動し、`https://localhost:8765/?token=…` を開きます。
+
 ## はじめて使う
 
 ```bash
@@ -93,39 +159,12 @@ dew run python3 main.py
 - `dew run --exact python3 main.py` で **精度モード**: `cv2.imshow` に渡した画像を、圧縮せず画素どおりに表示します
 - 閉じるボタンは、デスクトップの × と同じくアプリに閉じるよう頼みます(止めるかはアプリが決めます)
 
-## Docker コンテナの中で使う
-
-コンテナの中に `dew` と `ffmpeg`(GUI を映すなら `xvfb`・`pulseaudio` も)を入れ、ポートを公開しておきます。コンテナの中の dew は 8765 番で待ち受けます。
-
-```bash
-docker run -p 18765:8765 -e DEW_PUBLIC_HOST=<サーバの名前か IP> -e DEW_PUBLIC_PORT=18765 …
-```
-
-`DEW_PUBLIC_HOST` と `DEW_PUBLIC_PORT` は、端末に出す URL を、外(Windows)から開ける形にするためのものです。複数のコンテナで使うときは、ホスト側のポート(18765 など)をコンテナごとに変えてください。トークンが違うので、ほかの人のコンテナは開けません。
-
-WSL2 の中なら、`https://localhost:<ポート>` でそのまま開けます。
-
-## リモートのサーバで使う
-
-サーバで `dew` を起動し、出た URL を開きます。開けないときは次を確かめてください。
-
-- URL のホスト名を Windows から引けるか。迷ったら `DEW_PUBLIC_HOST` に IP アドレスを入れる
-- ポートに届くか。Windows の PowerShell で `Test-NetConnection <サーバ> -Port 8765` が `True` になるか
-- 届かない(ファイアウォールで閉じている)場合は、ssh のポート転送を使います
-
-```powershell
-# Windows の PowerShell で
-ssh -L 8765:localhost:8765 <ユーザー>@<サーバ>
-```
-
-このときはサーバで `dew --bind 127.0.0.1` で起動し、`https://localhost:8765/?token=…` を開きます。
-
 ## 困ったとき
 
 | 症状 | 確かめること |
 |---|---|
 | ブラウザで「サイトが見つからない」 | URL のホスト名を Windows が引けていない。`DEW_PUBLIC_HOST` を IP にする |
-| 「接続が拒否されました」・タイムアウト | ポートに届いていない。上の「リモートのサーバで使う」を見る |
+| 「接続が拒否されました」・タイムアウト | ポートに届いていない。「リモートのサーバで使う」・「Docker コンテナの中で使う」を見る |
 | GUI のウィンドウが出ない | `dew doctor` で `Xvfb` と `pulseaudio` があるか |
 | dew を入れ替えたのに動きが変わらない | 前の dew のサーバが動いたまま。`dew stop` してから起動し直す |
 | そのほか | ログ: `~/.cache/dew/log/server.log` |
