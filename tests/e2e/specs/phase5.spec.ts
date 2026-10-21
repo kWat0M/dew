@@ -1,6 +1,7 @@
 // フェーズ5の受け入れ基準(docs/spec.md 11章)のうち、ブラウザで確かめるもの。
 // シェル連携と、端末に書き込むシーケンスは Rust のテスト(crates/dew/tests/phase5.rs)
 import { join } from 'node:path';
+import type { Page } from '@playwright/test';
 import { expect, start, test } from '../lib/dew';
 
 test.describe.configure({ timeout: 60_000 });
@@ -28,17 +29,27 @@ test('タブがないときの dew <ファイル> は、あとで開いたタブ
   await expect(page.getByTestId('player-window').filter({ hasText: 'h264_aac.mp4' })).toBeVisible();
 });
 
-// 基準10: 裏にあるタブに表示指示が届くと、タイトルの先頭に ● が付き、表に出すと消える
-test('裏のタブに表示指示が届くとタイトルに ● が付く', async ({ page, dew, context }) => {
+// 基準10: 裏にあるタブに表示指示が届くと、タイトルの先頭に ● が付き、表に出すと消える。
+// ヘッドレスのブラウザは、ほかのタブを前に出してもタブを裏にしないので、ページの見え方を差し替えて知らせる
+async function setHidden(page: Page, hidden: boolean) {
+  await page.evaluate((h) => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => h });
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (h ? 'hidden' : 'visible') });
+    document.dispatchEvent(new Event('visibilitychange'));
+  }, hidden);
+}
+
+test('裏のタブに表示指示が届くとタイトルに ● が付く', async ({ page, dew }) => {
   await start(page, dew);
   await expect(page).toHaveTitle('dew');
-  const other = await context.newPage();
-  await other.goto('about:blank');
-  await other.bringToFront();
-  await expect.poll(() => page.evaluate(() => document.visibilityState)).toBe('hidden');
+  await setHidden(page, true);
   dew.run([join(dew.root, 'h264_aac.mp4')]);
   await expect(page).toHaveTitle('● dew');
-  await page.bringToFront();
+  await setHidden(page, false);
   await expect(page).toHaveTitle('dew');
   await expect(page.getByTestId('player-window').filter({ hasText: 'h264_aac.mp4' })).toBeVisible();
+  // 表にあるときに届いても付けない
+  dew.run([join(dew.root, 'image.png')]);
+  await expect(page.getByTestId('player-window').filter({ hasText: 'image.png' })).toBeVisible();
+  await expect(page).toHaveTitle('dew');
 });

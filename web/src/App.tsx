@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api/http';
 import { Events } from './api/events';
+import { notificationAvailable, requestNotification, showNotification, UNSEEN_MARK } from './attention';
 import { canvasCommands, playCommands, quickPlayCommands, quickWindowCommands, windowCommands, windowHelp, Canvas, type CanvasRun, type NormalAction, type WindowAction, type Win } from './canvas/Canvas';
 import type { Command, Section } from './commands';
 import type { LiveWindow } from './protocol/LiveWindow';
@@ -79,6 +80,23 @@ export function App() {
   const [message, setMessage] = useState<string | null>(null);
   const nextId = useRef(1);
   const lastActive = useRef(0);
+  /** /ws/events が切れている(サーバ停止中。つなぎ直しを試み続ける) */
+  const [offline, setOffline] = useState(false);
+  /** 裏にあるときに表示指示が届いた(タイトルに ● を付ける) */
+  const [unseen, setUnseen] = useState(false);
+  const baseTitle = useRef(document.title);
+
+  useEffect(() => events.subscribeState((online) => setOffline(!online)), [events]);
+  useEffect(() => {
+    document.title = unseen ? UNSEEN_MARK + baseTitle.current : baseTitle.current;
+  }, [unseen]);
+  useEffect(() => {
+    const onVisible = () => {
+      if (!document.hidden) setUnseen(false);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
 
   useEffect(() => {
     events.start();
@@ -145,6 +163,10 @@ export function App() {
       events.subscribe((ev) => {
         if (ev.type === 'liveWindows') return onLiveWindows(ev.windows);
         if (ev.type !== 'open') return;
+        if (document.hidden) {
+          setUnseen(true);
+          if (settings.notify) showNotification(ja.notifyTitle, ev.path.split('/').pop() ?? ev.path);
+        }
         if (ev.kind === 'dir') {
           setHomeRequest({ path: ev.path, seq: seq.current++ });
           goHome();
@@ -152,7 +174,7 @@ export function App() {
           open([{ path: ev.path, media: ev.media }]);
         }
       }),
-    [events, open, goHome, onLiveWindows],
+    [events, open, goHome, onLiveWindows, settings.notify],
   );
 
   // 最初の操作で開始の表示を消す。以降は自動再生できる(7.6)。IME の状態も見る
@@ -231,8 +253,18 @@ export function App() {
           ...quickWindowCommands.map((d) => ({ key: d.key, label: d.label, run: () => runWindow(d.id) })),
           ...quickPlayCommands.map((d) => ({ key: d.key, label: d.label, run: () => runNormal(d.id) })),
         ];
+  const canNotify = notificationAvailable();
   const toggles = [
     { label: ja.showHints, checked: settings.hints, onChange: (v: boolean) => updateSettings({ hints: v }) },
+    {
+      label: canNotify ? ja.notifyOpen : ja.notifyOpen + ja.notifyUnavailable,
+      checked: canNotify && settings.notify,
+      disabled: !canNotify,
+      onChange: (v: boolean) => {
+        if (!v) return updateSettings({ notify: false });
+        void requestNotification().then((ok) => updateSettings({ notify: ok }));
+      },
+    },
     ...(screen === 'home'
       ? [
           { label: ja.followLatest, checked: follow, onChange: setFollow },
@@ -368,6 +400,11 @@ export function App() {
         >
           <p>{ja.shutdownConfirm}</p>
         </Dialog>
+      )}
+      {offline && !stopped && (
+        <div className="server-offline" data-testid="server-offline" role="status">
+          {ja.serverOffline}
+        </div>
       )}
       {stopped && (
         <div className="start-overlay stopped" data-testid="stopped">

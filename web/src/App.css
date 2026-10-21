@@ -55,3 +55,19 @@
   font: var(--md-sys-typescale-label-medium);
   z-index: 150;
 }
+
+/* サーバ停止中(再接続を試みている間)。画面の上に重ねて、操作は妨げない */
+.server-offline {
+  position: fixed;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container);
+  box-shadow: var(--md-sys-elevation-level2);
+  font: var(--md-sys-typescale-label-large);
+  pointer-events: none;
+  z-index: 110;
+}

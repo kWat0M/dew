@@ -8,9 +8,11 @@ export type Settings = {
   tabbar: 'top' | 'side';
   /** 同期再生中は全ウィンドウの音を出す(7.6) */
   syncAudio: boolean;
+  /** 裏にあるタブに表示指示が届いたら、ブラウザの通知を出す(14.2) */
+  notify: boolean;
 };
 
-const DEFAULTS: Settings = { hints: true, tabbar: 'top', syncAudio: false };
+const DEFAULTS: Settings = { hints: true, tabbar: 'top', syncAudio: false, notify: false };
 const KEY = 'dew.settings';
 
 function load(): Settings {
