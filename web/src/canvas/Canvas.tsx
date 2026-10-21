@@ -15,10 +15,12 @@ import { LiveAudioMix, useLiveSound } from './liveAudio';
 import { LiveWindow, type LiveApi, type LiveInfo } from './LiveWindow';
 import { Dialog } from '../ui/Dialog';
 import { PlayerWindow, type PlayerApi } from './PlayerWindow';
+import { DocumentWindow } from '../doc/DocumentWindow';
+import type { Events } from '../api/events';
 import { SyncGroup } from './sync';
 import './Canvas.css';
 
-/** キャンバスのウィンドウ。members があれば比較ウィンドウ */
+/** キャンバスのウィンドウ。members があれば比較ウィンドウ、media が markdown ならドキュメントウィンドウ */
 export type Win = { id: number; path: string; media: MediaKind; members?: Member[]; live?: LiveInfo };
 
 /** 再生のキー(選択中のウィンドウ、なければフォーカス中のウィンドウに効く) */
@@ -70,6 +72,11 @@ export const windowKeys: Record<string, WindowAction> = {
 for (let n = 1; n <= 9; n++) windowKeys[String(n)] = { do: 'focusN', n };
 
 const normalMap = new KeySequence(normal);
+
+/** ドキュメントウィンドウか(15.1) */
+export function isDocument(w: Win): boolean {
+  return !w.live && !w.members && w.media === 'markdown';
+}
 
 /** 操作パネルに出すキャンバスの操作(4.4) */
 export const playCommands: CommandDef<NormalAction>[] = [
@@ -149,6 +156,17 @@ type Props = {
   onToggleGlobalMute: () => void;
   /** 操作パネルから操作を実行するための入口 */
   runRef: Ref<CanvasRun>;
+  /** ドキュメントウィンドウが使う: ファイルの監視、閲覧範囲の起点、外部の画像を読み込むか */
+  events: Events;
+  root: string;
+  externalImages: boolean;
+  /** このウィンドウを入力モードにする(ドキュメントを開いた直後。seq を変えると同じウィンドウでもやり直す) */
+  inputRequest: { id: number; seq: number } | null;
+  /** ドキュメントのリンクから開く */
+  onOpenFiles: (files: { path: string; media: MediaKind }[]) => void;
+  onOpenDir: (dir: string) => void;
+  /** ドキュメントウィンドウの中で別の文書へ移った */
+  onPathChange: (id: number, path: string) => void;
 };
 
 export function Canvas(p: Props) {
@@ -185,6 +203,11 @@ export function Canvas(p: Props) {
   /** I の送信用の入力欄 */
   const [textBox, setTextBox] = useState<string | null>(null);
   const focusedLive = ws.find((w) => w.id === p.focused && w.live && !w.live.ended);
+  const focusedDoc = ws.find((w) => w.id === p.focused && isDocument(w));
+  /** 入力モードにできるのは、動いているライブウィンドウとドキュメントウィンドウ */
+  const inputTarget = focusedLive ?? focusedDoc;
+  /** ノーマルモードの文書で再生のキーを押したときの案内は1回だけ(15.3) */
+  const docHintShown = useRef(false);
   /** 巻き戻し中のライブウィンドウ(ヒントの帯の出し分けに使う) */
   const [rewinding, setRewinding] = useState<Set<number>>(new Set());
   const onRewind = useCallback(
@@ -203,7 +226,10 @@ export function Canvas(p: Props) {
     const H = ja.canvasHints;
     const w = ws.find((x) => x.id === p.focused);
     let own: [string, string][] = [];
-    if (w?.live) {
+    if (w && isDocument(w)) {
+      if (inputWindow === w.id) return H.docInput;
+      own = H.doc;
+    } else if (w?.live) {
       if (inputWindow === w.id) return H.input;
       own = w.live.exact ? H.exact : rewinding.has(w.id) ? H.rewind : H.live;
       if (w.live.recording) own = own.map(([k, l]) => [k, k === 'R' ? ja.hintRecordStop : l]);
@@ -213,7 +239,13 @@ export function Canvas(p: Props) {
     return [...own, ...H.common];
   };
   // フォーカスが移ったり、ウィンドウが終わったりしたら入力モードを抜ける
-  if (inputWindow !== null && focusedLive?.id !== inputWindow) setInputWindow(null);
+  if (inputWindow !== null && inputTarget?.id !== inputWindow) setInputWindow(null);
+  // ドキュメントを開いた直後は入力モードで始める(15.3)。フォーカスが移ったのを見てから入る
+  const [handledRequest, setHandledRequest] = useState<number | null>(null);
+  if (p.inputRequest && p.inputRequest.seq !== handledRequest && p.focused === p.inputRequest.id) {
+    setHandledRequest(p.inputRequest.seq);
+    setInputWindow(p.inputRequest.id);
+  }
   const exitInput = useCallback(() => setInputWindow(null), []);
   /** 音声のある動画のウィンドウ(全体のミュートボタンに「ミュートを解除」と出すかに使う) */
   const [withAudio, setWithAudio] = useState<Set<number>>(new Set());
@@ -344,8 +376,8 @@ export function Canvas(p: Props) {
       case 'sync': return setSynced((s) => !s);
       case 'globalMute': return p.onToggleGlobalMute();
       case 'input':
-        if (!focusedLive) return p.onMessage(ja.inputNeedsLive);
-        return setInputWindow(focusedLive.id);
+        if (!inputTarget) return p.onMessage(ja.inputNeedsLive);
+        return setInputWindow(inputTarget.id);
       case 'sendText':
         if (!focusedLive) return p.onMessage(ja.inputNeedsLive);
         return setTextBox('');
@@ -355,7 +387,14 @@ export function Canvas(p: Props) {
       case 'live': return targets().forEach((t) => (t as LiveApi).goLive?.());
       case 'compareMode': return focusedApi()?.cycleMode?.();
       case 'escape': return;
-      default: return runPlay(a);
+      default:
+        // ドキュメントには再生のキーが効かない。i で操作できることを1回だけ知らせる(15.3)
+        if (focusedDoc && !selected.size) {
+          if (!docHintShown.current) p.onMessage(ja.docInputHint);
+          docHintShown.current = true;
+          return;
+        }
+        return runPlay(a);
     }
   };
 
@@ -617,6 +656,28 @@ export function Canvas(p: Props) {
                 }}
                 onExitInput={exitInput}
                 api={register}
+              />
+            );
+          if (isDocument(w))
+            return (
+              <DocumentWindow
+                key={w.id}
+                {...frame}
+                id={w.id}
+                path={w.path}
+                root={p.root}
+                events={p.events}
+                inputMode={inputWindow === w.id}
+                externalImages={p.externalImages}
+                onToggleInput={() => {
+                  p.onFocus(w.id);
+                  setInputWindow((cur) => (cur === w.id ? null : w.id));
+                }}
+                onExitInput={exitInput}
+                onNavigate={(path) => p.onPathChange(w.id, path)}
+                onOpenFiles={p.onOpenFiles}
+                onOpenDir={p.onOpenDir}
+                onMessage={p.onMessage}
               />
             );
           return w.members ? (

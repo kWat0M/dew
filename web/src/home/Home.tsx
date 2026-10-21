@@ -51,6 +51,8 @@ export type DirRequest = { path: string; seq: number };
 
 type Props = {
   events: Events;
+  /** 閲覧範囲の起点(Markdown のプレビューで、範囲外の画像を出さない) */
+  root: string;
   active: boolean;
   /** 表示を求めるディレクトリ(初期位置、H、dew <ディレクトリ> の指示) */
   dir: DirRequest | null;
@@ -421,7 +423,7 @@ export function Home(p: Props) {
           onDoubleClick={(i) => enter(entries[i])}
           empty={tree ? ja.emptyDir : ja.loading}
         />
-        <Preview dir={cwd ?? ''} entry={current} showHidden={showHidden} reload={previewReload} />
+        <Preview dir={cwd ?? ''} root={p.root} entry={current} showHidden={showHidden} reload={previewReload} />
       </div>
       {p.hints && <HintBar items={ja.homeHints} onHide={p.onHideHints} />}
       <button type="button" className="fab" title={ja.toCanvas} onClick={p.onCanvas}>

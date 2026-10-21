@@ -99,6 +99,8 @@ MD
 {
   echo '# A の文書'
   echo
+  echo '[全要素の見本へ](all.md)'
+  echo
   for i in $(seq 1 60); do echo "A の段落 $i。スクロールの確認用の文です。"; echo; done
   echo '[B へ移動](docs/b.md)'
   echo

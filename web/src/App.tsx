@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api/http';
 import { Events } from './api/events';
 import { notificationAvailable, requestNotification, showNotification, UNSEEN_MARK } from './attention';
-import { canvasCommands, playCommands, quickPlayCommands, quickWindowCommands, windowCommands, windowHelp, Canvas, type CanvasRun, type NormalAction, type WindowAction, type Win } from './canvas/Canvas';
+import { canvasCommands, isDocument, playCommands, quickPlayCommands, quickWindowCommands, windowCommands, windowHelp, Canvas, type CanvasRun, type NormalAction, type WindowAction, type Win } from './canvas/Canvas';
 import type { Command, Section } from './commands';
 import type { LiveWindow } from './protocol/LiveWindow';
 import { useSettings } from './settings';
@@ -59,6 +59,11 @@ export function App() {
   }, []);
   /** Home の初期位置(最初に dew を起動したディレクトリ) */
   const [startDir, setStartDir] = useState<string | null>(null);
+  /** 閲覧範囲の起点(Markdown の範囲外の画像を出さないのに使う) */
+  const [root, setRoot] = useState('/');
+  /** ドキュメントを開いた直後に入力モードにするウィンドウ(15.3) */
+  const [inputRequest, setInputRequest] = useState<{ id: number; seq: number } | null>(null);
+  const inputSeq = useRef(0);
   /** Home に表示を求めるディレクトリ。seq を変えると同じ場所でも開き直す */
   const [homeRequest, setHomeRequest] = useState<DirRequest | null>(null);
   const seq = useRef(0);
@@ -73,6 +78,10 @@ export function App() {
   const [confirmStop, setConfirmStop] = useState(false);
   const [stopped, setStopped] = useState(false);
   const [settings, updateSettings] = useSettings();
+  const settingsRef = useRef(settings);
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
   // 隠しファイルの表示と最新ファイルへの追従。キーと操作パネルのチェックボックスで共有する
   const [showHidden, setShowHidden] = useState(false);
   const [follow, setFollow] = useState(false);
@@ -103,6 +112,7 @@ export function App() {
     api.info().then(
       (info) => {
         setStartDir(info.home);
+        setRoot(info.root);
         setHomeRequest((r) => r ?? { path: info.home, seq: seq.current++ });
       },
       (e: unknown) => setMessage(String(e)),
@@ -110,13 +120,26 @@ export function App() {
     return () => events.close();
   }, [events]);
 
-  const open = useCallback((files: Omit<Win, 'id'>[]) => {
-    const added = files.map((f) => ({ ...f, id: nextId.current++ }));
-    api.addHistory(files.map((f) => f.path));
-    setWindows((ws) => [...ws, ...added]);
-    setFocused(added.at(-1)!.id);
-    goCanvas();
-  }, [goCanvas]);
+  const windowsRef = useRef<Win[]>([]);
+  useEffect(() => {
+    windowsRef.current = windows;
+  }, [windows]);
+  const open = useCallback(
+    (files: Omit<Win, 'id'>[]) => {
+      api.addHistory(files.map((f) => f.path));
+      // 同じ文書がすでにあれば、新しく開かずにそのウィンドウへ(15.2)
+      const existing = (f: Omit<Win, 'id'>) => windowsRef.current.find((w) => f.media === 'markdown' && isDocument(w) && w.path === f.path);
+      const fresh = files.filter((f) => !existing(f));
+      const added = fresh.map((f) => ({ ...f, id: nextId.current++ }));
+      if (added.length) setWindows((ws) => [...ws, ...added]);
+      const lastFile = files.at(-1)!;
+      const target = existing(lastFile)?.id ?? added.at(-1)!.id;
+      setFocused(target);
+      if (lastFile.media === 'markdown' && settingsRef.current.documentAutoInput) setInputRequest({ id: target, seq: inputSeq.current++ });
+      goCanvas();
+    },
+    [goCanvas],
+  );
 
   // 比較ウィンドウ(F7)。1つのウィンドウに複数のファイルを入れる
   const openCompare = useCallback((files: Omit<Win, 'id'>[]) => {
@@ -256,6 +279,8 @@ export function App() {
   const canNotify = notificationAvailable();
   const toggles = [
     { label: ja.showHints, checked: settings.hints, onChange: (v: boolean) => updateSettings({ hints: v }) },
+    { label: ja.documentAutoInput, checked: settings.documentAutoInput, onChange: (v: boolean) => updateSettings({ documentAutoInput: v }) },
+    { label: ja.externalImages, checked: settings.externalImages, onChange: (v: boolean) => updateSettings({ externalImages: v }) },
     {
       label: canNotify ? ja.notifyOpen : ja.notifyOpen + ja.notifyUnavailable,
       checked: canNotify && settings.notify,
@@ -281,6 +306,16 @@ export function App() {
     ],
   });
 
+  /** ドキュメントのリンクから、ディレクトリを Home で開く */
+  const openDir = useCallback(
+    (dir: string) => {
+      setHomeRequest({ path: dir, seq: seq.current++ });
+      goHome();
+    },
+    [goHome],
+  );
+  const onPathChange = useCallback((id: number, path: string) => setWindows((ws) => ws.map((w) => (w.id === id && w.path !== path ? { ...w, path } : w))), []);
+
   const toInitial = useCallback(() => {
     if (startDir) setHomeRequest({ path: startDir, seq: seq.current++ });
   }, [startDir]);
@@ -292,6 +327,7 @@ export function App() {
       <div className="screen" hidden={screen !== 'home'}>
         <Home
           events={events}
+          root={root}
           active={started && screen === 'home' && !historyOpen}
           dir={homeRequest}
           liveCount={liveCount}
@@ -344,6 +380,13 @@ export function App() {
             toInitial();
             goHome();
           }}
+          events={events}
+          root={root}
+          externalImages={settings.externalImages}
+          inputRequest={inputRequest}
+          onOpenFiles={open}
+          onOpenDir={openDir}
+          onPathChange={onPathChange}
         />
       </div>
       {historyOpen && started && <HistoryWindow onOpen={open} onClose={() => setHistoryOpen(false)} onError={onError} />}

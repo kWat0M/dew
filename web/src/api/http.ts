@@ -3,6 +3,8 @@ import type { History } from '../protocol/History';
 import type { Info } from '../protocol/Info';
 import type { Probe } from '../protocol/Probe';
 import type { RecordResult } from '../protocol/RecordResult';
+import type { TextDoc } from '../protocol/TextDoc';
+import type { TextEncoding } from '../protocol/TextEncoding';
 import type { Tree } from '../protocol/Tree';
 
 /** API の失敗。message はサーバが返した日本語の説明 */
@@ -27,6 +29,8 @@ export const api = {
   tree: (path: string) => getJson<Tree>(`/api/tree?${q(path)}`),
   probe: (path: string) => getJson<Probe>(`/api/probe?${q(path)}`),
   history: () => getJson<History>('/api/history'),
+  /** UTF-8 にした文書。encoding を渡すと、その文字コードで読む(15.8) */
+  text: (path: string, encoding?: TextEncoding) => getJson<TextDoc>(`/api/text?${q(path)}${encoding ? `&encoding=${encoding}` : ''}`),
   /** ライブウィンドウの録画を始める・止める(L7)。止めたときは保存したファイルを返す */
   record: async (window: number, on: boolean): Promise<RecordResult> => {
     const res = await fetch('/api/live/record', {

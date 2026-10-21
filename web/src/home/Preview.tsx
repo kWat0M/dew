@@ -1,5 +1,5 @@
 // 右カラム: 選択中の項目のプレビューとメタ情報
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { api } from '../api/http';
 import type { Entry } from '../protocol/Entry';
 import type { Probe } from '../protocol/Probe';
@@ -9,8 +9,37 @@ import { ja } from '../i18n/ja';
 import { Icon } from '../icons';
 import { iconFor, Thumb } from './EntryList';
 
+// ドキュメントウィンドウと同じ描画のチャンク(最初に Markdown を選んだときに読み込む。15.6)
+const MarkdownView = lazy(() => import('../doc/MarkdownView'));
+
+/** Markdown のプレビューに描く行数(15.5) */
+const MARKDOWN_LINES = 200;
+
+/** Markdown の先頭を描いて出す。リンクなどの操作はしない */
+function MarkdownPreview({ path, root, mtime }: { path: string; root: string; mtime: number }) {
+  const [text, setText] = useState<{ path: string; text: string } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    api.text(path).then(
+      (d) => alive && setText({ path, text: d.large ? '' : d.text.split('\n').slice(0, MARKDOWN_LINES).join('\n') }),
+      () => {},
+    );
+    return () => {
+      alive = false;
+    };
+  }, [path, mtime]);
+  if (text?.path !== path) return <span className="muted">{ja.loading}</span>;
+  return (
+    <div className="preview-markdown" data-testid="markdown-preview">
+      <Suspense fallback={<span className="muted">{ja.loading}</span>}>
+        <MarkdownView text={text.text} path={path} root={root} externalImages={false} />
+      </Suspense>
+    </div>
+  );
+}
+
 /** reload: ディレクトリの中身が変わったら増やす(読み直す) */
-export function Preview({ dir, entry, showHidden, reload }: { dir: string; entry: Entry | undefined; showHidden: boolean; reload?: number }) {
+export function Preview({ dir, root, entry, showHidden, reload }: { dir: string; root: string; entry: Entry | undefined; showHidden: boolean; reload?: number }) {
   const path = entry ? join(dir, entry.name) : null;
   const [probe, setProbe] = useState<{ path: string; probe: Probe } | null>(null);
   const [children, setChildren] = useState<{ path: string; tree: Tree } | null>(null);
@@ -52,6 +81,8 @@ export function Preview({ dir, entry, showHidden, reload }: { dir: string; entry
               ))}
             </ul>
           )
+        ) : entry.media === 'markdown' ? (
+          <MarkdownPreview path={path} root={root} mtime={entry.mtime} />
         ) : entry.media === 'image' ? (
           // サムネイルを作れない(ffmpeg がない)ときは、元の画像をそのまま出す
           <Thumb src={api.thumbUrl(path, entry.mtime)} fallback={<img src={api.mediaUrl(path)} alt="" />} />

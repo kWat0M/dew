@@ -14,7 +14,8 @@ export class Events {
   private listeners = new Set<Listener>();
   private stateListeners = new Set<StateListener>();
   private online = true;
-  private dirs: string[] = [];
+  /** 見たいディレクトリ。Home とドキュメントウィンドウがそれぞれ指定し、合わせたものをサーバへ送る */
+  private owners = new Map<string, string[]>();
   private retry = RETRY_MIN_MS;
   private closed = false;
   private readonly url: string;
@@ -39,10 +40,15 @@ export class Events {
     return () => this.stateListeners.delete(f);
   }
 
-  /** 変更を知りたいディレクトリ(前回の指定を置き換える) */
-  watch(dirs: string[]) {
-    this.dirs = dirs;
-    this.send({ type: 'watch', dirs });
+  /** 変更を知りたいディレクトリ(同じ owner の前回の指定を置き換える。空なら取り消す) */
+  watch(dirs: string[], owner = 'home') {
+    if (dirs.length) this.owners.set(owner, dirs);
+    else this.owners.delete(owner);
+    this.send({ type: 'watch', dirs: this.dirs() });
+  }
+
+  private dirs(): string[] {
+    return [...new Set([...this.owners.values()].flat())];
   }
 
   /** ユーザーがこのタブを操作した(dew <ファイル> の送り先を決めるのに使う) */
@@ -65,7 +71,8 @@ export class Events {
     ws.onopen = () => {
       this.retry = RETRY_MIN_MS;
       this.setOnline(true);
-      if (this.dirs.length) this.send({ type: 'watch', dirs: this.dirs });
+      const dirs = this.dirs();
+      if (dirs.length) this.send({ type: 'watch', dirs });
     };
     ws.onmessage = (m) => {
       const ev = JSON.parse(m.data as string) as ServerEvent;

@@ -1,5 +1,5 @@
 // フェーズ6の受け入れ基準(docs/spec.md 11章): ドキュメントウィンドウと Markdown。文字コードの判定は Rust のテスト(crates/dew/tests/phase6.rs)
-import { appendFileSync, readdirSync, readFileSync } from 'node:fs';
+import { appendFileSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { Locator, Page } from '@playwright/test';
 import { copyMd, current, expect, start, test, type Dew } from '../lib/dew';
@@ -42,7 +42,7 @@ test('Markdown の各要素が描画される', async ({ page, dew }, info) => {
   await expect(body).not.toContainText('tags:');
   await expect(win.getByTestId('doc-frontmatter')).toContainText('title: 全要素の見本');
   // 見た目は人が確かめる(スクリーンショットをテスト結果に残す)
-  await info.attach('all.md', { body: await win.screenshot(), contentType: 'image/png' });
+  await info.attach('all.md', { body: await win.screenshot({ path: info.outputPath('all.png') }), contentType: 'image/png' });
 });
 
 // 基準2: javascript: のリンク、生の <script>、<img onerror> が実行されない
@@ -90,7 +90,9 @@ test('画像: 相対は表示、範囲外は出さず、外部はクリックま
 test('リンクヒントで移動し、H で元の位置へ戻る', async ({ page, dew }) => {
   copyMd(dew);
   await start(page, dew);
-  const win = await openDoc(page, dew, 'a.md');
+  await openDoc(page, dew, 'a.md');
+  // 移動すると窓の名前が変わるので、名前ではなく(1つだけの)ドキュメントウィンドウで探す
+  const win = page.getByTestId('document-window');
   const link = win.getByRole('link', { name: 'B へ移動' });
   // 開いた直後から入力モードなので、d で半画面ずつ下がる
   await expect(async () => {
@@ -222,6 +224,42 @@ test('同じ文書は2つ目を開かずにフォーカスする', async ({ page
   dew.run([join(dew.root, 'md', 'all.md')]);
   await expect(page.getByTestId('document-window')).toHaveCount(2);
   await expect(docWindow(page, 'all.md')).toHaveAttribute('data-focused', 'true');
+});
+
+// 15.4: ファイルが削除されたら、最後の内容を残して「削除されました」と出す
+test('削除された文書は最後の内容を残す', async ({ page, dew }) => {
+  const dir = copyMd(dew);
+  await start(page, dew);
+  const win = await openDoc(page, dew, 'all.md');
+  rmSync(join(dir, 'all.md'));
+  await expect(win.getByTestId('doc-status')).toContainText('削除されました');
+  await expect(win.getByTestId('doc-body').locator('h1')).toHaveText('全要素の見本');
+});
+
+// 15.8: 文字コードは手で切り替えられる
+test('文字コードを手で切り替える', async ({ page, dew }) => {
+  copyMd(dew);
+  await start(page, dew);
+  const win = await openDoc(page, dew, 'sjis.md');
+  await win.getByTestId('doc-encoding').click();
+  await page.getByRole('menuitemradio', { name: 'UTF-8' }).click();
+  await expect(win.getByTestId('doc-encoding')).toHaveText('UTF-8');
+  await expect(win.getByTestId('doc-body')).not.toContainText('日本語の見出し');
+  await win.getByTestId('doc-encoding').click();
+  await page.getByRole('menuitemradio', { name: /Shift_JIS/ }).click();
+  await expect(win.getByTestId('doc-body').locator('h1')).toHaveText('日本語の見出し');
+});
+
+// 15.5: Home のプレビューに Markdown の先頭を描く
+test('Home のプレビューに Markdown を描く', async ({ page, dew }) => {
+  copyMd(dew);
+  await start(page, dew);
+  await current(page).getByRole('option', { name: 'md' }).click();
+  await page.keyboard.press('l');
+  await current(page).getByRole('option', { name: 'all.md' }).click();
+  const preview = page.getByTestId('markdown-preview');
+  await expect(preview.locator('h1')).toHaveText('全要素の見本');
+  await expect(preview.locator('table')).toBeVisible();
 });
 
 // 基準9: ビルド結果の初期チャンクに react-markdown と katex が含まれない(15.6)
