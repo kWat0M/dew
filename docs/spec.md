@@ -632,6 +632,7 @@ Rust だけ(Leptos 等)でも書けるが、(1) 動画のデコードと描画�
 | 音声 | pulseaudio、pulseaudio-utils | 音声キャプチャの開発 |
 | OpenGL | libgl1-mesa-dri、mesa-utils | OpenGL アプリの表示確認 |
 | テスト用アプリ | python3、python3-opencv(GUI 付き)、python3-matplotlib、python3-tk、python3-pygame(すべて apt) | プログラム無改変の確認 |
+| シェル連携 | zsh(bash は元から入っている) | `dew activate` を bash と zsh の両方で確かめる(13章) |
 | E2E | google-chrome-stable、fonts-noto-cjk(Playwright はプロジェクトの devDependencies で入れる)、Playwright の Firefox(`playwright install firefox`) | ブラウザでの自動確認 |
 | エディタ | rust-analyzer、vtsls(mason)、Rust / TypeScript / TSX ほかの treesitter パーサー | 補完・定義ジャンプ |
 
