@@ -166,9 +166,11 @@ impl Live {
 pub(crate) async fn session(State(app): State<Arc<App>>) -> Result<Json<LiveSession>, ApiError> {
     let mut live = app.live.lock().await;
     if live.is_none() {
-        let s = Session::start(&app.cache_dir.join("live"))
+        // 前回の仮想ディスプレイ番号が空いていれば使い直す(activate 中のシェルの DISPLAY が無効にならないように。13.6)
+        let s = Session::start(&app.cache_dir.join("live"), app.store.display())
             .await
             .map_err(|e| ApiError::Internal(format!("{e:#}")))?;
+        app.store.set_display(s.display);
         // NVENC が使えるかを先に確かめておく(最初のウィンドウの取り込みを待たせないように。ADR 0014)
         let _ = tokio::task::spawn_blocking(Encoder::current).await;
         let (tx, rx) = mpsc::unbounded_channel();

@@ -217,6 +217,7 @@ dew は裏で動き続けるので、端末はすぐ使えます。端末を閉�
 | `dew <ファイル>` | そのファイルを開いているブラウザに表示する |
 | `dew url` / `dew status` | URL と状態をもう一度出す |
 | `dew stop` | 止める |
+| `dew rotate-token` | URL のトークンを作り直す(開いているタブは切れる) |
 | `dew doctor` | 必要なものがそろっているか確かめる |
 | `dew update` | 新しい版があれば取得して入れ替える(上の Releases から) |
 
@@ -230,6 +231,16 @@ dew は裏で動き続けるので、端末はすぐ使えます。端末を閉�
 
 変えるには、`dew stop` してから `dew --root <ディレクトリ>` で起動し直します(`dew --root /` でコンテナ全体)。
 
+トークンは `~/.local/share/dew/` に保存するので、`dew stop` して起動し直しても URL は変わりません。開いたままのタブは、サーバが止まっている間「サーバ停止中」と出し、起動し直すと自動でつながり直します。ブラウザのタブを固定(ピン留め)して置いておくと便利です。
+
+### ブラウザのタブがないとき
+
+タブがないときに `dew <ファイル>` を実行すると、端末に「ブラウザのタブがありません」とそのファイルを開く URL が出ます。2分以内にどこかで dew のタブを開けば、そのファイルが開きます。
+
+- **WezTerm**: `dew setup-wezterm` が出す設定を `wezterm.lua` に足すと、タブがないときに Windows のブラウザが自動で開きます(任意。`dew url --open` でも開けます)。tmux の中では `~/.tmux.conf` に `set -g allow-passthrough on` が要ります
+- **yazi**: yazi から dew で開く設定の例は `dew doctor --help` にあります
+- `~/.config/dew/config.toml` に `open_fallback_clipboard = true` と書くと、URL を端末のクリップボードにもコピーします(OSC 52 に対応した端末で)
+
 ## GUI のウィンドウを映す
 
 ```bash
@@ -238,9 +249,25 @@ dew run python3 main.py
 
 `main.py` が開いたウィンドウが、ブラウザのキャンバスに出ます。プログラムは変えなくてかまいません。dew が仮想ディスプレイと音声を用意して、そちらに出させるので、WSLg や X サーバ、画面のないサーバやコンテナでもそのまま映ります。
 
+### シェルごと映す(dew activate)
+
+毎回 `dew run` を付けるのが面倒なら、シェルを dew に向けます。最初に1回だけ、シェル連携を入れます(bash と zsh)。
+
+```bash
+dew setup-shell      # ~/.bashrc か ~/.zshrc に1行足す(確認が出ます)。足したら端末を開き直す
+```
+
+```bash
+dew activate         # プロンプトの先頭に (dew) が付く
+python3 main.py      # dew run を付けなくても、ブラウザに映る
+dew deactivate       # 元に戻す(DISPLAY などが activate の前の値に戻る)
+```
+
+activate 中のシェルがある間は、dew は自動で止まりません。starship を使っているときは、プロンプトの代わりに starship の設定で表示できます(`dew shell-init --help`)。
+
 ### シェルごと映す(dew env)
 
-毎回 `dew run` を付けるのが面倒なら、シェルの設定を dew に向けます。
+シェル連携を入れずに済ませたいときは、`dew env` を使います。
 
 ```bash
 eval "$(dew env)"

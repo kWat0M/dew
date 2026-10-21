@@ -91,14 +91,18 @@ impl Instance {
 
     /// `dir` で dew を実行する(失敗してもよい)
     pub fn try_dew_in(&self, dir: &Path, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_dew"))
-            .current_dir(dir)
-            .args(args)
-            .env_clear()
+        let mut cmd = self.command(env!("CARGO_BIN_EXE_dew"));
+        cmd.current_dir(dir).args(args).output().unwrap()
+    }
+
+    /// このインスタンスの HOME と PATH で `program` を動かす用意をする(開発コンテナの環境変数は持ち込まない)。
+    /// PATH の先頭に dew を置くので、シェルからも `dew` で呼べる
+    pub fn command(&self, program: impl AsRef<std::ffi::OsStr>) -> Command {
+        let mut cmd = Command::new(program);
+        cmd.env_clear()
             .env("HOME", self.home.path())
-            .env("PATH", self.path())
-            .output()
-            .unwrap()
+            .env("PATH", format!("{}:{}", dew_dir().display(), self.path()));
+        cmd
     }
 
     /// ~/.cache/dew/server.json(起動中のサーバのポートとトークン)
@@ -150,13 +154,22 @@ impl Instance {
 
 impl Drop for Instance {
     fn drop(&mut self) {
+        // activate 中のシェルが残っていても確認せずに止める
         let _ = Command::new(env!("CARGO_BIN_EXE_dew"))
-            .arg("stop")
+            .args(["stop", "--force"])
             .env_clear()
             .env("HOME", self.home.path())
             .env("PATH", self.path())
             .output();
     }
+}
+
+/// テスト用にビルドした dew の置き場所
+pub fn dew_dir() -> PathBuf {
+    Path::new(env!("CARGO_BIN_EXE_dew"))
+        .parent()
+        .unwrap()
+        .to_owned()
 }
 
 /// 自己署名証明書を受け入れ、リダイレクトは追わないクライアント

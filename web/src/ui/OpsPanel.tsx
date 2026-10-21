@@ -6,7 +6,7 @@ import type { Settings } from '../settings';
 import './OpsPanel.css';
 
 /** 設定のチェックボックス。キーで変えたときも同じ状態を示す */
-export type Toggle = { label: string; checked: boolean; onChange: (v: boolean) => void };
+export type Toggle = { label: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean };
 
 type Props = {
   /** 画面下のヒントの帯を覆わないよう、その分だけ下をあける */
@@ -46,7 +46,7 @@ export function OpsPanel(p: Props) {
           <h3>{ja.settings}</h3>
           {p.toggles.map((t) => (
             <label key={t.label} className="ops-switch">
-              <input type="checkbox" checked={t.checked} onChange={(e) => t.onChange(e.target.checked)} />
+              <input type="checkbox" checked={t.checked} disabled={t.disabled} onChange={(e) => t.onChange(e.target.checked)} />
               {t.label}
             </label>
           ))}

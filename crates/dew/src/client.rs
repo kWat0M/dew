@@ -2,7 +2,9 @@
 
 use std::time::Duration;
 
-use dew_protocol::{Info, LiveSession, OpenRequest, OpenResponse};
+use dew_protocol::{
+    Info, LiveSession, OpenRequest, OpenResponse, RotateTokenResponse, ShellCount, ShellRequest,
+};
 use reqwest::blocking::Client;
 
 use crate::state::ServerFile;
@@ -94,6 +96,38 @@ impl Api {
             anyhow::bail!("ライブ描画を始められません: {}", msg.trim());
         }
         Ok(res.json()?)
+    }
+
+    /// activate / deactivate したシェルを登録する・取り消す(13.6)
+    pub fn shell(&self, pid: u32, active: bool) -> anyhow::Result<()> {
+        self.client
+            .post(format!("{}/api/shell", self.base))
+            .bearer_auth(&self.token)
+            .json(&ShellRequest { pid, active })
+            .send()?
+            .error_for_status()?;
+        Ok(())
+    }
+
+    /// activate 中のシェルの数
+    pub fn shells(&self) -> anyhow::Result<u32> {
+        let res = self
+            .client
+            .get(format!("{}/api/shells", self.base))
+            .bearer_auth(&self.token)
+            .send()?
+            .error_for_status()?;
+        Ok(res.json::<ShellCount>()?.count)
+    }
+
+    pub fn rotate_token(&self) -> anyhow::Result<String> {
+        let res = self
+            .client
+            .post(format!("{}/api/rotate-token", self.base))
+            .bearer_auth(&self.token)
+            .send()?
+            .error_for_status()?;
+        Ok(res.json::<RotateTokenResponse>()?.token)
     }
 
     pub fn shutdown(&self) -> anyhow::Result<()> {

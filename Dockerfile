@@ -247,6 +247,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-numpy python3-opencv python3-matplotlib python3-tk python3-pygame \
  && rm -rf /var/lib/apt/lists/*
 
+# --- [6-4b] シェル連携のテスト: dew activate を bash と zsh の両方で確かめる（フェーズ5）---
+# rc ファイルへの dew shell-init の追記はしない（利用者が自分で行う。ADR 0022）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    zsh \
+ && rm -rf /var/lib/apt/lists/*
+
 # --- [6-5] E2E: Google Chrome（Playwright の channel: 'chrome' で使う）---
 # Playwright 同梱の Chromium は H.264 / AAC を再生できないため、Google Chrome を入れる。
 # 日本語 UI のスクリーンショットが文字化けしないよう、日本語フォントも入れる

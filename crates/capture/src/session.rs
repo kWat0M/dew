@@ -66,9 +66,10 @@ fn zombie(pid: u32) -> bool {
 
 impl Session {
     /// 仮想ディスプレイと音声サーバを起動する。`dir` に音声サーバのソケットなどを置く。
+    /// 仮想ディスプレイは `prefer`(前回の番号)が空いていればそれを使う。
     /// 音声サーバ(pulseaudio)がない・起動できないときは、映像だけのセッションにする
-    pub async fn start(dir: &Path) -> anyhow::Result<Self> {
-        let (number, xvfb) = start_xvfb().await?;
+    pub async fn start(dir: &Path, prefer: Option<u32>) -> anyhow::Result<Self> {
+        let (number, xvfb) = start_xvfb(prefer).await?;
         let pulse = match start_pulse(dir).await {
             Ok((socket, cli, child)) => Some(Pulse { socket, cli, child }),
             Err(e) => {
@@ -110,9 +111,13 @@ impl Session {
     pub const UNSET: &[&str] = &["WAYLAND_DISPLAY"];
 }
 
-/// `:100` から順に空いている番号で Xvfb を起動する(複数ユーザー・複数コンテナで重ならないように。2.5)
-async fn start_xvfb() -> anyhow::Result<(u32, Child)> {
-    for n in FIRST_DISPLAY..=LAST_DISPLAY {
+/// `prefer` を試し、だめなら `:100` から順に空いている番号で Xvfb を起動する(複数ユーザー・複数コンテナで重ならないように。2.5)
+async fn start_xvfb(prefer: Option<u32>) -> anyhow::Result<(u32, Child)> {
+    let candidates = prefer
+        .filter(|n| (FIRST_DISPLAY..=LAST_DISPLAY).contains(n))
+        .into_iter()
+        .chain(FIRST_DISPLAY..=LAST_DISPLAY);
+    for n in candidates {
         if in_use(n) {
             continue;
         }

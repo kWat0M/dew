@@ -43,6 +43,11 @@ pub fn home() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("/"))
 }
 
+/// 起動し直しても変えない値(トークン、TLS 証明書など)の置き場所
+pub fn data_dir() -> PathBuf {
+    home().join(".local/share/dew")
+}
+
 pub fn cache_dir() -> PathBuf {
     home().join(".cache/dew")
 }
