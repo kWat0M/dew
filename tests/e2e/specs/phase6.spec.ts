@@ -2,7 +2,7 @@
 import { appendFileSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { Locator, Page } from '@playwright/test';
-import { copyMd, current, expect, start, test, type Dew } from '../lib/dew';
+import { copyMd, current, expect, selected, start, test, type Dew } from '../lib/dew';
 
 test.describe.configure({ timeout: 60_000 });
 
@@ -224,6 +224,90 @@ test('同じ文書は2つ目を開かずにフォーカスする', async ({ page
   dew.run([join(dew.root, 'md', 'all.md')]);
   await expect(page.getByTestId('document-window')).toHaveCount(2);
   await expect(docWindow(page, 'all.md')).toHaveAttribute('data-focused', 'true');
+});
+
+/** ヒントを出し、指定したリンク(data-href)のヒントの文字を打つ */
+async function pickHint(page: Page, win: Locator, key: 'f' | 'F', href: string) {
+  await page.keyboard.press(key);
+  const hint = win.getByTestId('link-hint').and(win.locator(`[data-href="${href}"]`));
+  await expect(hint).toBeVisible();
+  for (const ch of (await hint.textContent())!) await page.keyboard.press(ch);
+}
+
+// ディレクトリへのリンクで Home へ移ったら、すぐに Home のキーが効く(文書の入力モードがキーを横取りしない)
+test('ディレクトリのリンクで Home へ移ると、すぐにキーが効く', async ({ page, dew }) => {
+  copyMd(dew);
+  await start(page, dew);
+  const win = await openDoc(page, dew, 'docs/b.md');
+  await expect(win).toHaveAttribute('data-input', 'true');
+  await pickHint(page, win, 'f', '..');
+  await expect(current(page).getByRole('option', { name: 'a.md' })).toBeVisible();
+  const before = await selected(page);
+  await page.keyboard.press('j');
+  await expect.poll(() => selected(page)).not.toBe(before);
+  // キャンバスへ戻ると、文書はまた入力モード
+  await page.keyboard.press('Tab');
+  await expect(win).toHaveAttribute('data-input', 'true');
+});
+
+// 入力モードは q でも、ヒントは Backspace でも閉じる
+test('q で入力モードを抜け、Backspace でヒントを閉じる', async ({ page, dew }) => {
+  copyMd(dew);
+  await start(page, dew);
+  const win = await openDoc(page, dew, 'all.md');
+  await page.keyboard.press('f');
+  await expect(win.getByTestId('link-hint').first()).toBeVisible();
+  await page.keyboard.press('Backspace');
+  await expect(win.getByTestId('link-hint')).toHaveCount(0);
+  await expect(win).toHaveAttribute('data-input', 'true');
+  await page.keyboard.press('q');
+  await expect(win).toHaveAttribute('data-input', 'false');
+});
+
+// f で選んだ画像は同じウィンドウに出し、H で文書へ戻る。F なら新しいウィンドウで開く
+test('f の画像はウィンドウの中に出し、H で戻る。F は新しいウィンドウ', async ({ page, dew }) => {
+  copyMd(dew);
+  await start(page, dew);
+  await openDoc(page, dew, 'a.md');
+  const win = page.getByTestId('document-window');
+  const link = win.getByRole('link', { name: '画像を見る' });
+  await expect(async () => {
+    await page.keyboard.press('d');
+    await expect(link).toBeInViewport({ timeout: 200 });
+  }).toPass();
+  const before = await scrollTop(win);
+  await pickHint(page, win, 'f', 'img/pic.png');
+  await expect.poll(() => win.getByTestId('doc-image').evaluate((i: HTMLImageElement) => i.naturalWidth)).toBe(640);
+  await expect(win.getByTestId('window-title')).toContainText('pic.png');
+  await expect(page.getByTestId('document-window')).toHaveCount(1);
+  await page.keyboard.press('H');
+  await expect(win.getByTestId('doc-body').locator('h1')).toHaveText('A の文書');
+  await expect.poll(() => scrollTop(win)).toBe(before);
+  await pickHint(page, win, 'F', 'img/pic.png');
+  await expect(page.getByTestId('player-window').filter({ hasText: 'pic.png' })).toBeVisible();
+});
+
+// コードブロックのコピーボタン。クリックでも、f のヒントでもコピーする
+test('コードブロックをボタンと f でコピーする', async ({ page, dew, context, browserName }) => {
+  if (browserName === 'chromium') await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  copyMd(dew);
+  await start(page, dew);
+  const win = await openDoc(page, dew, 'all.md');
+  const buttons = win.getByTestId('code-copy');
+  await expect(buttons).toHaveCount(2);
+  const clipboard = () => page.evaluate(() => navigator.clipboard.readText());
+  await buttons.first().click();
+  await expect(page.getByRole('status').filter({ hasText: 'コードをコピーしました' })).toBeVisible();
+  if (browserName === 'chromium') await expect.poll(clipboard).toContain('def hello(name: str)');
+  // f のヒントでも選べる(マウスで押したので入力モードに入り直す)
+  await page.keyboard.press('i');
+  await buttons.last().scrollIntoViewIfNeeded();
+  await page.keyboard.press('f');
+  const hint = win.getByTestId('link-hint').and(win.locator(':not([data-href])')).last();
+  await expect(hint).toBeVisible();
+  for (const ch of (await hint.textContent())!) await page.keyboard.press(ch);
+  if (browserName === 'chromium') await expect.poll(clipboard).toContain('println!');
+  else await expect(page.getByRole('status').filter({ hasText: 'コードをコピーしました' })).toBeVisible();
 });
 
 // 15.4: ファイルが削除されたら、最後の内容を残して「削除されました」と出す

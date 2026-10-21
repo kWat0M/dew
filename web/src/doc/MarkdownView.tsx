@@ -1,5 +1,5 @@
 // Markdown の描画(17.1)。react-markdown・KaTeX・色分けはこのチャンクにだけ入れ、最初に開いたときに読み込む(15.6)
-import { memo, useState } from 'react';
+import { memo, useRef, useState, type ReactNode } from 'react';
 import Markdown, { type Components } from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeKatex from 'rehype-katex';
@@ -11,6 +11,7 @@ import remarkMath from 'remark-math';
 import 'katex/dist/katex.min.css';
 import { api } from '../api/http';
 import { ja } from '../i18n/ja';
+import { Icon } from '../icons';
 import { classifyImage, classifyLink, urlTransform, type Link } from './links';
 import './markdown.css';
 
@@ -52,7 +53,34 @@ type Props = {
   externalImages: boolean;
   /** リンクを押した。ない(プレビュー)ときは、リンクを押しても何もしない */
   onLink?: (link: Link, newWindow: boolean) => void;
+  /** コードブロックのコピーボタンを押した。ない(プレビュー)ときはボタンを出さない */
+  onCopyCode?: (text: string) => void;
 };
+
+/** コードブロック。右上のボタンで中身をコピーする(f のヒントでも選べる) */
+function CodeBlock({ children, onCopy }: { children: ReactNode; onCopy?: (text: string) => void }) {
+  const pre = useRef<HTMLPreElement>(null);
+  return (
+    <div className="md-code">
+      <pre ref={pre} className="md-wide">
+        {children}
+      </pre>
+      {onCopy && (
+        <button
+          type="button"
+          className="icon-button small md-code-copy"
+          data-testid="code-copy"
+          data-hint="copy"
+          title={ja.copyCode}
+          aria-label={ja.copyCode}
+          onClick={() => onCopy(pre.current?.textContent ?? '')}
+        >
+          <Icon name="copy" size={18} />
+        </button>
+      )}
+    </div>
+  );
+}
 
 /** 外部の画像: 既定では読み込まず、クリックで読み込む(追跡やオフライン時の待ちを避ける。17.2) */
 function ExternalImage({ url, host, alt }: { url: string; host: string; alt: string }) {
@@ -65,7 +93,7 @@ function ExternalImage({ url, host, alt }: { url: string; host: string; alt: str
   );
 }
 
-function MarkdownViewInner({ text, path, root, externalImages, onLink }: Props) {
+function MarkdownViewInner({ text, path, root, externalImages, onLink, onCopyCode }: Props) {
   const { meta, body } = splitFrontmatter(text);
   const components: Components = {
     a: ({ href, children }) => {
@@ -119,7 +147,7 @@ function MarkdownViewInner({ text, path, root, externalImages, onLink }: Props) 
         <table>{children}</table>
       </div>
     ),
-    pre: ({ children }) => <pre className="md-wide">{children}</pre>,
+    pre: ({ children }) => <CodeBlock onCopy={onCopyCode}>{children}</CodeBlock>,
   };
   return (
     <>

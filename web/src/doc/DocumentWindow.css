@@ -160,3 +160,22 @@
   background: var(--md-sys-color-secondary-container);
   color: var(--md-sys-color-on-secondary-container);
 }
+
+/* f で選んだ画像(H で文書へ戻る)。ウィンドウに収まるように出す */
+.doc-image {
+  display: grid;
+  place-items: center;
+  min-height: 100cqh;
+  padding: 8px;
+  box-sizing: border-box;
+}
+
+.doc-image img {
+  max-width: 100%;
+  max-height: calc(100cqh - 16px);
+  object-fit: contain;
+}
+
+.doc-scroll.image::after {
+  display: none;
+}

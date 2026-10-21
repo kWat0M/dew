@@ -80,23 +80,24 @@ export const docKeys: Record<string, DocAction> = {
   '+': { do: 'scale', dir: 1 },
   '-': { do: 'scale', dir: -1 },
   '=': { do: 'scale', dir: 0 },
-  Escape: { do: 'escape' },
+  Escape: { do: 'escape' }, q: { do: 'exit' },
   'C-]': { do: 'exit' },
 };
 const docMap = new KeySequence(docKeys);
 
 /** ヒントで選んだリンクをどうするか: 開く / dew の新しいウィンドウで開く / URL をコピー */
 type HintMode = 'open' | 'window' | 'copy';
+/** ヒントの対象: リンク(href あり)か、コードブロックのコピーボタン */
 type Hint = {
   label: string;
-  href: string;
-  el: HTMLAnchorElement;
+  href?: string;
+  el: HTMLElement;
   x: number;
   y: number;
 };
 
-/** ウィンドウ内の履歴(H / L)。スクロール位置も覚える */
-type Visit = { path: string; scroll: number };
+/** ウィンドウ内の履歴(H / L)。スクロール位置も覚える。image なら文書ではなく画像を出す(f で選んだ画像の気軽なプレビュー) */
+type Visit = { path: string; scroll: number; image?: boolean };
 
 /** n 個のヒントの文字。全部同じ長さにして、打ち終わりを分かりやすくする */
 export function hintLabels(n: number): string[] {
@@ -150,6 +151,7 @@ export function DocumentWindow({
     index: 0,
   });
   const path = visits.list[visits.index]!.path;
+  const isImage = visits.list[visits.index]!.image === true;
   const [loaded, setLoaded] = useState<{ path: string; doc: TextDoc } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deleted, setDeleted] = useState(false);
@@ -184,6 +186,7 @@ export function DocumentWindow({
 
   const encoding = encodings[path];
   useEffect(() => {
+    if (isImage) return;
     let alive = true;
     api.text(path, encoding).then(
       (doc) => {
@@ -202,7 +205,7 @@ export function DocumentWindow({
     return () => {
       alive = false;
     };
-  }, [path, encoding, reload]);
+  }, [path, encoding, reload, isImage]);
 
   // ファイルの変更を監視する(F4 の仕組み)。変わったら、スクロール位置を保ったまま読み直す
   useEffect(() => {
@@ -264,12 +267,12 @@ export function DocumentWindow({
   }
 
   /** ウィンドウ内で別の文書へ(今の位置を覚えて、履歴に積む) */
-  const navigate = (to: string, hash?: string) => {
+  const navigate = (to: string, hash?: string, image?: boolean) => {
     const scroll = scroller.current?.scrollTop ?? 0;
     setVisits((v) => {
       const list = v.list.slice(0, v.index + 1);
       list[v.index] = { ...list[v.index]!, scroll };
-      return { list: [...list, { path: to, scroll: 0 }], index: list.length };
+      return { list: [...list, { path: to, scroll: 0, image }], index: list.length };
     });
     pending.current = { scroll: 0, hash };
     matches.current = [];
@@ -288,14 +291,15 @@ export function DocumentWindow({
     });
   };
 
-  const copy = (text: string) =>
+  const copy = (text: string, done = ja.copied(text)) =>
     void navigator.clipboard?.writeText(text).then(
-      () => onMessage(ja.copied(text)),
+      () => onMessage(done),
       () => onMessage(ja.copyFailed),
     );
+  const copyCode = useStable((text: string) => copy(text, ja.codeCopied));
 
-  /** dew で開く: ディレクトリなら Home、ファイルならキャンバスの新しいウィンドウ */
-  const openPath = async (target: string) => {
+  /** dew で開く: ディレクトリなら Home、画像はこのウィンドウの中(newWindow なら新しいウィンドウ)、そのほかはキャンバスの新しいウィンドウ */
+  const openPath = async (target: string, newWindow: boolean) => {
     try {
       await api.tree(target);
       return onOpenDir(target);
@@ -306,6 +310,7 @@ export function DocumentWindow({
       const entry = (await api.tree(dirname(target))).entries.find((e) => e.name === basename(target));
       if (!entry) return onMessage(`${basename(target)}: ${ja.notFound}`);
       if (entry.media === 'other') return onMessage(ja.cannotOpenKind(entry.name));
+      if (entry.media === 'image' && !newWindow) return navigate(target, undefined, true);
       onOpenFiles([{ path: target, media: entry.media }]);
     } catch (e) {
       onMessage(String(e instanceof Error ? e.message : e));
@@ -323,7 +328,7 @@ export function DocumentWindow({
         if (newWindow) return onOpenFiles([{ path: link.target, media: 'markdown' }]);
         return navigate(link.target, link.hash);
       case 'path':
-        return void openPath(link.target);
+        return void openPath(link.target, newWindow);
       case 'none':
         return;
     }
@@ -335,7 +340,7 @@ export function DocumentWindow({
     const b = body();
     if (!s || !b) return;
     const box = s.getBoundingClientRect();
-    const links = [...b.querySelectorAll<HTMLAnchorElement>('a[data-href]')].filter((a) => {
+    const links = [...b.querySelectorAll<HTMLElement>('a[data-href], [data-hint="copy"]')].filter((a) => {
       const r = a.getBoundingClientRect();
       return r.width > 0 && r.bottom > box.top && r.top < box.bottom && r.right > box.left && r.left < box.right;
     });
@@ -348,7 +353,7 @@ export function DocumentWindow({
         const r = el.getBoundingClientRect();
         return {
           label: labels[i]!,
-          href: el.dataset.href!,
+          href: el.dataset.href,
           el,
           x: r.left - box.left + s.offsetLeft,
           y: r.top - box.top + s.offsetTop,
@@ -359,6 +364,8 @@ export function DocumentWindow({
 
   const pickHint = (h: Hint, mode: HintMode) => {
     setHints(null);
+    // コードブロックのコピーボタンは、どのヒントで選んでもコピーする
+    if (h.href === undefined) return h.el.click();
     const link = classifyLink(path, h.href);
     if (mode === 'copy') return copy(link.kind === 'markdown' || link.kind === 'path' ? link.target : h.href);
     follow(link, mode === 'window');
@@ -483,7 +490,7 @@ export function DocumentWindow({
     if (hints) {
       // ヒントを出している間は、ほかのキーを受け付けない(17.4)
       e.preventDefault();
-      if (k.key === 'Escape') return setHints(null);
+      if (k.key === 'Escape' || k.key === 'Backspace') return setHints(null);
       if (!HINT_CHARS.includes(k.key)) return;
       const typed = hints.typed + k.key;
       const left = hints.items.filter((h) => h.label.startsWith(typed));
@@ -520,7 +527,7 @@ export function DocumentWindow({
       {...frame}
       testId="document-window"
       name={name}
-      icon="article"
+      icon={isImage ? 'image' : 'article'}
       sectionRef={section}
       titleButtons={
         <button
@@ -537,8 +544,12 @@ export function DocumentWindow({
     >
       <Popover.Root open={toc !== null} onOpenChange={(o) => !o && setToc(null)}>
         <Popover.Anchor asChild>
-          <div ref={scroller} className="doc-scroll" data-testid="doc-scroll" style={{ ['--doc-scale' as string]: SCALES[scale] }}>
-            {error && !doc ? (
+          <div ref={scroller} className={`doc-scroll${isImage ? ' image' : ''}`} data-testid="doc-scroll" style={{ ['--doc-scale' as string]: SCALES[scale] }}>
+            {isImage ? (
+              <div className="doc-image">
+                <img src={api.mediaUrl(path)} alt={name} data-testid="doc-image" />
+              </div>
+            ) : error && !doc ? (
               <div className="doc-message" role="alert">
                 {error}
               </div>
@@ -550,7 +561,7 @@ export function DocumentWindow({
               </div>
             ) : (
               <Suspense fallback={<div className="doc-message">{ja.loading}</div>}>
-                <MarkdownView text={doc.text} path={path} root={root} externalImages={externalImages} onLink={follow} />
+                <MarkdownView text={doc.text} path={path} root={root} externalImages={externalImages} onLink={follow} onCopyCode={copyCode} />
               </Suspense>
             )}
           </div>

@@ -82,3 +82,14 @@
 .hljs-emphasis { font-style: italic; }
 .hljs-strong { font-weight: 700; }
 .md-body del { text-decoration: line-through; }
+
+/* コードブロックのコピーボタン(右上) */
+.md-body .md-code { position: relative; margin: 0 0 12px; }
+.md-body .md-code pre { margin: 0; }
+.md-code-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface-variant);
+}

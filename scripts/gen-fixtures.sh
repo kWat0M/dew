@@ -104,7 +104,7 @@ MD
   for i in $(seq 1 60); do echo "A の段落 $i。スクロールの確認用の文です。"; echo; done
   echo '[B へ移動](docs/b.md)'
   echo
-  echo '[画像を新しいウィンドウで](img/pic.png)'
+  echo '[画像を見る](img/pic.png)'
   echo
   for i in $(seq 61 80); do echo "A の段落 $i。"; echo; done
 } > "$out/md/a.md"

@@ -638,6 +638,7 @@ export function Canvas(p: Props) {
           const register = (x: PlayerApi | null) => {
             apis.current.set(w.id, x);
           };
+          // 入力モードはキャンバスが表に出ている間だけ効かせる(Home や履歴へ移ったとき、キーを横取りしないように)
           if (w.live)
             return (
               <LiveWindow
@@ -648,7 +649,7 @@ export function Canvas(p: Props) {
                 audible={audible}
                 onMessage={p.onMessage}
                 onRewind={(on) => onRewind(w.id, on)}
-                inputMode={inputWindow === w.id}
+                inputMode={inputWindow === w.id && p.active}
                 onToggleInput={() => {
                   // タイトルバーのボタンはフォーカスの操作を止めるので、ここでフォーカスする
                   p.onFocus(w.id);
@@ -667,7 +668,7 @@ export function Canvas(p: Props) {
                 path={w.path}
                 root={p.root}
                 events={p.events}
-                inputMode={inputWindow === w.id}
+                inputMode={inputWindow === w.id && p.active}
                 externalImages={p.externalImages}
                 onToggleInput={() => {
                   p.onFocus(w.id);
