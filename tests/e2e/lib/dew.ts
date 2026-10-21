@@ -21,6 +21,10 @@ export type Dew = {
   run: (args: string[]) => string;
   /** `dew run <コマンド>` を前面で動かし続ける(テストの終わりに止める)。extraEnv はアプリに渡す環境変数 */
   spawnRun: (command: string[], extraEnv?: Record<string, string>) => ChildProcess;
+  /** サーバを止める(dew stop) */
+  stop: () => void;
+  /** 止めたサーバを、最初と同じ引数で起動し直す */
+  restart: () => void;
 };
 
 /** テスト用アプリ(tests/apps) */
@@ -60,7 +64,8 @@ export const test = base.extend<Options & { dew: Dew }>({
     const env = { HOME: home, PATH: tools ? toolsPath(tools) : (process.env.PATH ?? ''), DEW_PUBLIC_HOST: '127.0.0.1' };
     const port = await freePort();
     // 起動したディレクトリは Home の初期位置と録画の保存先(dew-recordings/)になるので、素材の複製の中で起動する
-    execFileSync(bin, ['--port', String(port), '--root', root], { env, cwd: root });
+    const launch = () => execFileSync(bin, ['--port', String(port), '--root', root], { env, cwd: root });
+    launch();
     const server = JSON.parse(readFileSync(join(home, '.cache/dew/server.json'), 'utf8'));
     const run = (args: string[]) => execFileSync(bin, args, { env, encoding: 'utf8' });
     const children: ChildProcess[] = [];
@@ -75,7 +80,8 @@ export const test = base.extend<Options & { dew: Dew }>({
       children.push(child);
       return child;
     };
-    await use({ url: `https://127.0.0.1:${server.port}/?token=${server.token}`, root, run, spawnRun });
+    const stop = () => execFileSync(bin, ['stop', '--force'], { env });
+    await use({ url: `https://127.0.0.1:${server.port}/?token=${server.token}`, root, run, spawnRun, stop, restart: launch });
     for (const c of children) c.kill('SIGTERM');
     // 失敗したら、原因を追えるよう dew run の出力とサーバのログを出す
     if (testInfo.status !== testInfo.expectedStatus) {
@@ -87,7 +93,7 @@ export const test = base.extend<Options & { dew: Dew }>({
       }
       console.log(`---- ${testInfo.title}: dew run ----\n${runOutput.join('')}\n---- server.log ----\n${log.split('\n').slice(-30).join('\n')}`);
     }
-    execFileSync(bin, ['stop'], { env });
+    stop();
     rmSync(home, { recursive: true, force: true });
     rmSync(root, { recursive: true, force: true });
   },

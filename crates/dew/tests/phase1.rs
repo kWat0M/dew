@@ -39,9 +39,10 @@ fn second_dew_reuses_running_server() {
     assert_eq!(first["pid"], second["pid"], "サーバを起動し直さない");
     assert_eq!(first["port"], second["port"]);
     assert_eq!(first["token"], second["token"]);
-    // 接続中のタブがないときは URL を表示する(8.2)
-    let url = find_url(&out.stdout).expect("URL が表示される");
-    assert!(url.contains(&format!("?token={}", a.token())));
+    // 接続中のタブがないときは、そのファイルを開く URL を標準エラー出力に表示する(8.2、14.4)
+    let url = find_url(&out.stderr).expect("URL が表示される");
+    assert!(url.contains("/open?path="), "{url}");
+    assert!(url.contains(&format!("token={}", a.token())), "{url}");
 }
 
 // 基準2: トークンなしのアクセスは 401 になる
