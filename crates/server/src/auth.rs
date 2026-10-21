@@ -15,8 +15,9 @@ pub(crate) async fn require_token(
     next: Next,
 ) -> Response {
     // トークン付き URL: 正しければ Cookie を渡し、トークンを消した URL へ移す
+    let current = app.token();
     if let Some((token, rest)) = split_token(req.uri().query()) {
-        if !eq(&token, &app.token) {
+        if !eq(&token, &current) {
             return unauthorized();
         }
         let location = match rest {
@@ -26,7 +27,7 @@ pub(crate) async fn require_token(
         let cookie = format!(
             "{}={}; Path=/; HttpOnly; Secure; SameSite=Strict",
             cookie_name(&app.instance_id),
-            app.token
+            current
         );
         return (
             StatusCode::SEE_OTHER,
@@ -34,7 +35,7 @@ pub(crate) async fn require_token(
         )
             .into_response();
     }
-    if authorized(req.headers(), &app) {
+    if authorized(req.headers(), &app.instance_id, &current) {
         next.run(req).await
     } else {
         unauthorized()
@@ -46,23 +47,23 @@ fn cookie_name(instance_id: &str) -> String {
     format!("dew_{instance_id}")
 }
 
-fn authorized(headers: &HeaderMap, app: &App) -> bool {
+fn authorized(headers: &HeaderMap, instance_id: &str, token: &str) -> bool {
     // CLI は Authorization ヘッダで送る
     if let Some(v) = headers
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         && let Some(t) = v.strip_prefix("Bearer ")
     {
-        return eq(t, &app.token);
+        return eq(t, token);
     }
-    let name = cookie_name(&app.instance_id);
+    let name = cookie_name(instance_id);
     headers
         .get_all(header::COOKIE)
         .iter()
         .filter_map(|v| v.to_str().ok())
         .flat_map(|v| v.split(';'))
         .filter_map(|kv| kv.trim().split_once('='))
-        .any(|(k, v)| k == name && eq(v, &app.token))
+        .any(|(k, v)| k == name && eq(v, token))
 }
 
 /// クエリから token を取り出し、残りのクエリと一緒に返す

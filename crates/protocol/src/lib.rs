@@ -158,6 +158,34 @@ pub struct OpenResponse {
     pub delivered: bool,
 }
 
+/// `POST /api/shell` の要求: `dew activate` / `deactivate` したシェルの登録と取り消し(13.6)
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ShellRequest {
+    /// シェル本体の PID(`--shell-pid $$`)
+    pub pid: u32,
+    /// true で登録、false で取り消し
+    pub active: bool,
+}
+
+/// `GET /api/shells` の応答
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ShellCount {
+    /// activate 中のシェルの数
+    pub count: u32,
+}
+
+/// `POST /api/rotate-token` の応答(14.6)
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct RotateTokenResponse {
+    pub token: String,
+}
+
 /// `WS /ws/events` でサーバから送る通知
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(

@@ -6,21 +6,28 @@ mod files;
 mod history;
 mod live;
 mod media;
+mod persist;
+mod shells;
 mod tls;
 mod web;
 
+pub use persist::rotate_token;
+
 use std::net::{IpAddr, SocketAddr, TcpListener};
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use anyhow::{Context, bail};
 use axum::Router;
 use axum::extract::{Query, Request, State};
-use axum::response::Response;
+use axum::http::{StatusCode, header};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, middleware};
-use dew_protocol::{Info, OpenRequest, OpenResponse};
+use dew_protocol::{
+    Info, OpenRequest, OpenResponse, RotateTokenResponse, ShellCount, ShellRequest,
+};
 use tokio::sync::Notify;
 
 /// キャッシュの上限(9.1)
@@ -32,12 +39,20 @@ const IDLE_LIMIT: Duration = Duration::from_secs(12 * 3600);
 /// 待ち受けポートが使用中のとき、次の番号を試す回数
 const PORT_TRIES: u16 = 100;
 
+/// 既定の待ち受けポート(9.1)
+pub const DEFAULT_PORT: u16 = 8765;
+
+/// activate 中のシェルを点検する間隔。仕様は「1分ごと」だが、軽い処理なので短くして、
+/// 端末を閉じてから登録が消えるまでを早める(13.6)
+const SHELL_CHECK: Duration = Duration::from_secs(10);
+
 /// サーバの起動設定
 #[derive(Debug, Clone)]
 pub struct Config {
     pub bind: IpAddr,
-    /// 希望のポート。使用中なら次の空きを使う
-    pub port: u16,
+    /// 指定されたポート(--port / DEW_PORT)。使用中なら次の空きを使う。
+    /// 指定がなければ前回のポートを試し、だめなら 8765 から探す(13.6)
+    pub port: Option<u16>,
     /// 閲覧範囲の起点(正規化済み)
     pub root: PathBuf,
     /// Home の初期位置(範囲外なら root を使う。7.2)
@@ -51,6 +66,8 @@ pub struct Config {
     /// 表示用の URL に使うホスト名とポート(コンテナの外から見た値。2.5)
     pub public_host: Option<String>,
     pub public_port: Option<u16>,
+    /// 起動し直しても変えない値(トークンなど)の置き場所(~/.local/share/dew)
+    pub state_dir: PathBuf,
 }
 
 /// 待ち受けを始めたときに分かる値
@@ -66,7 +83,8 @@ pub struct Ready {
 }
 
 pub(crate) struct App {
-    pub token: String,
+    /// `dew rotate-token` で動いている間にも変わる
+    token: RwLock<String>,
     pub instance_id: String,
     pub root: PathBuf,
     pub home: PathBuf,
@@ -79,17 +97,35 @@ pub(crate) struct App {
     pub live_windows: Arc<live::Live>,
     pub cache_dir: PathBuf,
     pub shutdown: Notify,
+    /// 起動し直しても変えない値
+    pub store: persist::Store,
+    /// activate 中のシェル
+    pub shells: shells::Shells,
+}
+
+impl App {
+    pub(crate) fn token(&self) -> String {
+        self.token.read().unwrap().clone()
+    }
 }
 
 /// サーバを起動し、止まるまで返らない。待ち受けを始めたら `on_ready` を呼ぶ
 pub async fn serve(cfg: Config, on_ready: impl FnOnce(&Ready)) -> anyhow::Result<()> {
     let tls = tls::load_or_create(&cfg.tls_dir, cfg.public_host.as_deref()).await?;
-    let listener = bind(cfg.bind, cfg.port)?;
+    let store = persist::Store::open(&cfg.state_dir);
+    // 前回のポートは、ポートを公開する形(docker run -p。DEW_PUBLIC_PORT がある)では使わない。
+    // 公開しているのはコンテナ内の 8765 なので、ほかの番号にすると外から届かない
+    let saved = (cfg.port.is_none() && cfg.public_port.is_none())
+        .then(|| store.port())
+        .flatten();
+    let wanted = cfg.port.unwrap_or(DEFAULT_PORT);
+    let listener = bind(cfg.bind, saved, wanted)?;
     let port = listener.local_addr()?.port();
+    store.set_port(port);
 
     let app = Arc::new(App {
-        token: random_hex(32),
-        instance_id: random_hex(4),
+        token: RwLock::new(store.token()),
+        instance_id: store.instance_id(),
         home: if cfg.home.starts_with(&cfg.root) {
             cfg.home.clone()
         } else {
@@ -103,6 +139,8 @@ pub async fn serve(cfg: Config, on_ready: impl FnOnce(&Ready)) -> anyhow::Result
         live_windows: Arc::new(live::Live::new()),
         cache_dir: cfg.cache_dir.clone(),
         shutdown: Notify::new(),
+        store,
+        shells: shells::Shells::default(),
     });
 
     let mut warnings = Vec::new();
@@ -116,11 +154,10 @@ pub async fn serve(cfg: Config, on_ready: impl FnOnce(&Ready)) -> anyhow::Result
         }
     };
     let public_port = match cfg.public_port {
-        Some(p) if port == cfg.port => p,
+        Some(p) if port == wanted => p,
         Some(p) => {
             warnings.push(format!(
-                "ポート {} が使用中のため {port} で待ち受けます。DEW_PUBLIC_PORT={p} は使わず、内部のポートで表示します",
-                cfg.port
+                "ポート {wanted} が使用中のため {port} で待ち受けます。DEW_PUBLIC_PORT={p} は使わず、内部のポートで表示します"
             ));
             port
         }
@@ -128,8 +165,8 @@ pub async fn serve(cfg: Config, on_ready: impl FnOnce(&Ready)) -> anyhow::Result
     };
     let ready = Ready {
         port,
-        url: format!("https://{host}:{public_port}/?token={}", app.token),
-        token: app.token.clone(),
+        url: format!("https://{host}:{public_port}/?token={}", app.token()),
+        token: app.token(),
         instance_id: app.instance_id.clone(),
         warnings,
     };
@@ -156,11 +193,25 @@ pub async fn serve(cfg: Config, on_ready: impl FnOnce(&Ready)) -> anyhow::Result
         async move {
             loop {
                 tokio::time::sleep(Duration::from_secs(60)).await;
+                // activate 中のシェルがある間は止まらない。最後のシェルが終わってから数え直す(13.6)
+                if app.shells.count() > 0 {
+                    app.hub.restart_idle();
+                    continue;
+                }
                 if app.hub.idle_for().is_some_and(|d| d >= IDLE_LIMIT) {
                     tracing::info!("接続中のタブがない状態が 12 時間続いたので止まります");
                     app.shutdown.notify_one();
                     return;
                 }
+            }
+        }
+    });
+    tokio::spawn({
+        let app = app.clone();
+        async move {
+            loop {
+                tokio::time::sleep(SHELL_CHECK).await;
+                app.shells.prune();
             }
         }
     });
@@ -191,9 +242,13 @@ fn router(app: Arc<App>) -> Router {
         .route("/image", get(media::image))
         .route("/pixels", get(media::pixels))
         .route("/open", post(open))
+        .route("/shell", post(shell))
+        .route("/shells", get(shells))
+        .route("/rotate-token", post(rotate))
         .route("/shutdown", post(shutdown));
     Router::new()
         .nest("/api", api)
+        .route("/open", get(open_page))
         .route("/ws/events", get(events::ws))
         .route("/ws/live/{id}", get(live::ws))
         .route("/ws/live-audio", get(live::audio_ws))
@@ -249,6 +304,54 @@ async fn open(
     }))
 }
 
+#[derive(serde::Deserialize)]
+struct OpenPageQuery {
+    #[serde(default)]
+    path: Option<String>,
+}
+
+/// `GET /open?path=`: 端末から開かせる URL(14.3)。トークンの処理(Cookie へ移す)は認証の層で済んでいる。
+/// 開くファイルを予約して Home へ移り、つないだタブがそのファイルを開く(14.4 の予約と同じ仕組み)
+async fn open_page(
+    State(app): State<Arc<App>>,
+    Query(q): Query<OpenPageQuery>,
+) -> Result<Response, files::ApiError> {
+    if let Some(p) = q.path.filter(|p| !p.is_empty()) {
+        let path = files::resolve(&app.root, &p)?;
+        app.hub.reserve(&path);
+    }
+    Ok((StatusCode::SEE_OTHER, [(header::LOCATION, "/")]).into_response())
+}
+
+/// `POST /api/shell`: activate / deactivate したシェルの登録と取り消し(13.6)
+async fn shell(State(app): State<Arc<App>>, Json(req): Json<ShellRequest>) -> StatusCode {
+    if !req.active {
+        app.shells.unregister(req.pid);
+        StatusCode::OK
+    } else if app.shells.register(req.pid) {
+        StatusCode::OK
+    } else {
+        StatusCode::NOT_FOUND
+    }
+}
+
+async fn shells(State(app): State<Arc<App>>) -> Json<ShellCount> {
+    Json(ShellCount {
+        count: app.shells.count() as u32,
+    })
+}
+
+/// `POST /api/rotate-token`: トークンを作り直す。接続中のタブは切る(14.6)
+async fn rotate(State(app): State<Arc<App>>) -> Result<Json<RotateTokenResponse>, files::ApiError> {
+    let token = app
+        .store
+        .rotate_token()
+        .map_err(|e| files::ApiError::Internal(format!("{e:#}")))?;
+    *app.token.write().unwrap() = token.clone();
+    app.hub.disconnect_all();
+    Ok(Json(RotateTokenResponse { token }))
+}
+
 async fn shutdown(State(app): State<Arc<App>>) -> &'static str {
     app.shutdown.notify_one();
     "ok"
@@ -268,15 +371,20 @@ async fn wait_for_signal() {
     }
 }
 
-/// 希望のポートから順に空きを探して待ち受ける
-fn bind(addr: IpAddr, port: u16) -> anyhow::Result<TcpListener> {
-    for p in port..port.saturating_add(PORT_TRIES) {
+/// `first`(前回のポート)を試し、だめなら `port` から順に空きを探して待ち受ける
+fn bind(addr: IpAddr, first: Option<u16>, port: u16) -> anyhow::Result<TcpListener> {
+    let candidates = first
+        .into_iter()
+        .chain(port..port.saturating_add(PORT_TRIES));
+    for p in candidates {
         match TcpListener::bind((addr, p)) {
             Ok(l) => {
                 l.set_nonblocking(true)?;
                 return Ok(l);
             }
             Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => continue,
+            // 前回のポートが使えないときは、理由を問わず既定の番号から探す
+            Err(_) if Some(p) == first => continue,
             Err(e) => return Err(e).with_context(|| format!("{addr}:{p} で待ち受けできません")),
         }
     }
@@ -289,7 +397,7 @@ pub(crate) fn hostname() -> String {
         .unwrap_or_else(|_| "localhost".to_owned())
 }
 
-fn random_hex(bytes: usize) -> String {
+pub(crate) fn random_hex(bytes: usize) -> String {
     let mut buf = vec![0u8; bytes];
     getrandom::fill(&mut buf).expect("乱数を取得できません");
     buf.iter().map(|b| format!("{b:02x}")).collect()

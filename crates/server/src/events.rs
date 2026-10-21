@@ -1,4 +1,5 @@
-//! `/ws/events`: タブとの通知のやり取り。ディレクトリ監視(F4)と、CLI からの表示指示(F10)
+//! `/ws/events`: タブとの通知のやり取り。ディレクトリ監視(F4)と、CLI からの表示指示(F10)。
+//! タブがないときの表示指示は少しの間だけ予約し、次につないだタブに届ける(14.4)
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -12,7 +13,7 @@ use axum::response::{IntoResponse, Response};
 use dew_protocol::{ClientEvent, EntryKind, MediaKind, ServerEvent};
 use futures_util::{SinkExt, StreamExt};
 use notify::{RecursiveMode, Watcher};
-use tokio::sync::mpsc;
+use tokio::sync::{Notify, mpsc};
 
 use crate::App;
 use crate::files::{media_kind, resolve};
@@ -20,10 +21,15 @@ use crate::files::{media_kind, resolve};
 /// 変更通知をまとめる時間。書き込み中のファイルで通知が続いても、この間隔で1回にする
 const COALESCE: Duration = Duration::from_millis(100);
 
+/// タブがないときの表示指示を持っておく時間(9.1)
+const RESERVE_FOR: Duration = Duration::from_secs(120);
+
 /// 接続中のタブと監視中のディレクトリ
 pub(crate) struct Hub {
     inner: Mutex<Inner>,
     watcher: Mutex<Watch>,
+    /// すべてのタブとの接続を切る合図(`dew rotate-token`)
+    kick: Notify,
 }
 
 #[derive(Default)]
@@ -37,6 +43,8 @@ struct Inner {
     tabs: HashMap<u64, Tab>,
     /// タブもライブ描画もなくなった時刻(自動停止の判定用。7.1)
     idle_since: Option<Instant>,
+    /// 予約した表示指示(最新の1件)と、予約した時刻
+    reserved: Option<(PathBuf, Instant)>,
 }
 
 struct Tab {
@@ -52,8 +60,10 @@ impl Hub {
                 next_id: 0,
                 tabs: HashMap::new(),
                 idle_since: Some(Instant::now()),
+                reserved: None,
             }),
             watcher: Mutex::default(),
+            kick: Notify::new(),
         });
         let (tx, rx) = mpsc::unbounded_channel();
         match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
@@ -73,28 +83,19 @@ impl Hub {
         hub
     }
 
-    /// 最後に操作したタブに表示指示を送る。届けたら true(7.7)
+    /// 最後に操作したタブに表示指示を送る。届けたら true(7.7)。タブがなければ予約する(14.4)
     pub(crate) fn open(&self, path: &Path) -> bool {
-        let inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap();
         let Some(tab) = inner.tabs.values().max_by_key(|t| t.last_active) else {
+            inner.reserved = Some((path.to_owned(), Instant::now()));
             return false;
         };
-        let kind = if path.is_dir() {
-            EntryKind::Dir
-        } else {
-            EntryKind::File
-        };
-        tab.tx
-            .send(ServerEvent::Open {
-                path: path.to_string_lossy().into_owned(),
-                kind,
-                media: if kind == EntryKind::Dir {
-                    MediaKind::Other
-                } else {
-                    media_kind(&path.to_string_lossy())
-                },
-            })
-            .is_ok()
+        tab.tx.send(open_event(path)).is_ok()
+    }
+
+    /// 次につないだタブで開くよう予約する(前の予約は置き換える)
+    pub(crate) fn reserve(&self, path: &Path) {
+        self.inner.lock().unwrap().reserved = Some((path.to_owned(), Instant::now()));
     }
 
     /// タブがなくなってからの時間
@@ -102,10 +103,29 @@ impl Hub {
         self.inner.lock().unwrap().idle_since.map(|t| t.elapsed())
     }
 
+    /// タブがない状態の始まりを今にする(activate 中のシェルがある間、自動停止までの時間を数えない)
+    pub(crate) fn restart_idle(&self) {
+        let mut inner = self.inner.lock().unwrap();
+        if inner.idle_since.is_some() {
+            inner.idle_since = Some(Instant::now());
+        }
+    }
+
+    /// すべてのタブとの接続を切る
+    pub(crate) fn disconnect_all(&self) {
+        self.kick.notify_waiters();
+    }
+
     fn connect(&self, tx: mpsc::UnboundedSender<ServerEvent>) -> u64 {
         let mut inner = self.inner.lock().unwrap();
         let id = inner.next_id;
         inner.next_id += 1;
+        // 予約があれば、つないだタブに届ける(古いものは捨てる)
+        if let Some((path, at)) = inner.reserved.take()
+            && at.elapsed() < RESERVE_FOR
+        {
+            let _ = tx.send(open_event(&path));
+        }
         inner.tabs.insert(
             id,
             Tab {
@@ -197,6 +217,23 @@ impl Hub {
                 name: name.to_owned(),
             });
         }
+    }
+}
+
+fn open_event(path: &Path) -> ServerEvent {
+    let kind = if path.is_dir() {
+        EntryKind::Dir
+    } else {
+        EntryKind::File
+    };
+    ServerEvent::Open {
+        path: path.to_string_lossy().into_owned(),
+        kind,
+        media: if kind == EntryKind::Dir {
+            MediaKind::Other
+        } else {
+            media_kind(&path.to_string_lossy())
+        },
     }
 }
 
@@ -296,6 +333,7 @@ async fn session(app: Arc<App>, socket: WebSocket) {
         _ = send => {}
         _ = recv => {}
         _ = live => {}
+        _ = app.hub.kick.notified() => {}
     }
     app.hub.disconnect(id);
 }
