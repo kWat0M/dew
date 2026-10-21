@@ -60,7 +60,35 @@ pub enum MediaKind {
     Image,
     Video,
     Audio,
+    /// Markdown(ドキュメントウィンドウで開く。15.1)
+    Markdown,
     Other,
+}
+
+/// 文書の文字コード(15.8)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum TextEncoding {
+    Utf8,
+    Utf16le,
+    Utf16be,
+    ShiftJis,
+    EucJp,
+}
+
+/// `GET /api/text?path=&encoding=` の応答: UTF-8 にした文書(15.8、17.1)
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct TextDoc {
+    pub text: String,
+    /// 変換に使った文字コード(指定があればそれ)
+    pub encoding: TextEncoding,
+    /// 判定した文字コード
+    pub detected: TextEncoding,
+    /// 大きすぎる(5 MB 超)ので、描画せずにプレーンテキストで出す(17.5)
+    pub large: bool,
 }
 
 /// `GET /api/probe?path=` の応答

@@ -113,9 +113,12 @@ fn large_text_is_marked() {
 fn text_outside_root_is_403_and_kind_is_markdown() {
     let (a, _root, dir) = start();
     assert_eq!(a.get("/api/text?path=%2Fetc%2Fpasswd").status(), 403);
-    let tree: Value =
-        serde_json::from_str(&a.get(&format!("/api/tree?path={}", q(&dir.join("md")))).text().unwrap())
-            .unwrap();
+    let tree: Value = serde_json::from_str(
+        &a.get(&format!("/api/tree?path={}", q(&dir.join("md"))))
+            .text()
+            .unwrap(),
+    )
+    .unwrap();
     let all = tree["entries"]
         .as_array()
         .unwrap()
