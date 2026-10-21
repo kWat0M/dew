@@ -93,7 +93,10 @@ fn setup_shell_appends_once() {
         let body = std::fs::read_to_string(a.home.path().join(rc)).unwrap();
         let line = format!("eval \"$(dew shell-init {sh})\"");
         assert_eq!(body.matches(&line).count(), 1, "{body}");
-        assert!(body.starts_with("# 既存の設定\n"), "既存の中身は残す\n{body}");
+        assert!(
+            body.starts_with("# 既存の設定\n"),
+            "既存の中身は残す\n{body}"
+        );
     }
 }
 
@@ -194,9 +197,15 @@ fn deactivate_restores_env(sh: &str) {
             .starts_with("unix:")
     );
     assert_eq!(var(&out, "active", "WAYLAND_DISPLAY"), None, "{out}");
-    assert_eq!(var(&out, "active", "QT_QPA_PLATFORM").as_deref(), Some("xcb"));
+    assert_eq!(
+        var(&out, "active", "QT_QPA_PLATFORM").as_deref(),
+        Some("xcb")
+    );
     assert_eq!(var(&out, "active", "GDK_BACKEND").as_deref(), Some("x11"));
-    assert_eq!(var(&out, "active", "SDL_VIDEODRIVER").as_deref(), Some("x11"));
+    assert_eq!(
+        var(&out, "active", "SDL_VIDEODRIVER").as_deref(),
+        Some("x11")
+    );
     assert_eq!(var(&out, "active", "DEW_ACTIVE").as_deref(), Some("1"));
     // 2回目は何もしない(保存した元の値を上書きしない)
     for k in ["DISPLAY", "PULSE_SERVER", "WAYLAND_DISPLAY", "SAVED"] {
@@ -281,7 +290,11 @@ fn deactivate_unregisters_and_stop_asks_while_active() {
     let mut child = activated_shell(&a, port);
     // activate 中のシェルがあると、dew stop は確認する(答えなければ止めない)
     let out = a.try_dew_in(a.home.path(), &["stop"]);
-    assert!(text(&out).contains("activate 中のシェルが 1 個"), "{}", text(&out));
+    assert!(
+        text(&out).contains("activate 中のシェルが 1 個"),
+        "{}",
+        text(&out)
+    );
     assert_eq!(shells(&a), 1, "止まっていない");
     child.stdin.take().unwrap().write_all(b"\n").unwrap();
     child.wait().unwrap();

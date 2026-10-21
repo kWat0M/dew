@@ -1,9 +1,12 @@
 //! dew の CLI と起動処理
 
 mod client;
+mod config;
 mod doctor;
 mod hooks;
+mod shell;
 mod state;
+mod term;
 mod update;
 
 use std::fs::File;
@@ -42,12 +45,24 @@ struct Cli {
 #[derive(Subcommand)]
 enum Sub {
     /// URL を再表示する
-    Url,
+    Url {
+        /// 端末からブラウザに Home を開かせる(WezTerm。dew setup-wezterm の設定が要る)
+        #[arg(long)]
+        open: bool,
+        /// URL を端末のクリップボードにコピーする(OSC 52)
+        #[arg(long)]
+        copy: bool,
+    },
     /// URL と状態を表示する
     Status,
     /// サーバを停止する
-    Stop,
-    /// 依存(ffmpeg、Xvfb、音声サーバ、GPU)を確認する
+    Stop {
+        /// activate 中のシェルがあっても確認せずに止める
+        #[arg(long)]
+        force: bool,
+    },
+    /// 依存(ffmpeg、Xvfb、音声サーバ、GPU)と、端末との連携を確認する
+    #[command(long_about = doctor::HELP)]
     Doctor,
     /// 新しい版を取得して、この dew を置き換える(GitHub の Releases から)
     Update,
@@ -62,13 +77,49 @@ enum Sub {
     },
     /// 仮想ディスプレイと音声につなぐ環境変数を出す(eval "$(dew env)" で、以降のコマンドをすべてライブ描画へ)
     Env,
+    /// このシェルのアプリを dew に映す(dew deactivate で戻す)。シェル連携(dew setup-shell)が要る
+    Activate {
+        /// 精度モード: cv2.imshow の画像を圧縮せずに送る(L3)
+        #[arg(long)]
+        exact: bool,
+        #[command(flatten)]
+        shell: ShellArgs,
+    },
+    /// dew activate で変えた環境変数を元に戻す
+    Deactivate {
+        #[command(flatten)]
+        shell: ShellArgs,
+    },
+    /// シェル関数のコードを出す(rc ファイルに eval "$(dew shell-init bash)" と書く)
+    #[command(long_about = shell::INIT_HELP)]
+    ShellInit {
+        #[arg(value_enum)]
+        shell: shell::Shell,
+    },
+    /// ~/.bashrc か ~/.zshrc に、シェル連携の1行を足す(確認してから)
+    SetupShell,
+    /// 端末(WezTerm)から Windows のブラウザを開くための設定を表示する(書き込みはしない)
+    SetupWezterm,
+    /// トークンを作り直す(接続中のタブは切れる)
+    RotateToken,
+}
+
+/// シェル関数が付ける引数(13.2)
+#[derive(Args, Clone)]
+struct ShellArgs {
+    /// シェルが eval するコードを出す
+    #[arg(long, hide = true)]
+    emit_shell: bool,
+    /// シェル本体の PID(サーバに登録する)
+    #[arg(long, hide = true)]
+    shell_pid: Option<u32>,
 }
 
 #[derive(Args, Clone)]
 struct ServeArgs {
-    /// 待ち受けポート。使用中なら次の空きを使う
-    #[arg(long, env = "DEW_PORT", default_value_t = 8765)]
-    port: u16,
+    /// 待ち受けポート。使用中なら次の空きを使う。指定がなければ前回のポート、だめなら 8765 から
+    #[arg(long, env = "DEW_PORT")]
+    port: Option<u16>,
     /// 待ち受けアドレス(127.0.0.1 にすると ssh -L 専用)
     #[arg(long, default_value = "0.0.0.0")]
     bind: IpAddr,
@@ -96,20 +147,35 @@ fn main() -> ExitCode {
         };
     }
     let result = match cli.command {
-        Some(Sub::Url) => running().map(|s| print_url(&s)),
+        Some(Sub::Url { open, copy }) => url(open, copy),
         Some(Sub::Status) => running().map(|s| {
             print_url(&s);
             if let Some(line) = root_line(&s) {
                 println!("{line}");
             }
             println!("pid: {}  ポート: {}", s.pid, s.port);
+            if let Ok(n) = Api::new(&s).shells() {
+                println!("activate 中のシェル: {n}");
+            }
         }),
-        Some(Sub::Stop) => stop(),
+        Some(Sub::Stop { force }) => stop(force),
         Some(Sub::Doctor) => {
             doctor::run();
             Ok(())
         }
         Some(Sub::Env) => env(&cli.serve),
+        Some(Sub::Activate { exact, shell }) => activate(&cli.serve, exact, &shell),
+        Some(Sub::Deactivate { shell }) => deactivate(&shell),
+        Some(Sub::ShellInit { shell }) => {
+            shell::init(shell);
+            Ok(())
+        }
+        Some(Sub::SetupShell) => shell::setup(),
+        Some(Sub::SetupWezterm) => {
+            print!("{}", term::WEZTERM_SETUP);
+            Ok(())
+        }
+        Some(Sub::RotateToken) => rotate_token(),
         Some(Sub::Update) => update::run(),
         Some(Sub::Run { .. }) => unreachable!(),
         None if cli.serve.foreground => foreground(&cli.serve),
@@ -164,7 +230,8 @@ fn start(args: &ServeArgs, path: Option<&Path>) -> anyhow::Result<()> {
     };
     if let Some(p) = path {
         let api = Api::new(&server);
-        let res = match api.open(&p.to_string_lossy()) {
+        let path_text = p.to_string_lossy();
+        let res = match api.open(&path_text) {
             Ok(r) => r,
             Err(client::OpenError::OutsideRoot) => bail!(
                 "{} は閲覧範囲({})の外です。範囲を広げるには、dew stop の後、dew --root <ディレクトリ> で起動し直してください",
@@ -177,7 +244,14 @@ fn start(args: &ServeArgs, path: Option<&Path>) -> anyhow::Result<()> {
             println!("ブラウザに表示しました: {}", p.display());
             return Ok(());
         }
-        println!("接続中のブラウザがありません。次の URL を開いてください");
+        // タブがない(14.5): サーバが2分間予約している。端末からブラウザを開かせ、URL も出す
+        let url = open_url(&server, Some(&path_text));
+        term::open_in_browser(&url);
+        if config::load().open_fallback_clipboard {
+            term::copy(&url);
+        }
+        eprintln!("dew: ブラウザのタブがありません: {}", term::link(&url));
+        return Ok(());
     }
     if let Some(line) = root_line(&server) {
         eprintln!("dew: {line}");
@@ -325,9 +399,12 @@ fn spawn(args: &ServeArgs) -> anyhow::Result<ServerFile> {
     let log_start = log.metadata()?.len();
 
     let mut cmd = Command::new(std::env::current_exe()?);
-    cmd.arg("--foreground")
-        .arg("--port")
-        .arg(args.port.to_string())
+    cmd.arg("--foreground");
+    if let Some(port) = args.port {
+        cmd.arg("--port").arg(port.to_string());
+    }
+    // 子に DEW_PORT を引き継ぐと、指定がなかったことが分からなくなる
+    cmd.env_remove("DEW_PORT")
         .arg("--bind")
         .arg(args.bind.to_string())
         .arg("--jobs")
@@ -406,7 +483,8 @@ fn foreground(args: &ServeArgs) -> anyhow::Result<()> {
         home: cwd.canonicalize().unwrap_or(cwd),
         tls_dir: std::env::var_os("DEW_TLS_DIR")
             .map(PathBuf::from)
-            .unwrap_or_else(|| state::home().join(".local/share/dew/tls")),
+            .unwrap_or_else(|| state::data_dir().join("tls")),
+        state_dir: state::data_dir(),
         public_host: std::env::var("DEW_PUBLIC_HOST")
             .ok()
             .filter(|s| !s.is_empty()),
@@ -444,13 +522,29 @@ fn foreground(args: &ServeArgs) -> anyhow::Result<()> {
     result
 }
 
-fn stop() -> anyhow::Result<()> {
+fn stop(force: bool) -> anyhow::Result<()> {
     let Some(s) = state::read() else {
         println!("サーバは動いていません");
         return Ok(());
     };
     let api = Api::new(&s);
     if api.alive(&s.instance_id) {
+        // activate 中のシェルがあれば確かめる(止めると、そのシェルのアプリは映らなくなる。13.6)
+        if !force
+            && let Ok(n) = api.shells()
+            && n > 0
+        {
+            eprint!(
+                "activate 中のシェルが {n} 個あります。止めると、そのシェルで起動するアプリは映らなくなります。停止しますか? [y/N] "
+            );
+            let mut answer = String::new();
+            let _ = std::io::stdin().read_line(&mut answer);
+            if !matches!(answer.trim(), "y" | "Y" | "yes") {
+                eprintln!();
+                println!("停止しませんでした(確認せずに止めるには dew stop --force)");
+                return Ok(());
+            }
+        }
         api.shutdown()?;
     }
     // 終了して server.json を消すまで待つ
@@ -468,5 +562,117 @@ fn stop() -> anyhow::Result<()> {
 
 /// URL を OSC 8 ハイパーリンクで表示する(WezTerm ではクリックで開ける)
 fn print_url(s: &ServerFile) {
-    println!("\x1b]8;;{0}\x1b\\{0}\x1b]8;;\x1b\\", s.url);
+    println!("{}", term::link(&s.url));
+}
+
+/// 端末から開かせる URL(14.3)。開くとトークンを Cookie に移し、`path` があればそのファイルを開く
+fn open_url(s: &ServerFile, path: Option<&str>) -> String {
+    let base = s.url.split_once("/?").map_or(s.url.as_str(), |(b, _)| b);
+    match path {
+        Some(p) => format!(
+            "{base}/open?path={}&token={}",
+            term::query_escape(p),
+            s.token
+        ),
+        None => format!("{base}/open?token={}", s.token),
+    }
+}
+
+/// `dew url`(--open / --copy。14.6)
+fn url(open: bool, copy: bool) -> anyhow::Result<()> {
+    let s = running()?;
+    if open && !term::open_in_browser(&open_url(&s, None)) {
+        bail!("制御端末がないので、端末からブラウザを開けません");
+    }
+    if copy {
+        if !term::copy(&s.url) {
+            bail!("制御端末がないので、クリップボードにコピーできません");
+        }
+        eprintln!("dew: URL をクリップボードにコピーしました(端末が OSC 52 に対応している場合)");
+    }
+    print_url(&s);
+    Ok(())
+}
+
+/// `dew activate`(13.3)。シェル関数から呼ばれ、シェルが eval するコードを標準出力に出す。
+/// 知らせることは標準エラー出力へ(標準出力はシェルが読み取る)
+fn activate(args: &ServeArgs, exact: bool, sh: &ShellArgs) -> anyhow::Result<()> {
+    if !sh.emit_shell {
+        return Err(shell::not_integrated("activate"));
+    }
+    if shell::active() {
+        eprintln!("dew: すでに有効です。dew deactivate で戻します");
+        return Ok(());
+    }
+    check_live_deps()?;
+    let server = ensure_server(args)?;
+    let api = Api::new(&server);
+    let live = api.live_session()?;
+    let exact = if exact {
+        Some((
+            hooks::install()?.to_string_lossy().into_owned(),
+            live.exact_socket.clone(),
+        ))
+    } else {
+        None
+    };
+    print!(
+        "{}",
+        shell::activate_code(&shell::Activate {
+            env: &live.env,
+            unset: &live.unset,
+            exact,
+        })
+    );
+    match sh.shell_pid {
+        Some(pid) => {
+            if let Err(e) = api.shell(pid, true) {
+                eprintln!("dew: 注意: シェルをサーバに登録できません: {e:#}");
+            }
+        }
+        None => eprintln!("dew: 注意: シェルの PID がないので、サーバに登録しません"),
+    }
+    eprintln!(
+        "dew: 有効にしました(ディスプレイ {})。dew deactivate で戻します",
+        live.display
+    );
+    Ok(())
+}
+
+/// `dew deactivate`(13.4)。サーバが止まっていても、環境変数は必ず戻す
+fn deactivate(sh: &ShellArgs) -> anyhow::Result<()> {
+    if !sh.emit_shell {
+        return Err(shell::not_integrated("deactivate"));
+    }
+    if !shell::active() {
+        eprintln!("dew: 有効になっていません");
+        return Ok(());
+    }
+    print!("{}", shell::deactivate_code());
+    if let (Some(pid), Some(s)) = (sh.shell_pid, alive()) {
+        let _ = Api::new(&s).shell(pid, false);
+    }
+    eprintln!("dew: 元に戻しました");
+    Ok(())
+}
+
+/// `dew rotate-token`(14.6)。動いているサーバにはすぐ効かせ、server.json も書き直す
+fn rotate_token() -> anyhow::Result<()> {
+    match alive() {
+        Some(mut s) => {
+            let token = Api::new(&s).rotate_token()?;
+            s.url = s.url.replace(&s.token, &token);
+            s.token = token;
+            state::write(&s)?;
+            println!(
+                "トークンを作り直しました。接続中のタブは切れたので、次の URL から開き直してください"
+            );
+            print_url(&s);
+        }
+        None => {
+            dew_server::rotate_token(&state::data_dir())?;
+            println!("トークンを作り直しました。次に dew を起動したときから使います");
+        }
+    }
+    Ok(())
 }
