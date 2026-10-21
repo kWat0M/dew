@@ -745,16 +745,16 @@ dew/
 
 ### フェーズ5(シェル連携・外部ツール連携)
 
-- [ ] `dew setup-shell` を2回実行しても、rc ファイルへの追記は1行だけ
-- [ ] bash と zsh で `dew activate` したあと、`python3 tests/apps/counter.py`(`dew run` なし)のウィンドウがキャンバスに出る
-- [ ] activate 中は `WAYLAND_DISPLAY` が未設定になる。deactivate 後は、activate 前の `DISPLAY` / `PULSE_SERVER` / `WAYLAND_DISPLAY` などが元の値に戻る(未設定だったものは未設定)
-- [ ] activate を2回実行しても、deactivate 1回で元に戻る
-- [ ] シェル連携なしで `dew activate` を実行すると、導入方法を表示して終了コード 1 になる
-- [ ] activate 中のシェルがある間は自動停止しない。そのシェルを終了すると、1分以内に登録が消える
-- [ ] サーバを再起動しても、仮想ディスプレイ番号とトークン(`--network host` ではポートも)が変わらず、開いていたタブが自動で再接続する
-- [ ] タブがない状態で `dew a.mp4` を実行すると、疑似端末に `SetUserVar=dew_open=` と OSC 777 の通知が書き込まれ、base64 を復号した URL に a.mp4 のパスが含まれる。`$TMUX` があるときは passthrough で包まれる
-- [ ] タブがない状態で `dew a.mp4` を実行し、2分以内に Home の URL を開くと a.mp4 が開く
-- [ ] 裏にあるタブに表示指示が届くと、タイトルの先頭に `●` が付き、表に出すと消える
+- [x] `dew setup-shell` を2回実行しても、rc ファイルへの追記は1行だけ
+- [x] bash と zsh で `dew activate` したあと、`python3 tests/apps/counter.py`(`dew run` なし)のウィンドウがキャンバスに出る
+- [x] activate 中は `WAYLAND_DISPLAY` が未設定になる。deactivate 後は、activate 前の `DISPLAY` / `PULSE_SERVER` / `WAYLAND_DISPLAY` などが元の値に戻る(未設定だったものは未設定)
+- [x] activate を2回実行しても、deactivate 1回で元に戻る
+- [x] シェル連携なしで `dew activate` を実行すると、導入方法を表示して終了コード 1 になる
+- [x] activate 中のシェルがある間は自動停止しない。そのシェルを終了すると、1分以内に登録が消える
+- [x] サーバを再起動しても、仮想ディスプレイ番号とトークン(`--network host` ではポートも)が変わらず、開いていたタブが自動で再接続する
+- [x] タブがない状態で `dew a.mp4` を実行すると、疑似端末に `SetUserVar=dew_open=` と OSC 777 の通知が書き込まれ、base64 を復号した URL に a.mp4 のパスが含まれる。`$TMUX` があるときは passthrough で包まれる
+- [x] タブがない状態で `dew a.mp4` を実行し、2分以内に Home の URL を開くと a.mp4 が開く
+- [x] 裏にあるタブに表示指示が届くと、タイトルの先頭に `●` が付き、表に出すと消える
 
 ### フェーズ6(ドキュメントウィンドウ・Markdown)
 
@@ -885,7 +885,7 @@ style = "bold blue"
 - 登録は1分ごとに点検し、終了したシェルは消す(端末を閉じた場合も自動で消える)
 - activate 中のシェルが1つでもある間は、無操作の自動停止(7.1)をしない
 - `dew stop` は、activate 中のシェルがあれば数を表示して確認する(`--force` で確認なし)
-- 仮想ディスプレイ番号は `server.json` に保存し、サーバを再起動したときも同じ番号が空いていれば再利用する。activate 中のシェルの `DISPLAY` が無効にならないようにするため
+- 仮想ディスプレイ番号は `~/.local/share/dew/state.json` に保存し(server.json は停止で消えるため。ADR 0023)、サーバを再起動したときも同じ番号が空いていれば再利用する。activate 中のシェルの `DISPLAY` が無効にならないようにするため
 - 待ち受けポートも同じく、前回の番号を `~/.local/share/dew/` に保存し、`--port` / `DEW_PORT` の指定がなければ、次の起動でまず前回の番号を試す。空いていなければ 8765 から順に探す。`--network host` で起動し直したときに、開いていたタブのアドレスが変わらないようにするため(ADR 0022)
 - `dew status` に activate 中のシェル数を表示する
 
