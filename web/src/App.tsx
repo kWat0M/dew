@@ -11,6 +11,7 @@ import { Dialog } from './ui/Dialog';
 import { OpsPanel } from './ui/OpsPanel';
 import type { ToolbarActions } from './ui/Toolbar';
 import { HistoryWindow } from './history/HistoryWindow';
+import { docCommands } from './doc/DocumentWindow';
 import { Home, homeCommands, homeQuick, type DirRequest, type HomeAction } from './home/Home';
 import { ja } from './i18n/ja';
 import { readKey } from './keys';
@@ -305,6 +306,10 @@ export function App() {
       { key: '', label: ja.shutdown, run: () => setConfirmStop(true) },
     ],
   });
+  // フォーカス中の文書の操作は一番下に(基本は文書の下部のバーのボタンで操作する)
+  const focusedWin = windows.find((w) => w.id === focused);
+  if (screen === 'canvas' && focusedWin && isDocument(focusedWin))
+    sections.push({ title: ja.secMarkdown, items: docCommands.map((d) => ({ key: d.key, label: d.label, run: () => canvasRun.current?.doc(d.id) })) });
 
   /** ドキュメントのリンクから、ディレクトリを Home で開く */
   const openDir = useCallback(

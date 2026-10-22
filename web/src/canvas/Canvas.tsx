@@ -15,7 +15,7 @@ import { LiveAudioMix, useLiveSound } from './liveAudio';
 import { LiveWindow, type LiveApi, type LiveInfo } from './LiveWindow';
 import { Dialog } from '../ui/Dialog';
 import { PlayerWindow, type PlayerApi } from './PlayerWindow';
-import { DocumentWindow } from '../doc/DocumentWindow';
+import { DocumentWindow, type DocAction } from '../doc/DocumentWindow';
 import type { Events } from '../api/events';
 import { SyncGroup } from './sync';
 import './Canvas.css';
@@ -34,6 +34,8 @@ export type CanvasRun = {
   window: (a: WindowAction) => void;
   /** Home へ戻るときに全ウィンドウを止める */
   pauseAll: () => void;
+  /** フォーカス中のドキュメントウィンドウの操作 */
+  doc: (a: DocAction) => void;
 };
 
 export type NormalAction =
@@ -185,6 +187,8 @@ export function Canvas(p: Props) {
   /** タイル配置でドラッグ中のウィンドウと、落とす先の番号 */
   const [reorder, setReorder] = useState<{ id: number; target: number | null } | null>(null);
   const apis = useRef(new Map<number, PlayerApi | null>());
+  /** ドキュメントウィンドウの操作の入口(操作パネルから使う) */
+  const docRuns = useRef(new Map<number, (a: DocAction) => void>());
 
   useLayoutEffect(() => {
     const el = area.current;
@@ -495,6 +499,7 @@ export function Canvas(p: Props) {
     window: runWindow,
     // ライブウィンドウは止めない(戻ったときにライブのまま見られるように。7.6 は動画の話)
     pauseAll: () => apis.current.forEach((a, id) => !ws.find((w) => w.id === id)?.live && a?.setPlaying(false)),
+    doc: (a) => p.focused !== null && docRuns.current.get(p.focused)?.(a),
   }));
 
   const windowMap = new KeySequence(windowKeys);
@@ -679,6 +684,7 @@ export function Canvas(p: Props) {
                 onExitInput={exitInput}
                 onNavigate={(path) => p.onPathChange(w.id, path)}
                 onHintsChange={(on) => setHintingDoc((cur) => (on ? w.id : cur === w.id ? null : cur))}
+                onRegister={(run) => (run ? docRuns.current.set(w.id, run) : docRuns.current.delete(w.id))}
                 onOpenFiles={p.onOpenFiles}
                 onOpenDir={p.onOpenDir}
                 onMessage={p.onMessage}

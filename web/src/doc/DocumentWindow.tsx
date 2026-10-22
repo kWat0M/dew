@@ -6,6 +6,7 @@ import * as Popover from '@radix-ui/react-popover';
 import { api, ApiError } from '../api/http';
 import type { Events } from '../api/events';
 import { WindowFrame, type FrameProps } from '../canvas/WindowFrame';
+import type { CommandDef } from '../commands';
 import { basename } from '../format';
 import { ja } from '../i18n/ja';
 import { Icon, type IconName } from '../icons';
@@ -31,7 +32,7 @@ const HINT_CHARS = 'asdfghjkl';
 /** 手で選べる文字コード(15.8) */
 const CHOICES: TextEncoding[] = ['utf8', 'shiftJis', 'eucJp'];
 
-type DocAction =
+export type DocAction =
   | { do: 'scroll'; lines: number }
   | { do: 'half'; dir: 1 | -1 }
   | { do: 'top' }
@@ -83,6 +84,18 @@ export const docKeys: Record<string, DocAction> = {
   'C-]': { do: 'exit' },
 };
 const docMap = new KeySequence(docKeys);
+
+/** 操作パネルの Markdown の節(4.4)。続けてキーで選ぶもの(f / F / yf、目次)は、押すと入力モードに入る */
+const O = ja.docOps;
+export const docCommands: CommandDef<DocAction>[] = [
+  { id: docKeys.H!, key: 'H', label: O.back }, { id: docKeys.L!, key: 'L', label: O.forward },
+  { id: docKeys.f!, key: 'f', label: O.hints }, { id: docKeys.F!, key: 'F', label: O.hintsWindow }, { id: docKeys['y f']!, key: 'yf', label: O.hintsCopy },
+  { id: docKeys['/']!, key: '/', label: O.search }, { id: docKeys.n!, key: 'n', label: O.matchNext }, { id: docKeys.N!, key: 'N', label: O.matchPrev },
+  { id: docKeys.o!, key: 'o', label: O.toc }, { id: docKeys[']']!, key: ']', label: O.nextHeading }, { id: docKeys['[']!, key: '[', label: O.prevHeading },
+  { id: docKeys['g g']!, key: 'gg', label: O.top }, { id: docKeys.G!, key: 'G', label: O.bottom },
+  { id: docKeys['+']!, key: '+', label: O.larger }, { id: docKeys['-']!, key: '-', label: O.smaller }, { id: docKeys['=']!, key: '=', label: O.resetScale },
+  { id: docKeys['g u']!, key: 'gu', label: O.up }, { id: docKeys['y y']!, key: 'yy', label: O.copyPath },
+];
 
 /** ヒントで選んだリンクをどうするか: 開く / dew の新しいウィンドウで開く / URL をコピー */
 type HintMode = 'open' | 'window' | 'copy';
@@ -148,6 +161,8 @@ type Props = FrameProps & {
   onNavigate: (path: string) => void;
   /** リンクヒントを出しているか(画面下のヒントの帯を切り替える) */
   onHintsChange: (on: boolean) => void;
+  /** 操作パネルから操作を実行する入口を渡す(閉じるときは null) */
+  onRegister: (run: ((a: DocAction) => void) | null) => void;
   onOpenFiles: (files: { path: string; media: MediaKind }[]) => void;
   onOpenDir: (dir: string) => void;
   onMessage: (m: string) => void;
@@ -164,6 +179,7 @@ export function DocumentWindow({
   onExitInput,
   onNavigate,
   onHintsChange,
+  onRegister,
   onOpenFiles,
   onOpenDir,
   onMessage,
@@ -530,6 +546,20 @@ export function DocumentWindow({
         return onExitInput();
     }
   };
+
+  // 操作パネルから。続けてキーで選ぶものは入力モードに入る
+  const runFromPanel = useStable((a: DocAction) => {
+    if ((a.do === 'hints' || a.do === 'toc') && !inputMode) onToggleInput();
+    run(a);
+  });
+  const onRegisterRef = useRef(onRegister);
+  useLayoutEffect(() => {
+    onRegisterRef.current = onRegister;
+  });
+  useEffect(() => {
+    onRegisterRef.current(runFromPanel);
+    return () => onRegisterRef.current(null);
+  }, [runFromPanel]);
 
   useKeys((k, e) => {
     // Ctrl+] はどこからでも抜ける

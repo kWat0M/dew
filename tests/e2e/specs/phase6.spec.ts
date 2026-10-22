@@ -395,6 +395,32 @@ test('下部のバーのボタンで検索・目次・文字の大きさを変�
   await expect(bar).toContainText('1 / 2');
 });
 
+// 操作パネルの一番下に、フォーカス中の文書の操作(Markdown の節)を出す
+test('操作パネルの Markdown の節から文書を操作する', async ({ page, dew }) => {
+  copyMd(dew);
+  await start(page, dew);
+  const win = await openDoc(page, dew, 'a.md');
+  await page.keyboard.press('q');
+  await page.getByRole('button', { name: '操作パネル' }).click();
+  const sections = page.getByTestId('ops-panel').getByTestId('ops-all').locator('section');
+  const md = sections.last();
+  await expect(md.locator('h3')).toHaveText(/^Markdown/);
+  await md.getByRole('button', { name: /^末尾へ/ }).click();
+  await expect.poll(() => scrollTop(win)).toBeGreaterThan(0);
+  await md.getByRole('button', { name: /^先頭へ/ }).click();
+  await expect.poll(() => scrollTop(win)).toBe(0);
+  // リンクヒントは続けてキーで選ぶので、押すと入力モードに入る
+  await md.getByRole('button', { name: /^リンクを選んで開く/ }).click();
+  await expect(win.getByTestId('link-hint').first()).toBeVisible();
+  await expect(win).toHaveAttribute('data-input', 'true');
+  await page.keyboard.press('Backspace');
+  await expect(win.getByTestId('link-hint')).toHaveCount(0);
+  // 文書以外にフォーカスすると、節は出ない
+  dew.run([join(dew.root, 'image.png')]);
+  await expect(page.getByTestId('player-window')).toHaveAttribute('data-focused', 'true');
+  await expect(sections.last().locator('h3')).not.toHaveText(/^Markdown/);
+});
+
 // 15.4: ファイルが削除されたら、最後の内容を残して「削除されました」と出す
 test('削除された文書は最後の内容を残す', async ({ page, dew }) => {
   const dir = copyMd(dew);

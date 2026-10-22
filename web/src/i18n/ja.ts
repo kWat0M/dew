@@ -191,6 +191,13 @@ export const ja = {
   secPlay: '再生(選択中、なければフォーカス中のウィンドウ)',
   secCanvas: 'キャンバス',
   secWindow: 'ウィンドウ操作',
+  secMarkdown: 'Markdown(フォーカス中の文書)',
+  docOps: {
+    back: '戻る', forward: '進む', hints: 'リンクを選んで開く', hintsWindow: 'リンクを新しいウィンドウで開く', hintsCopy: 'リンクのパスをコピー',
+    search: 'ページ内を検索', matchNext: '次の一致', matchPrev: '前の一致', toc: '目次', nextHeading: '次の見出し', prevHeading: '前の見出し',
+    top: '先頭へ', bottom: '末尾へ', larger: '文字を大きく', smaller: '文字を小さく', resetScale: '文字の大きさを元に戻す',
+    up: 'ディレクトリを Home で開く', copyPath: 'このファイルのパスをコピー',
+  },
   homeHints: [
     ['j/k', '移動'], ['h/l', '親へ / 中へ'], ['Enter', '開く'], ['Space', '選択'], ['c', '比較'], ['/', '絞り込み'],
     ['gg/G', '先頭 / 末尾'], ['n', '追従'], ['v', 'リスト / グリッド'], ['.', '隠しファイル'], ['H', '初期位置'],
