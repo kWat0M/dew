@@ -11,6 +11,8 @@ const chrome = { browserName: 'chromium', channel: 'chrome' } as const;
 const firefox = { browserName: 'firefox' } as const;
 export default defineConfig({
   testDir: './specs',
+  // ブラウザの音の出し先(Firefox の音のテスト用。ADR 0027)
+  globalSetup: './lib/browser-audio.ts',
   use: { headless: true, ignoreHTTPSErrors: true },
   projects: [
     { name: 'chrome', testIgnore: [perf, timing], use: chrome },
