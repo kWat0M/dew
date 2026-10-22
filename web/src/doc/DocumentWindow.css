@@ -35,9 +35,9 @@
 .doc-status {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   min-height: 32px;
-  padding: 0 8px 0 12px;
+  padding: 0 8px 0 4px;
   border-top: 1px solid var(--md-sys-color-outline-variant);
   color: var(--md-sys-color-on-surface-variant);
   font: var(--md-sys-typescale-label-medium);
@@ -178,4 +178,36 @@
 
 .doc-scroll.image::after {
   display: none;
+}
+
+/* 下部のバーのボタン(戻る・進む、検索、目次、文字の大きさ) */
+.doc-status .doc-bar-button {
+  width: 28px;
+  height: 28px;
+}
+
+.doc-bar-button[aria-pressed='true'] {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+.doc-bar-button:disabled {
+  opacity: var(--md-sys-state-disabled-opacity);
+  background: none;
+  cursor: default;
+}
+
+.doc-scale {
+  height: 28px;
+  min-width: 52px;
+  padding: 0 4px;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-medium);
+}
+
+.doc-divider {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: var(--md-sys-color-outline-variant);
 }

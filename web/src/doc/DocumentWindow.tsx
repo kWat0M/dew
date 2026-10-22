@@ -1,6 +1,6 @@
 // ドキュメントウィンドウ(15章): Markdown を読み取り専用で表示する。描画は別のチャンク(MarkdownView)で、
 // このファイルはキー操作(17.4)・ファイルの更新(15.4)・文字コード(15.8)を受け持つ
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type Ref } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Popover from '@radix-ui/react-popover';
 import { api, ApiError } from '../api/http';
@@ -8,7 +8,7 @@ import type { Events } from '../api/events';
 import { WindowFrame, type FrameProps } from '../canvas/WindowFrame';
 import { basename } from '../format';
 import { ja } from '../i18n/ja';
-import { Icon } from '../icons';
+import { Icon, type IconName } from '../icons';
 import { KeySequence, readKey } from '../keys';
 import type { MediaKind } from '../protocol/MediaKind';
 import type { TextDoc } from '../protocol/TextDoc';
@@ -111,6 +111,29 @@ export function hintLabels(n: number): string[] {
   return out;
 }
 
+/** 下部のバーのアイコンのボタン。説明にはキーも書く(マウスでもキーでも同じことができる) */
+function BarButton({
+  icon,
+  label,
+  onClick,
+  disabled,
+  pressed,
+  ref,
+}: {
+  icon: IconName;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  pressed?: boolean;
+  ref?: Ref<HTMLButtonElement>;
+}) {
+  return (
+    <button ref={ref} type="button" className="icon-button doc-bar-button" title={label} aria-label={label} aria-pressed={pressed} disabled={disabled} onClick={onClick}>
+      <Icon name={icon} size={18} />
+    </button>
+  );
+}
+
 type Props = FrameProps & {
   id: number;
   /** 開いた文書(ウィンドウ内で移動すると onNavigate で知らせる) */
@@ -176,6 +199,8 @@ export function DocumentWindow({
     index: number;
   } | null>(null);
   const matches = useRef<Range[]>([]);
+  /** 下部のバーの目次のボタン(押したときに、目次の外を押したとみなして閉じ、すぐ開き直さないように) */
+  const tocButton = useRef<HTMLButtonElement>(null);
   /** 描画し直したあとに戻すスクロール位置と、開く見出し */
   const pending = useRef<{ scroll?: number; hash?: string } | null>(null);
 
@@ -296,6 +321,30 @@ export function DocumentWindow({
       return { list, index: next };
     });
   };
+
+  // マウスのサイドボタン(戻る・進む)で、ウィンドウ内の履歴を移る。ブラウザのページの戻る・進むは止める
+  const goStable = useStable(go);
+  useEffect(() => {
+    const el = section.current;
+    if (!el) return;
+    const side = (e: MouseEvent) => e.button === 3 || e.button === 4;
+    const block = (e: MouseEvent) => {
+      if (side(e)) e.preventDefault();
+    };
+    const up = (e: MouseEvent) => {
+      if (!side(e)) return;
+      e.preventDefault();
+      goStable(e.button === 3 ? -1 : 1);
+    };
+    el.addEventListener('mousedown', block);
+    el.addEventListener('auxclick', block);
+    el.addEventListener('mouseup', up);
+    return () => {
+      el.removeEventListener('mousedown', block);
+      el.removeEventListener('auxclick', block);
+      el.removeEventListener('mouseup', up);
+    };
+  }, [goStable]);
 
   const copy = (text: string, done = ja.copied(text)) =>
     void navigator.clipboard?.writeText(text).then(
@@ -577,6 +626,9 @@ export function DocumentWindow({
             sideOffset={-40}
             alignOffset={8}
             onOpenAutoFocus={(e) => e.preventDefault()}
+            onInteractOutside={(e) => {
+              if (tocButton.current?.contains(e.target as Node)) e.preventDefault();
+            }}
             // 目次は Esc では閉じない(キー操作の側で o / Backspace で閉じる。15.3)
             onEscapeKeyDown={(e) => e.preventDefault()}
           >
@@ -630,10 +682,35 @@ export function DocumentWindow({
         />
       )}
       <footer className="doc-status" data-testid="doc-status">
+        <BarButton icon="arrowBack" label={ja.docBack} disabled={visits.index === 0} onClick={() => go(-1)} />
+        <BarButton icon="arrowForward" label={ja.docForward} disabled={visits.index >= visits.list.length - 1} onClick={() => go(1)} />
         {deleted && <span className="doc-note error">{ja.docDeleted}</span>}
         {large && <span className="doc-note">{ja.docLarge}</span>}
-        {search && !search.editing && <span className="doc-note">{ja.searchCount(search.index, search.count)}</span>}
+        {search && !search.editing && (
+          <>
+            <span className="doc-note">{ja.searchCount(search.index, search.count)}</span>
+            {search.count > 1 && (
+              <>
+                <BarButton icon="arrowUp" label={ja.matchPrev} onClick={() => run({ do: 'match', dir: -1 })} />
+                <BarButton icon="arrowDown" label={ja.matchNext} onClick={() => run({ do: 'match', dir: 1 })} />
+              </>
+            )}
+          </>
+        )}
         <span className="doc-spacer" />
+        {!isImage && (
+          <>
+            <BarButton icon="search" label={ja.docSearch} pressed={search?.editing ?? false} onClick={() => (search?.editing ? setSearch(null) : run({ do: 'search' }))} />
+            <BarButton ref={tocButton} icon="toc" label={ja.docToc} pressed={toc !== null} onClick={() => (toc ? setToc(null) : run({ do: 'toc' }))} />
+            <span className="doc-divider" />
+            <BarButton icon="textDecrease" label={ja.docSmaller} disabled={scale === 0} onClick={() => run({ do: 'scale', dir: -1 })} />
+            <button type="button" className="text-button doc-scale" title={ja.docScaleReset} aria-label={ja.docScaleReset} onClick={() => run({ do: 'scale', dir: 0 })}>
+              {Math.round(SCALES[scale]! * 100)}%
+            </button>
+            <BarButton icon="textIncrease" label={ja.docLarger} disabled={scale === SCALES.length - 1} onClick={() => run({ do: 'scale', dir: 1 })} />
+            {doc && <span className="doc-divider" />}
+          </>
+        )}
         {doc && (
           <>
             <span className="doc-label">{ja.encoding}</span>

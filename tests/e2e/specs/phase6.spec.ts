@@ -313,6 +313,88 @@ test('コードブロックをボタンと f でコピーする', async ({ page,
   else await expect(page.getByRole('status').filter({ hasText: 'コードをコピーしました' })).toBeVisible();
 });
 
+/** マウスのサイドボタン(3: 戻る、4: 進む)。Playwright では押せないので、ブラウザと同じ順にイベントを送る */
+async function sideButton(target: Locator, button: 3 | 4) {
+  return target.evaluate((el, b) => {
+    const init = { bubbles: true, cancelable: true, button: b, buttons: 0 };
+    el.dispatchEvent(new MouseEvent('mousedown', init));
+    const up = new MouseEvent('mouseup', init);
+    el.dispatchEvent(up);
+    return up.defaultPrevented;
+  }, button);
+}
+
+// マウスだけで: リンクで移り、バーのボタンとマウスのサイドボタンで戻る・進む。中クリックは dew の新しいウィンドウ
+test('バーのボタンとサイドボタンで戻る・進み、中クリックで新しいウィンドウに開く', async ({ page, dew }) => {
+  copyMd(dew);
+  await start(page, dew);
+  await openDoc(page, dew, 'docs/b.md');
+  const win = page.getByTestId('document-window');
+  const h1 = win.getByTestId('doc-body').locator('h1');
+  const back = win.getByRole('button', { name: /^戻る/ });
+  const forward = win.getByRole('button', { name: /^進む/ });
+  await expect(back).toBeDisabled();
+  await expect(forward).toBeDisabled();
+  await win.getByRole('link', { name: 'A へ戻る' }).click();
+  await expect(h1).toHaveText('A の文書');
+  await back.click();
+  await expect(h1).toHaveText('B の文書');
+  await expect(back).toBeDisabled();
+  await forward.click();
+  await expect(h1).toHaveText('A の文書');
+  // サイドボタンはブラウザのページ移動を止めて(preventDefault)、ウィンドウ内の履歴を移る
+  expect(await sideButton(win.getByTestId('doc-scroll'), 3)).toBe(true);
+  await expect(h1).toHaveText('B の文書');
+  expect(await sideButton(win.getByTestId('doc-scroll'), 4)).toBe(true);
+  await expect(h1).toHaveText('A の文書');
+  // 中クリック: ブラウザの新しいタブは開かず、dew の新しいウィンドウで開く
+  const link = win.getByRole('link', { name: '全要素の見本へ' });
+  await expect(link).toHaveAttribute('title', /中クリック/);
+  await link.click({ button: 'middle' });
+  await expect(docWindow(page, 'all.md')).toBeVisible();
+  await expect(page.getByTestId('document-window')).toHaveCount(2);
+  expect(page.context().pages()).toHaveLength(1);
+});
+
+// 検索・目次・文字の大きさは、下部のバーのボタンでも操作できる
+test('下部のバーのボタンで検索・目次・文字の大きさを変える', async ({ page, dew }) => {
+  copyMd(dew);
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await start(page, dew);
+  const win = await openDoc(page, dew, 'all.md');
+  const bar = win.getByTestId('doc-status');
+  const scale = () => win.getByTestId('doc-scroll').evaluate((el) => getComputedStyle(el).getPropertyValue('--doc-scale').trim());
+  await bar.getByRole('button', { name: /^文字を大きく/ }).click();
+  expect(await scale()).toBe('1.15');
+  await expect(bar.getByRole('button', { name: /^文字の大きさを元に戻す/ })).toHaveText('115%');
+  await bar.getByRole('button', { name: /^文字を小さく/ }).click();
+  await bar.getByRole('button', { name: /^文字を小さく/ }).click();
+  expect(await scale()).toBe('0.9');
+  await bar.getByRole('button', { name: /^文字の大きさを元に戻す/ }).click();
+  expect(await scale()).toBe('1');
+  // 目次: ボタンで開き、もう一度押すと閉じる。項目のクリックで移動する
+  const tocButton = bar.getByRole('button', { name: /^目次/ });
+  await tocButton.click();
+  const toc = page.getByTestId('doc-toc');
+  await expect(toc).toBeVisible();
+  await tocButton.click();
+  await expect(toc).toBeHidden();
+  await tocButton.click();
+  await toc.getByRole('option', { name: 'コード' }).click();
+  await expect(toc).toBeHidden();
+  await expect.poll(() => headingAtTop(win, 'コード')).toBe(true);
+  // 検索: ボタンで欄を開き、Enter で確定。一致が2つ以上あれば、前・次のボタンで移る
+  await bar.getByRole('button', { name: /^ページ内を検索/ }).click();
+  // python のコードブロックに hello が2つある
+  await page.keyboard.type('hello');
+  await page.keyboard.press('Enter');
+  await expect(bar).toContainText('1 / 2');
+  await bar.getByRole('button', { name: /^次の一致/ }).click();
+  await expect(bar).toContainText('2 / 2');
+  await bar.getByRole('button', { name: /^前の一致/ }).click();
+  await expect(bar).toContainText('1 / 2');
+});
+
 // 15.4: ファイルが削除されたら、最後の内容を残して「削除されました」と出す
 test('削除された文書は最後の内容を残す', async ({ page, dew }) => {
   const dir = copyMd(dew);

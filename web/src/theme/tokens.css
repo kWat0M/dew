@@ -24,6 +24,7 @@
   --md-sys-state-focus-opacity: 10%;
   --md-sys-state-pressed-opacity: 10%;
   --md-sys-state-dragged-opacity: 16%;
+  --md-sys-state-disabled-opacity: 38%;
 
   /* モーション */
   --md-sys-motion-easing-standard: cubic-bezier(0.2, 0, 0, 1);

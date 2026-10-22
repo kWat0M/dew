@@ -111,9 +111,16 @@ function MarkdownViewInner({ text, path, root, externalImages, onLink, onCopyCod
           href={raw}
           data-href={raw}
           data-kind={link.kind}
+          title={link.kind === 'anchor' ? undefined : ja.linkNewWindow}
           onClick={(e) => {
             e.preventDefault();
             onLink?.(link, e.shiftKey || e.ctrlKey || e.metaKey);
+          }}
+          // 中クリックはブラウザのように新しく開く(ブラウザの新しいタブではなく dew の新しいウィンドウ)
+          onAuxClick={(e) => {
+            if (e.button !== 1) return;
+            e.preventDefault();
+            onLink?.(link, true);
           }}
         >
           {children}
