@@ -62,7 +62,7 @@
 
 0. **v0.1.2 をリリースする**: `root-default` がマージされたら、下の手順で出す。ユーザーにサーバ上のコンテナで、`/workspace` などで起動して中身が見えるか確かめてもらう(README の Docker の手順も、まだ docker のある環境で通して確かめていない)。版の付け方: 0.1.0 と同じ版で中身を変えて出すのは避ける(友人の手元と区別できなくなり、公開済みのタグの付け直しにもなるため)
 1. **ユーザーの確認待ち**: Zen で2本並べたとき、フォーカス中の右側の動画が黒くなる問題への対策が効いたか
-2. **NVENC の実物の確認**: 開発用コンテナには GPU が渡っていない(`/dev/dxg` も `libcuda` もない)。compose.yaml に GPU の指定(`deploy.resources.reservations.devices` で `driver: nvidia`、`capabilities: [gpu, video]`)を足すかはユーザーの判断。足したら `dew doctor` で確かめる
+2. **NVENC の実物の確認**: 開発用コンテナには GPU が渡っていない(`/dev/dxg` も `libcuda` もない)。compose/compose.yaml に GPU の指定(`deploy.resources.reservations.devices` で `driver: nvidia`、`capabilities: [gpu, video]`)を足すかはユーザーの判断。足したら `dew doctor` で確かめる
 3. **spec 9.2 の残り**(未実装・一部だけ):
    - 平文 HTTP + MSE へのフォールバック(2.3)
    - `dew status` のタブ数・ライブウィンドウ数(3.1)

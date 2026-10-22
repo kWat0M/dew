@@ -615,15 +615,16 @@ Rust だけ(Leptos 等)でも書けるが、(1) 動画のデコードと描画�
 
 ## 10. 開発環境(Claude Code)
 
-開発は WSL2 上の Docker コンテナで行い、git 操作もコーディングも Claude Code もすべてその中で動かす。コンテナは手元のテンプレート(dotfiles の開発コンテナ見本)から作った `Dockerfile` / `compose.yaml` / `dev.sh` / `.env.example` で定義する。セクション番号 [1]〜[6] はテンプレートと共通で、[6] が dew 固有。
+開発は WSL2 か Linux サーバ上の Docker コンテナで行い、git 操作もコーディングも Claude Code もすべてその中で動かす。コンテナは手元のテンプレート(dotfiles の開発コンテナ見本 `docker/rust`)から作った `Dockerfile` / `compose/compose.yaml` / `compose/.env.example` / `dev.sh` で定義する(ADR 0027)。Dockerfile は base → toolchain → development のステージに分け、エディタなど共通のツールは dotfiles の dev-tools イメージから取り込む。セクション番号 [1]〜[6] はテンプレートと共通で、[6] が dew 固有。WSLg には依存しない。
 
-使い方: `.env.example` を `.env` にコピーして値を埋め、`./dev.sh` で起動して入る(`./dev.sh build` で作り直し、`./dev.sh down` で停止)。
+使い方: `compose/.env.example` を `compose/.env` にコピーして値を埋め、`./dev.sh` で起動して入る(dev-tools のイメージがなければ先に作る。`./dev.sh build` で作り直し、`./dev.sh down` で停止)。
 
 ### 10.1 開発用コンテナに入れるもの(Debian trixie ベース)
 
 | 分類 | パッケージ / ツール | 用途 |
 | --- | --- | --- |
-| [1]〜[5] テンプレート | starship、chafa、yazi、ffmpeg、git、lazygit、gh、mpv、Neovim、Claude Code(公式インストーラ、版を固定) | 共通の作業環境 |
+| [4] dev-tools(dotfiles) | starship、yazi、lazygit、Neovim(設定・プラグイン込み)、tree-sitter、Claude Code、Release 版の dew(版はすべて dotfiles で固定) | 共通の作業環境 |
+| [1][2] | git、openssh-client、ripgrep、fd-find、file、jq、gh | dev-tools が使うもの、Releases の公開・取得 |
 | ビルド基盤 | build-essential、pkg-config、clang、nasm、cmake、musl-tools、libopus-dev | Rust のネイティブ依存、musl 静的ビルド |
 | Rust | rustup(stable)、rustfmt、clippy、rust-src、`x86_64-unknown-linux-musl` ターゲット、cargo-nextest | サーバ本体とテスト、配布用ビルド |
 | フロント | Node.js 24 LTS(NodeSource)、pnpm(corepack。版は package.json の `packageManager` で固定) | Web UI のビルド |
@@ -638,17 +639,17 @@ Rust だけ(Leptos 等)でも書けるが、(1) 動画のデコードと描画�
 
 E2E には Playwright 同梱の Chromium ではなく Google Chrome を使う(`channel: 'chrome'`)。同梱の Chromium は H.264 / AAC を再生できない。Firefox 系への対応を確かめるため、Playwright の Firefox も使う(`playwright install firefox` でダウンロードする)。
 
-### 10.2 compose.yaml の主な設定
+### 10.2 compose/compose.yaml の主な設定
 
-- サービス名・ホスト名: `dew`
-- ポート: 8765(dew 本体)と 5173(Vite の開発サーバ)を公開。番号は `.env` の `DEW_PORT` / `VITE_PORT` で変えられる。Windows のブラウザから `https://localhost:8765` / `http://localhost:5173` で開ける。Vite は `server.host` を `0.0.0.0` にする
-- 環境変数: `DEW_PUBLIC_HOST=localhost`、`DEW_PUBLIC_PORT=${DEW_PORT}`
-- リポジトリは `/home/dev/${PROJECT_PATH}` にマウントする(ホームからの相対パスをホストとそろえる。Claude Code の会話履歴の同期のため)。`target/` と `node_modules/` はリポジトリ内に置く
+- プロジェクト名: `dew-dev`。サービス名・ホスト名: `dew`。ビルドするステージ: `development`
+- ポート: 8765(dew 本体)と 5173(Vite の開発サーバ)を公開。ホスト側の番号は `compose/.env` の `DEW_PORT` / `VITE_PORT` で決める(共用のサーバでは他の人と重ならない番号にする)。dew 本体はトークン付き URL で直結する。Vite はトークンがないので、ホストの `127.0.0.1` だけで受ける(WSL では Windows から `http://localhost:<VITE_PORT>`、サーバでは `ssh -L` で開く)。コンテナ内の Vite は `server.host` を `0.0.0.0` にする
+- 環境変数: `DEW_PUBLIC_HOST=${DEW_PUBLIC_HOST}`(WSL なら `localhost`、サーバなら IP)、`DEW_PUBLIC_PORT=${DEW_PORT}`
+- リポジトリは `/home/dev/${PROJECT_PATH}` にマウントする(ホームからの相対パスをホストとそろえる。Claude Code の会話履歴の同期のため)。`target/` と `node_modules/` はリポジトリ内に置く。`target/debug` を PATH の先頭に置き、手で打った `dew` は開発中のものを使う
 - 名前付きボリューム: `cargo-home`(~/.cargo)、`pnpm-store`(~/.local/share/pnpm)、`gh-config`(~/.config/gh)。持ち主の UID は `dev.sh` が合わせる
-- git: ホストの ssh-agent を転送する(秘密鍵はコンテナに入れない)。git / ssh の設定は dotfiles からコピー
+- git: ホストの ssh-agent を転送する(秘密鍵はコンテナに入れない)。git の設定は dev-tools に、ssh の設定はビルド時に dotfiles からコピー
 - Claude Code: ホストの `~/.claude` をマウントして、ログイン情報・会話履歴を共有する
-- WSLg: X11 / Wayland / PulseAudio のソケットを共有する(テスト用アプリを Windows 側に直接出して見比べる用)。`dew run` は自前の Xvfb と pulseaudio を起動し、子プロセスの `DISPLAY` / `PULSE_SERVER` を上書きする
-- 共有メモリ: `ipc: host`(ホストの /dev/shm を使う。Chrome と Xvfb もこれで足りるため `shm_size` は指定しない)
+- GUI: `dew run` は自前の Xvfb と pulseaudio を起動し、子プロセスの `DISPLAY` / `PULSE_SERVER` を設定する(WSLg のソケットは共有しない)
+- 共有メモリ: `shm_size: 2gb`(コンテナ専用の /dev/shm。Chrome と Xvfb が使う。`ipc: host` は共用のサーバでホストや他のコンテナと混ざるので使わない)
 
 リモートサーバでの確認(直結モード、複数コンテナ)は各フェーズの終わりにまとめて行う。ビルドしたバイナリをサーバのコンテナに持ち込んで試す。
 
@@ -846,7 +847,7 @@ dew() {
 | --- | --- | --- |
 | `DISPLAY` | dew の Xvfb(`dew env` と同じ値) | X11 アプリの表示先 |
 | `PULSE_SERVER` | dew の音声サーバ(`dew env` と同じ値) | 音声の出力先 |
-| `WAYLAND_DISPLAY` | 未設定にする | 開発用コンテナでは WSLg の値が入っている。Wayland 対応のアプリが dew を通らず Windows 側に出るのを防ぐ |
+| `WAYLAND_DISPLAY` | 未設定にする | WSLg の上などでは値が入っている。Wayland 対応のアプリが dew を通らず Windows 側に出るのを防ぐ |
 | `QT_QPA_PLATFORM` | `xcb` | Qt を X11 に固定する |
 | `GDK_BACKEND` | `x11` | GTK を X11 に固定する |
 | `SDL_VIDEODRIVER` | `x11` | pygame(SDL)を X11 に固定する |

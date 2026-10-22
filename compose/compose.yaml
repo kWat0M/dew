@@ -1,29 +1,36 @@
 # =============================================================================
-# 開発用コンテナ（dew）  セクション番号は Dockerfile と対応
-#   使い方: ./dev.sh（中身は docker compose up -d → docker compose exec dew bash）
+# 開発用コンテナ（dew）  セクション番号は Dockerfile の development と対応
+#   使い方: ./dev.sh（詳しくは dotfiles/docker/README.md、決めごとは ADR 0027）
+#   dotfiles の見本の compose.dev.yaml にあたる。開発用だけなので、本番用の compose.yaml は重ねない。
+#   パスは、このファイルのあるディレクトリ（compose/）からの相対パス。.env も compose/ に置く
 # =============================================================================
+# コンテナ・ボリュームの名前の頭に付く（指定しないとディレクトリ名の compose になり、ほかのプロジェクトとぶつかる）
+name: dew-dev
+
 services:
   dew:
     build:
-      context: .
+      # プロジェクトのルートをビルドに渡す
+      context: ..
+      target: development
       args:
         # --- [1] 基本設定: ホストと同じ UID/GID でユーザーを作る（dev.sh が id -u / id -g を .env に書き込む）---
         UID: ${HOST_UID:?一度 ./dev.sh を実行してください（.env に HOST_UID を書き込みます）}
         GID: ${HOST_GID:?一度 ./dev.sh を実行してください（.env に HOST_GID を書き込みます）}
+        # --- [4] dev-tools: 取り込むイメージの名前（dev.sh が .env に書き込む）---
+        DEV_TOOLS_IMAGE: ${DEV_TOOLS_IMAGE:?一度 ./dev.sh を実行してください（.env に DEV_TOOLS_IMAGE を書き込みます）}
+        # --- [4] dev-tools: 開発中の dew（target/debug）を PATH の先頭に置くため ---
+        PROJECT_PATH: ${PROJECT_PATH}
         # --- [5] Claude Code: dotfiles の場所（Claude の設定をホストと同じパスにコピーするため）---
         DOTFILES: ${DOTFILES}
-      # プロジェクト外にある設定（dotfiles）をビルドに渡す（Dockerfile の COPY --from=<名前> で受け取る）
+      # プロジェクト外にある設定（dotfiles）のうち PC 固有のものをビルドに渡す（Dockerfile の COPY --from=<名前> で受け取る）。
+      # それ以外の設定は dev-tools イメージに入っている
       # 場所は .env の DOTFILES で指定する（未設定ならエラーにする）
       additional_contexts:
-        # --- [1] 基本設定: starship の設定 ---
-        starship-config: ${DOTFILES:?.env に DOTFILES を設定してください}/starship/.config
-        # --- [2] git: git と ssh の設定 ---
-        git-config: ${DOTFILES}/git/.config/git
-        ssh-config: ${DOTFILES}/ssh/.ssh
-        # --- [4] Neovim: nvim の設定 ---
-        nvim-config: ${DOTFILES}/nvim/.config/nvim
-        # --- [5] Claude Code: Claude Code の設定（CLAUDE.md など）と同期スクリプト ---
-        claude-config: ${DOTFILES}/claude
+        # --- [2] git: ssh の設定 ---
+        ssh-config: ${DOTFILES:?.env に DOTFILES を設定してください}/ssh/.ssh
+        # --- [5] Claude Code: Claude Code の設定（CLAUDE.md など）---
+        claude-config: ${DOTFILES}/claude/.claude
 
     # --- [1] 基本設定: コンテナに入ったときの作業ディレクトリ（リポジトリのルート）---
     working_dir: /home/dev/${PROJECT_PATH}
@@ -37,25 +44,23 @@ services:
     labels:
       - dev.uid=${HOST_UID}
 
-    # --- [6] dew: Windows のブラウザから開くポート ---
-    # WSL2 の localhost 転送で、Windows から https://localhost:8765 / http://localhost:5173 で開ける
+    # --- [3] GUI ウィンドウ: ブラウザから開くポート ---
+    # 作成時にしか公開できないので、変えたら作り直す（./dev.sh build）
     ports:
-      # dew 本体（HTTPS + WebSocket）
-      - "${DEW_PORT:-8765}:8765"
-      # Vite の開発サーバ（vite.config の server.host を 0.0.0.0 にする）
-      - "${VITE_PORT:-5173}:5173"
+      # dew 本体（HTTPS + WebSocket。トークン付き URL で直結する）
+      - ${DEW_PORT:?.env に DEW_PORT を設定してください}:8765
+      # Vite の開発サーバ（トークンがないので、ホストの 127.0.0.1 だけで受ける）。
+      # WSL では Windows から http://localhost:<VITE_PORT> で、サーバでは ssh -L で開く
+      - 127.0.0.1:${VITE_PORT:-5173}:5173
 
     volumes:
       # --- [1] 基本設定: リポジトリ全体を、ホームからの相対パスがホストと同じ場所にマウントする ---
       # （.git も含めてコンテナ内で git を使うため。相対パスをそろえるのは、Claude Code の会話履歴を
       #   ホストと同じ名前で同期させるため。zshrc の cla / clad / _link-claude-projects を参照）
-      # target/ と node_modules/ もリポジトリ内（WSL の ext4 上）に置く
-      - .:/home/dev/${PROJECT_PATH:?.env に PROJECT_PATH を設定してください}
+      # target/ と node_modules/ もリポジトリ内に置く
+      - ..:/home/dev/${PROJECT_PATH:?.env に PROJECT_PATH を設定してください}
       # --- [2] git: ホストの ssh-agent を転送する（鍵はコンテナに入れない）---
       - ${SSH_AUTH_SOCK:?ssh-agent が起動していません（zshrc を確認）}:/run/ssh-agent.sock
-      # --- [3] GUI ウィンドウ: WSLg の X11 / Wayland / PulseAudio ソケットを共有 ---
-      - /tmp/.X11-unix:/tmp/.X11-unix
-      - /mnt/wslg:/mnt/wslg
       # --- [5] Claude Code: ログイン情報・会話履歴・メモリをホストと共有する ---
       - ${HOME}/.claude:/home/dev/.claude
       # --- [6] Rust: ダウンロードした依存クレートを残す ---
@@ -68,16 +73,11 @@ services:
     environment:
       # --- [1] 基本設定: コンテナ内であることの目印（starship がホスト名を表示する条件に使う）---
       - DEVCONTAINER=1
-      # --- [1] 基本設定: chafa（img コマンド）で使う画像の形式（.env で指定。WezTerm なら iterm）---
-      - IMAGE_FORMAT=${IMAGE_FORMAT:-sixels}
       # --- [2] git: 転送した ssh-agent を使う ---
       - SSH_AUTH_SOCK=/run/ssh-agent.sock
-      # --- [3] GUI ウィンドウ: 表示先を WSLg に向ける ---
-      # dew run は自分の Xvfb と pulseaudio を起動し、DISPLAY / PULSE_SERVER を上書きして子プロセスに渡す
-      - DISPLAY=${DISPLAY:-:0}
-      - WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-wayland-0}
-      - XDG_RUNTIME_DIR=/mnt/wslg/runtime-dir
-      - PULSE_SERVER=unix:/mnt/wslg/PulseServer
+      # --- [3] GUI ウィンドウ: dew が表示する URL（Windows から見たホスト名とポート。仕様書 2.5）---
+      - DEW_PUBLIC_HOST=${DEW_PUBLIC_HOST:?.env に DEW_PUBLIC_HOST を設定してください}
+      - DEW_PUBLIC_PORT=${DEW_PORT}
       # --- [4] Neovim: 端末の色設定（truecolor）を引き継ぐ ---
       - TERM=${TERM:-xterm-256color}
       - COLORTERM=${COLORTERM:-truecolor}
@@ -87,13 +87,11 @@ services:
       - CLAUDE_CONFIG_DIR=/home/dev/.claude
       # --- [5] Claude Code: 会話履歴の使用中の印に書く PC の名前（コンテナのホスト名は PC と違うため）---
       - SYNC_HOST=${SYNC_HOST:?.env に SYNC_HOST（この PC の uname -n の値）を設定してください}
-      # --- [6] dew: 端末に表示する URL（Windows から見たホスト名とポート。仕様書 2.5）---
-      - DEW_PUBLIC_HOST=localhost
-      - DEW_PUBLIC_PORT=${DEW_PORT:-8765}
 
-    # --- [3] GUI ウィンドウ: 共有メモリ（MIT-SHM）を使う GUI アプリ用 ---
-    # ホストの /dev/shm を使うので、Chrome / Xvfb 用の shm_size 指定は不要（ipc: host とは併用できない）
-    ipc: host
+    # --- [3] GUI ウィンドウ: 共有メモリ（Chrome と Xvfb の MIT-SHM が使う）---
+    # コンテナ専用の /dev/shm を作る（既定の 64MB では Chrome が落ちる）。
+    # ホストや他のコンテナの /dev/shm とは分かれる（ipc: host は使わない。共用のサーバで混ざるため）
+    shm_size: 2gb
 
 volumes:
   # --- [6] Rust ---

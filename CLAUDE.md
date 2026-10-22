@@ -6,7 +6,7 @@
 ## 構成
 - crates/: Rust(サーバ、CLI、キャプチャ)。web/: React + TypeScript + Vite
 - 通信の型は crates/protocol で定義し、ts-rs で web/src/protocol/ に出力する。TS 側の型を手で書かない
-- 開発はこのリポジトリの開発用コンテナ(Dockerfile / compose.yaml)の中で行う。コンテナ内に docker はない
+- 開発はこのリポジトリの開発用コンテナ(Dockerfile / compose/compose.yaml / dev.sh)の中で行う。コンテナ内に docker はない
 
 ## コマンド
 - ビルド: cargo build / pnpm -C web build
