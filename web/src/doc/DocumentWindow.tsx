@@ -48,6 +48,7 @@ export type DocAction =
   | { do: 'up' }
   | { do: 'copyPath' }
   | { do: 'scale'; dir: 1 | -1 | 0 }
+  | { do: 'encoding' }
   | { do: 'exit' };
 
 /** 入力モードのキー(17.4) */
@@ -80,6 +81,7 @@ export const docKeys: Record<string, DocAction> = {
   '+': { do: 'scale', dir: 1 },
   '-': { do: 'scale', dir: -1 },
   '=': { do: 'scale', dir: 0 },
+  e: { do: 'encoding' },
   q: { do: 'exit' },
   'C-]': { do: 'exit' },
 };
@@ -94,6 +96,7 @@ export const docCommands: CommandDef<DocAction>[] = [
   { id: docKeys.o!, key: 'o', label: O.toc }, { id: docKeys[']']!, key: ']', label: O.nextHeading }, { id: docKeys['[']!, key: '[', label: O.prevHeading },
   { id: docKeys['g g']!, key: 'gg', label: O.top }, { id: docKeys.G!, key: 'G', label: O.bottom },
   { id: docKeys['+']!, key: '+', label: O.larger }, { id: docKeys['-']!, key: '-', label: O.smaller }, { id: docKeys['=']!, key: '=', label: O.resetScale },
+  { id: docKeys.e!, key: 'e', label: O.encoding },
   { id: docKeys['g u']!, key: 'gu', label: O.up }, { id: docKeys['y y']!, key: 'yy', label: O.copyPath },
 ];
 
@@ -539,6 +542,13 @@ export function DocumentWindow({
         return copy(path);
       case 'scale':
         return setScale((x) => (a.dir === 0 ? 2 : Math.min(SCALES.length - 1, Math.max(0, x + a.dir))));
+      case 'encoding': {
+        // 手で選べる文字コードを順に切り替える(15.8)。UTF-16 などほかのものからは UTF-8 へ
+        if (!doc) return;
+        const next = CHOICES[(CHOICES.indexOf(doc.encoding) + 1) % CHOICES.length]!;
+        setEncodings((m) => ({ ...m, [path]: next }));
+        return onMessage(ja.encodingChanged(ja.encodings[next]));
+      }
       case 'exit':
         setHints(null);
         setToc(null);
@@ -745,7 +755,7 @@ export function DocumentWindow({
           <>
             <span className="doc-label">{ja.encoding}</span>
             <DropdownMenu.Root>
-              <DropdownMenu.Trigger className="text-button doc-encoding" data-testid="doc-encoding">
+              <DropdownMenu.Trigger className="text-button doc-encoding" data-testid="doc-encoding" title={ja.encodingKey}>
                 {ja.encodings[doc.encoding]}
               </DropdownMenu.Trigger>
               <DropdownMenu.Portal>

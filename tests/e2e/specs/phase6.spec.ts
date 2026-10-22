@@ -445,6 +445,23 @@ test('文字コードを手で切り替える', async ({ page, dew }) => {
   await expect(win.getByTestId('doc-body').locator('h1')).toHaveText('日本語の見出し');
 });
 
+// 入力モードの e で、文字コードを UTF-8 → Shift_JIS → EUC-JP の順に切り替える
+test('e で文字コードを順に切り替える', async ({ page, dew }) => {
+  copyMd(dew);
+  await start(page, dew);
+  const win = await openDoc(page, dew, 'sjis.md');
+  const encoding = win.getByTestId('doc-encoding');
+  await page.keyboard.press('e');
+  await expect(encoding).toHaveText('EUC-JP');
+  await expect(page.getByRole('status').filter({ hasText: '文字コード: EUC-JP' })).toBeVisible();
+  await page.keyboard.press('e');
+  await expect(encoding).toHaveText('UTF-8');
+  await expect(win.getByTestId('doc-body')).not.toContainText('日本語の見出し');
+  await page.keyboard.press('e');
+  await expect(encoding).toHaveText('Shift_JIS');
+  await expect(win.getByTestId('doc-body').locator('h1')).toHaveText('日本語の見出し');
+});
+
 // 15.5: Home のプレビューに Markdown の先頭を描く
 test('Home のプレビューに Markdown を描く', async ({ page, dew }) => {
   copyMd(dew);
