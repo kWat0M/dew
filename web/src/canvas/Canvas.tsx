@@ -210,6 +210,8 @@ export function Canvas(p: Props) {
   const docHintShown = useRef(false);
   /** 巻き戻し中のライブウィンドウ(ヒントの帯の出し分けに使う) */
   const [rewinding, setRewinding] = useState<Set<number>>(new Set());
+  /** リンクヒントを出しているドキュメントウィンドウ(ヒントの帯に抜け方を出す) */
+  const [hintingDoc, setHintingDoc] = useState<number | null>(null);
   const onRewind = useCallback(
     (id: number, on: boolean) =>
       setRewinding((s) => {
@@ -227,7 +229,7 @@ export function Canvas(p: Props) {
     const w = ws.find((x) => x.id === p.focused);
     let own: [string, string][] = [];
     if (w && isDocument(w)) {
-      if (inputWindow === w.id) return H.docInput;
+      if (inputWindow === w.id) return hintingDoc === w.id ? H.docHinting : H.docInput;
       own = H.doc;
     } else if (w?.live) {
       if (inputWindow === w.id) return H.input;
@@ -676,6 +678,7 @@ export function Canvas(p: Props) {
                 }}
                 onExitInput={exitInput}
                 onNavigate={(path) => p.onPathChange(w.id, path)}
+                onHintsChange={(on) => setHintingDoc((cur) => (on ? w.id : cur === w.id ? null : cur))}
                 onOpenFiles={p.onOpenFiles}
                 onOpenDir={p.onOpenDir}
                 onMessage={p.onMessage}

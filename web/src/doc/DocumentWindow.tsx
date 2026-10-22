@@ -9,7 +9,7 @@ import { WindowFrame, type FrameProps } from '../canvas/WindowFrame';
 import { basename } from '../format';
 import { ja } from '../i18n/ja';
 import { Icon } from '../icons';
-import { KeySequence } from '../keys';
+import { KeySequence, readKey } from '../keys';
 import type { MediaKind } from '../protocol/MediaKind';
 import type { TextDoc } from '../protocol/TextDoc';
 import type { TextEncoding } from '../protocol/TextEncoding';
@@ -47,7 +47,6 @@ type DocAction =
   | { do: 'up' }
   | { do: 'copyPath' }
   | { do: 'scale'; dir: 1 | -1 | 0 }
-  | { do: 'escape' }
   | { do: 'exit' };
 
 /** 入力モードのキー(17.4) */
@@ -80,7 +79,7 @@ export const docKeys: Record<string, DocAction> = {
   '+': { do: 'scale', dir: 1 },
   '-': { do: 'scale', dir: -1 },
   '=': { do: 'scale', dir: 0 },
-  Escape: { do: 'escape' }, q: { do: 'exit' },
+  q: { do: 'exit' },
   'C-]': { do: 'exit' },
 };
 const docMap = new KeySequence(docKeys);
@@ -124,6 +123,8 @@ type Props = FrameProps & {
   onToggleInput: () => void;
   onExitInput: () => void;
   onNavigate: (path: string) => void;
+  /** リンクヒントを出しているか(画面下のヒントの帯を切り替える) */
+  onHintsChange: (on: boolean) => void;
   onOpenFiles: (files: { path: string; media: MediaKind }[]) => void;
   onOpenDir: (dir: string) => void;
   onMessage: (m: string) => void;
@@ -139,6 +140,7 @@ export function DocumentWindow({
   onToggleInput,
   onExitInput,
   onNavigate,
+  onHintsChange,
   onOpenFiles,
   onOpenDir,
   onMessage,
@@ -179,10 +181,14 @@ export function DocumentWindow({
 
   // 移動したら、キャンバスにも今の文書を知らせる(タブの名前と、同じ文書を開いたときの判定に使う)
   const onNavigateRef = useRef(onNavigate);
+  const onHintsChangeRef = useRef(onHintsChange);
   useLayoutEffect(() => {
     onNavigateRef.current = onNavigate;
+    onHintsChangeRef.current = onHintsChange;
   });
   useEffect(() => onNavigateRef.current(path), [path]);
+  const hinting = hints !== null;
+  useEffect(() => onHintsChangeRef.current(hinting), [hinting]);
 
   const encoding = encodings[path];
   useEffect(() => {
@@ -468,10 +474,6 @@ export function DocumentWindow({
         return copy(path);
       case 'scale':
         return setScale((x) => (a.dir === 0 ? 2 : Math.min(SCALES.length - 1, Math.max(0, x + a.dir))));
-      case 'escape':
-        // 開いているものがあれば、まずそれを閉じる。なければ入力モードを抜ける(15.3)
-        if (search) return setSearch(null);
-        return onExitInput();
       case 'exit':
         setHints(null);
         setToc(null);
@@ -488,9 +490,9 @@ export function DocumentWindow({
       return run({ do: 'exit' });
     }
     if (hints) {
-      // ヒントを出している間は、ほかのキーを受け付けない(17.4)
+      // ヒントを出している間は、ほかのキーを受け付けない(17.4)。Esc では閉じない(15.3)
       e.preventDefault();
-      if (k.key === 'Escape' || k.key === 'Backspace') return setHints(null);
+      if (k.key === 'Backspace') return setHints(null);
       if (!HINT_CHARS.includes(k.key)) return;
       const typed = hints.typed + k.key;
       const left = hints.items.filter((h) => h.label.startsWith(typed));
@@ -500,7 +502,7 @@ export function DocumentWindow({
     }
     if (toc) {
       e.preventDefault();
-      if (k.key === 'Escape' || k.key === 'o') return setToc(null);
+      if (k.key === 'o' || k.key === 'Backspace') return setToc(null);
       if (k.key === 'j' || k.key === 'ArrowDown')
         return setToc({
           ...toc,
@@ -575,7 +577,7 @@ export function DocumentWindow({
             sideOffset={-40}
             alignOffset={8}
             onOpenAutoFocus={(e) => e.preventDefault()}
-            // Esc はキー操作の側で扱う(入力モードを抜けないように)
+            // 目次は Esc では閉じない(キー操作の側で o / Backspace で閉じる。15.3)
             onEscapeKeyDown={(e) => e.preventDefault()}
           >
             <div className="doc-toc-title">{ja.toc}</div>
@@ -618,8 +620,10 @@ export function DocumentWindow({
           placeholder={ja.searchPlaceholder}
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return;
+            // 文字を打っている間だけ Esc で検索欄を閉じる。Ctrl+] は入力欄からでも抜ける(15.3)
             if (e.key === 'Enter') runSearch(e.currentTarget.value);
             else if (e.key === 'Escape') setSearch(null);
+            else if (readKey(e.nativeEvent)?.key === 'C-]') run({ do: 'exit' });
             else return;
             e.preventDefault();
           }}
