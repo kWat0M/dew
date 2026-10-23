@@ -1,9 +1,11 @@
-# 引き継ぎ(2026-10-22 時点、フェーズ6の後・開発する場所をサーバへ移す前)
+# 引き継ぎ(2026-10-23 時点、フェーズ7の後)
 
 次のセッションが、この文書だけで続きを始められるようにまとめる。仕様は `docs/spec.md`、判断の記録は `docs/decisions/`(ADR 0001〜0027)が正。迷ったら spec → ADR の順に見る。
 
 ## 1. 今どこにいるか
 
+- **フェーズ7(CSV、spec 16章)を作った**(2026-10-23、ブランチ `phase-7`、ADR 0029)。受け入れ基準12項目は自動テストで確かめた(E2E 全体が通る)。見た目・操作感の確認は `docs/manual/phase7-check.md`。DuckDB は zig + `cargo zigbuild` で musl に静的リンクでき、配布用ビルドは `scripts/release.sh`(`cargo zigbuild`)。**開発用コンテナの作り直しが要る**(Dockerfile に zig と cargo-zigbuild を足した。それまでは手元の `~/.local/opt/zig-*` と `~/.cargo/bin/cargo-zigbuild` を PATH に足して使う)。フェーズ1〜7はすべて終わり。続きは 3 章の候補から
+- **ブラウザの履歴に画面の移り変わりを積んだ**(2026-10-23、PR #16 で main に入った。ADR 0028)。戻る・進む・マウスのサイドボタンで Home のディレクトリ・Home とキャンバス・文書のリンクを辿れる
 - **開発用コンテナを dotfiles の新しい見本に合わせた**(2026-10-22、ブランチ `dev-container`(`phase-6` の上)、ADR 0027、spec 10章)。WSLg に依存しないので、WSL2 でも Linux サーバのコンテナでも同じ `./dev.sh` で入れる。設定は `compose/.env`(`compose/.env.example` から作る)。E2E の Firefox の音は、テスト中だけ立てるブラウザ用の pulseaudio に出す(`tests/e2e/lib/browser-audio.ts`)。新しいコンテナで Rust 114件・web 単体 33件が通り、E2E は perf を単独で流すと通る(全体で流したときはホストの負荷で perf が落ち、後の timing は流れなかった)。**続きは、開発する場所を共用の Linux サーバのコンテナへ移すこと**(4.1)
 - **フェーズ6(ドキュメントウィンドウ・Markdown、spec 15・17章)を作った**(2026-10-21、ブランチ `phase-6`、ADR 0024。確認を受けた修正は ADR 0025・0026)。受け入れ基準は自動テストで確かめた。見た目・操作感の確認は `docs/manual/phase6-check.md`。続きはフェーズ7(CSV。DuckDB を zig + cargo-zigbuild で musl に組み込むところから)
 - **フェーズ5(シェル連携・外部ツール連携、spec 13・14章)を作った**(2026-10-21、ブランチ `phase-5`、ADR 0023)。受け入れ基準は自動テストで確かめた(bash・zsh とも。zsh は開発用コンテナの Dockerfile に足した)。実際の端末・WezTerm での確認は `docs/manual/phase5-check.md`。続きはフェーズ6(ドキュメントウィンドウ・Markdown)
