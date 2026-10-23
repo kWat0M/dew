@@ -3,7 +3,7 @@
 // 時間を測るので、playwright.config.ts の timing-* プロジェクトで、ほかのテストの後に流す(ADR 0011)
 import { join } from 'node:path';
 import { csvWindow, goCol, header, rowNumbers, status } from '../lib/csv';
-import { copyCsv, expect, start, test } from '../lib/dew';
+import { copyCsv, expect, reloadPage, start, test } from '../lib/dew';
 
 test.describe.configure({ timeout: 120_000 });
 
@@ -56,6 +56,15 @@ test('100万行は大規模モードで開き、進捗を出し、ソート・�
     () => expect.poll(() => win.getByTestId('csv-rows').textContent(), { intervals: [20] }).not.toBe(before),
   );
   expect(filtered).toBeLessThan(1000);
+  // サーバを起動し直しても、作ったデータベース(~/.cache/dew/csv)を使い、読み込み直さない
+  dew.stop();
+  dew.restart();
+  await reloadPage(page);
+  const again = Date.now();
+  dew.run([join(dew.root, 'csv', 'rows1m.csv')]);
+  await expect(csvWindow(page, 'rows1m.csv').getByRole('gridcell').first()).toBeVisible({ timeout: 60_000 });
+  const reopened = Date.now() - again;
+  expect(reopened).toBeLessThan(3000);
   // 測った値を残す(人が見て、余裕がどれだけあるかを知るため)
-  console.log(`CSV 100万行: 読み込み ${loaded} ms、ソート ${sort} ms、フィルター ${filtered} ms`);
+  console.log(`CSV 100万行: 読み込み ${loaded} ms、ソート ${sort} ms、フィルター ${filtered} ms、起動し直して開く ${reopened} ms`);
 });

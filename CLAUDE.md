@@ -13,7 +13,7 @@
 - テスト: cargo nextest run / pnpm -C web test / pnpm -C tests/e2e test
 - 素材生成: scripts/gen-fixtures.sh
 - 整形と検査: cargo fmt && cargo clippy --all-targets -- -D warnings / pnpm -C web lint
-- 配布用ビルド: cargo build --release --target x86_64-unknown-linux-musl
+- 配布用ビルド: cargo zigbuild --release --target x86_64-unknown-linux-musl(DuckDB の C++ を zig でビルドする。scripts/release.sh)
 
 ## 進め方
 - 作業はフェーズ順(docs/spec.md 9章)。各フェーズの受け入れ基準(11章)を自動テストにしてから実装する
