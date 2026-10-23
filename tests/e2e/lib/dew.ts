@@ -105,7 +105,8 @@ export { expect };
 /** ページを開き、自動再生のための「クリックかキーで開始」を済ませる(7.6) */
 export async function start(page: Page, dew: Dew) {
   await page.goto(dew.url);
-  await expect(page).toHaveURL(/\/$/); // トークンは URL から消える
+  // トークンは URL から消える(予約していたファイルがすぐ開くと /canvas になるので、トークンがないことだけを見る)
+  await expect(page).toHaveURL((u) => !u.searchParams.has('token'));
   // ページの準備が整う前に押すと表示が消えないので、消えるまで押し直す
   const overlay = page.getByTestId('start-overlay');
   await expect(overlay).toBeVisible();

@@ -31,6 +31,8 @@ test('Home のディレクトリ移動を戻る・進むで辿り、カーソル
 
 test('パンくずはリンクで、押すと履歴に積む', async ({ page, dew }) => {
   await start(page, dew);
+  // 一覧が出る前に押すと何も起きないので、待ってから
+  await expect.poll(() => selected(page)).toBe('sub');
   await page.keyboard.press('l');
   await expect(current(page).getByRole('option')).toHaveText(['nested.webp']);
   const crumb = page.getByRole('navigation', { name: 'path' }).getByRole('link', { name: dew.root.split('/').pop()!, exact: true });
@@ -43,6 +45,8 @@ test('パンくずはリンクで、押すと履歴に積む', async ({ page, de
 
 test('再読み込みしても同じディレクトリを開く', async ({ page, dew }) => {
   await start(page, dew);
+  // 一覧が出る前に押すと何も起きないので、待ってから
+  await expect.poll(() => selected(page)).toBe('sub');
   await page.keyboard.press('l');
   await expect(page).toHaveURL(homeUrl(join(dew.root, 'sub')));
   await page.reload();
