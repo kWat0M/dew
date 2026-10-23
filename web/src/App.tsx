@@ -14,6 +14,7 @@ import { HistoryWindow } from './history/HistoryWindow';
 import { docCommands } from './doc/DocumentWindow';
 import { Home, homeCommands, homeQuick, type DirRequest, type HomeAction } from './home/Home';
 import { ja } from './i18n/ja';
+import { nav, type Place } from './nav';
 import { readKey } from './keys';
 import { Snackbar } from './ui/Snackbar';
 import { isTyping } from './useKeys';
@@ -31,8 +32,10 @@ export function App() {
   const [events] = useState(() => new Events());
   const [started, setStarted] = useState(false);
   const startedRef = useRef(false);
-  const [screen, setScreen] = useState<Screen>('home');
-  const screenRef = useRef<Screen>('home');
+  /** 読み込んだときの場所(URL か、再読み込み前の履歴の項目。4.5) */
+  const [initialPlace] = useState(() => nav.start());
+  const [screen, setScreen] = useState<Screen>(initialPlace.screen);
+  const screenRef = useRef<Screen>(initialPlace.screen);
   /** 全体のミュート。Home からキャンバスへ入るたびにオンにする(意図せず音が出ないように) */
   const [globalMuted, setGlobalMuted] = useState(true);
   /** キャンバスに入ってから約5秒は、ミュートボタンに「ミュートを解除」と出す */
@@ -40,8 +43,8 @@ export function App() {
   const muteLabelTimer = useRef<number | null>(null);
   const canvasRun = useRef<CanvasRun | null>(null);
 
-  /** キャンバスへ。Home から入るときは全体のミュートをオンにする */
-  const goCanvas = useCallback(() => {
+  /** キャンバスを出す。Home から入るときは全体のミュートをオンにする */
+  const showCanvas = useCallback(() => {
     if (screenRef.current !== 'canvas') {
       setGlobalMuted(true);
       setMuteLabel(true);
@@ -52,8 +55,8 @@ export function App() {
     setScreen('canvas');
   }, []);
 
-  /** Home へ。キャンバスの動画は止める */
-  const goHome = useCallback(() => {
+  /** Home を出す。キャンバスの動画は止める */
+  const showHome = useCallback(() => {
     if (screenRef.current === 'canvas') canvasRun.current?.pauseAll();
     screenRef.current = 'home';
     setScreen('home');
@@ -69,7 +72,59 @@ export function App() {
   const [homeRequest, setHomeRequest] = useState<DirRequest | null>(null);
   const seq = useRef(0);
   const [windows, setWindows] = useState<Win[]>([]);
+  const windowsRef = useRef<Win[]>([]);
+  useEffect(() => {
+    windowsRef.current = windows;
+  }, [windows]);
   const [focused, setFocused] = useState<number | null>(null);
+  const focusedRef = useRef<number | null>(null);
+  useEffect(() => {
+    focusedRef.current = focused;
+  }, [focused]);
+  /** Home で出しているディレクトリ(null は初期位置) */
+  const homeDir = useRef<string | null>(initialPlace.screen === 'home' ? initialPlace.dir : null);
+  const startDirRef = useRef<string | null>(null);
+
+  /** キャンバスの今の場所(フォーカス中のウィンドウと、それが文書なら何番目の文書か) */
+  const canvasPlace = useCallback((focus: number | null): Place => {
+    const w = windowsRef.current.find((x) => x.id === focus);
+    return { screen: 'canvas', focus, ...(w && isDocument(w) ? { doc: { win: w.id, index: w.doc ?? 0 } } : {}) };
+  }, []);
+  /** 履歴に新しい場所を積む。今の項目がキャンバスなら、離れる前のフォーカスを書いておく(戻ったときにそのウィンドウへ) */
+  const pushPlace = useCallback(
+    (place: Place) => {
+      const cur = nav.current();
+      if (cur?.screen === 'canvas') nav.replace({ ...cur, focus: focusedRef.current });
+      nav.push(place);
+    },
+    [],
+  );
+
+  /** キャンバスへ移る(画面が変わるときだけ履歴に積む)。focus は入った先でフォーカスするウィンドウ */
+  const goCanvas = useCallback(
+    (focus: number | null = focusedRef.current) => {
+      if (screenRef.current !== 'canvas') pushPlace(canvasPlace(focus));
+      showCanvas();
+    },
+    [pushPlace, canvasPlace, showCanvas],
+  );
+  /** Home へ移る(履歴に積む) */
+  const goHome = useCallback(() => {
+    if (screenRef.current !== 'home') pushPlace({ screen: 'home', dir: homeDir.current });
+    showHome();
+  }, [pushPlace, showHome]);
+  /** Home でそのディレクトリを開いて移る(null は初期位置。履歴に積む) */
+  const homeAt = useCallback(
+    (dir: string | null) => {
+      const path = dir ?? startDirRef.current;
+      if (path === null) return;
+      homeDir.current = dir;
+      setHomeRequest({ path, seq: seq.current++ });
+      pushPlace({ screen: 'home', dir });
+      showHome();
+    },
+    [pushPlace, showHome],
+  );
   const [ime, setIme] = useState(false);
   /** 動いているライブウィンドウの数(Home の FAB のバッジ) */
   const [liveCount, setLiveCount] = useState(0);
@@ -113,18 +168,15 @@ export function App() {
     api.info().then(
       (info) => {
         setStartDir(info.home);
+        startDirRef.current = info.home;
         setRoot(info.root);
-        setHomeRequest((r) => r ?? { path: info.home, seq: seq.current++ });
+        setHomeRequest((r) => r ?? { path: homeDir.current ?? info.home, seq: seq.current++ });
       },
       (e: unknown) => setMessage(String(e)),
     );
     return () => events.close();
   }, [events]);
 
-  const windowsRef = useRef<Win[]>([]);
-  useEffect(() => {
-    windowsRef.current = windows;
-  }, [windows]);
   const open = useCallback(
     (files: Omit<Win, 'id'>[]) => {
       api.addHistory(files.map((f) => f.path));
@@ -137,9 +189,11 @@ export function App() {
       const target = existing(lastFile)?.id ?? added.at(-1)!.id;
       setFocused(target);
       if (lastFile.media === 'markdown' && settingsRef.current.documentAutoInput) setInputRequest({ id: target, seq: inputSeq.current++ });
-      goCanvas();
+      // 開いたばかりのウィンドウはまだ windowsRef にないので、文書なら最初の文書として積む
+      if (screenRef.current !== 'canvas') pushPlace({ screen: 'canvas', focus: target, ...(lastFile.media === 'markdown' ? { doc: { win: target, index: 0 } } : {}) });
+      showCanvas();
     },
-    [goCanvas],
+    [pushPlace, showCanvas],
   );
 
   // 比較ウィンドウ(F7)。1つのウィンドウに複数のファイルを入れる
@@ -148,7 +202,7 @@ export function App() {
     api.addHistory(files.map((f) => f.path));
     setWindows((ws) => [...ws, { id, path: files[0]!.path, media: files[0]!.media, members: files }]);
     setFocused(id);
-    goCanvas();
+    goCanvas(id);
   }, [goCanvas]);
 
   // ライブ描画のウィンドウ(L1、L2)。サーバの一覧に合わせて、増えたら足し、消えたら「終了」にする
@@ -175,7 +229,7 @@ export function App() {
       setLiveCount(list.length);
       if (newWins.length) {
         setFocused(newWins.at(-1)!.id);
-        goCanvas();
+        goCanvas(newWins.at(-1)!.id);
       }
     },
     [goCanvas],
@@ -192,13 +246,12 @@ export function App() {
           if (settings.notify) showNotification(ja.notifyTitle, ev.path.split('/').pop() ?? ev.path);
         }
         if (ev.kind === 'dir') {
-          setHomeRequest({ path: ev.path, seq: seq.current++ });
-          goHome();
+          homeAt(ev.path);
         } else {
           open([{ path: ev.path, media: ev.media }]);
         }
       }),
-    [events, open, goHome, onLiveWindows, settings.notify],
+    [events, open, homeAt, onLiveWindows, settings.notify],
   );
 
   // 最初の操作で開始の表示を消す。以降は自動再生できる(7.6)。IME の状態も見る
@@ -312,18 +365,44 @@ export function App() {
     sections.push({ title: ja.secMarkdown, items: docCommands.map((d) => ({ key: d.key, label: d.label, run: () => canvasRun.current?.doc(d.id) })) });
 
   /** ドキュメントのリンクから、ディレクトリを Home で開く */
-  const openDir = useCallback(
-    (dir: string) => {
-      setHomeRequest({ path: dir, seq: seq.current++ });
-      goHome();
-    },
-    [goHome],
-  );
+  const openDir = useCallback((dir: string) => homeAt(dir), [homeAt]);
   const onPathChange = useCallback((id: number, path: string) => setWindows((ws) => ws.map((w) => (w.id === id && w.path !== path ? { ...w, path } : w))), []);
+  /** ドキュメントウィンドウの中でリンクから別の文書へ移った(履歴に積む) */
+  const onVisit = useCallback(
+    (id: number, index: number) => {
+      setWindows((ws) => ws.map((w) => (w.id === id ? { ...w, doc: index } : w)));
+      pushPlace({ screen: 'canvas', focus: id, doc: { win: id, index } });
+    },
+    [pushPlace],
+  );
+  /** Home でディレクトリを移った(履歴に積む) */
+  const onHomeNavigate = useCallback(
+    (dir: string) => {
+      homeDir.current = dir;
+      pushPlace({ screen: 'home', dir });
+    },
+    [pushPlace],
+  );
 
-  const toInitial = useCallback(() => {
-    if (startDir) setHomeRequest({ path: startDir, seq: seq.current++ });
-  }, [startDir]);
+  // ブラウザの戻る・進む(マウスのサイドボタンも)で、その項目の場所を出し直す(4.5)
+  useEffect(
+    () =>
+      nav.onPop((place) => {
+        if (place.screen === 'home') {
+          const path = place.dir ?? startDirRef.current;
+          if (path !== null && place.dir !== homeDir.current) setHomeRequest({ path, seq: seq.current++ });
+          homeDir.current = place.dir;
+          return showHome();
+        }
+        const { focus, doc } = place;
+        if (doc) setWindows((ws) => ws.map((w) => (w.id === doc.win ? { ...w, doc: doc.index } : w)));
+        if (focus !== null && windowsRef.current.some((w) => w.id === focus)) setFocused(focus);
+        showCanvas();
+      }),
+    [showHome, showCanvas],
+  );
+
+  const toInitial = useCallback(() => homeAt(null), [homeAt]);
   const clearMessage = useCallback(() => setMessage(null), []);
 
   return (
@@ -338,7 +417,8 @@ export function App() {
           liveCount={liveCount}
           onOpen={open}
           onCompare={openCompare}
-          onCanvas={goCanvas}
+          onCanvas={() => goCanvas()}
+          onNavigate={onHomeNavigate}
           onInitial={toInitial}
           onHistory={() => setHistoryOpen(true)}
           onHelp={() => setHelpOpen(true)}
@@ -381,10 +461,7 @@ export function App() {
           onToggleGlobalMute={() => setGlobalMuted((m) => !m)}
           onMessage={onError}
           runRef={canvasRun}
-          onHomeInitial={() => {
-            toInitial();
-            goHome();
-          }}
+          onHomeInitial={toInitial}
           events={events}
           root={root}
           externalImages={settings.externalImages}
@@ -392,6 +469,7 @@ export function App() {
           onOpenFiles={open}
           onOpenDir={openDir}
           onPathChange={onPathChange}
+          onVisit={onVisit}
         />
       </div>
       {historyOpen && started && <HistoryWindow onOpen={open} onClose={() => setHistoryOpen(false)} onError={onError} />}

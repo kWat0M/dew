@@ -131,7 +131,7 @@ test('Home のバーの絞り込み・キャンバスへのボタン', async ({ 
 test('パンくずで閲覧範囲の外を押すとメッセージだけ出て移動しない', async ({ page, dew }) => {
   await start(page, dew);
   await expect(current(page).getByRole('option', { name: 'sub' })).toBeVisible();
-  await page.getByRole('navigation', { name: 'path' }).getByRole('button', { name: '/', exact: true }).click();
+  await page.getByRole('navigation', { name: 'path' }).getByRole('link', { name: '/', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('閲覧範囲の外');
   await expect(current(page).getByRole('option', { name: 'sub' })).toBeVisible();
   await page.keyboard.press('j');

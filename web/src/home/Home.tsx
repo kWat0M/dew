@@ -12,6 +12,7 @@ import { basename, join } from '../format';
 import { ja } from '../i18n/ja';
 import { Icon } from '../icons';
 import { KeySequence } from '../keys';
+import { urlOf } from '../nav';
 import { useKeys } from '../useKeys';
 import { EntryList, type View } from './EntryList';
 import { Preview } from './Preview';
@@ -61,6 +62,8 @@ type Props = {
   /** 選んだファイルを比較ウィンドウで開く(F7) */
   onCompare: (files: { path: string; media: MediaKind }[]) => void;
   onCanvas: () => void;
+  /** ディレクトリを移った(ブラウザの履歴に積む。4.5) */
+  onNavigate: (dir: string) => void;
   /** 初期位置へ戻る(H) */
   onInitial: () => void;
   onHistory: () => void;
@@ -103,10 +106,10 @@ export function Home(p: Props) {
   /** Space・Ctrl+クリックなどで選んだファイル(フルパス → 項目)。別のディレクトリへ移っても残す */
   const [marked, setMarked] = useState<Map<string, Entry>>(new Map());
   const [changed, setChanged] = useState<Set<string>>(new Set());
-  /** ディレクトリごとに最後に選んでいた名前(戻ったときに同じ位置にする) */
-  const remembered = useRef(new Map<string, string>());
+  /** ディレクトリごとに最後に選んでいた名前(戻ったとき・ブラウザの履歴で戻ったときに同じ位置にする) */
+  const [remembered] = useState(() => new Map<string, string>());
   const followTarget = useRef<string | null>(null);
-  const { onError, onOpen, showHidden, follow } = p;
+  const { onError, onOpen, onNavigate, showHidden, follow } = p;
 
   // 外から表示先が変わった(初期位置の取得、dew <ディレクトリ>)
   const [lastRequest, setLastRequest] = useState(p.dir);
@@ -114,7 +117,7 @@ export function Home(p: Props) {
     setLastRequest(p.dir);
     if (p.dir) {
       setCwd(p.dir.path);
-      setSelectedName(null);
+      setSelectedName(remembered.get(p.dir.path) ?? null);
       setFilter('');
     }
   }
@@ -124,15 +127,17 @@ export function Home(p: Props) {
     (dir: string, select?: string) => {
       api.tree(dir).then(
         () => {
+          if (select !== undefined) remembered.set(dir, select);
           setCwd(dir);
-          setSelectedName(select ?? remembered.current.get(dir) ?? null);
+          setSelectedName(remembered.get(dir) ?? null);
           setFilter('');
           setChanged(new Set());
+          if (dir !== cwd) onNavigate(dir);
         },
         (err: unknown) => onError(err instanceof ApiError ? err.message : String(err)),
       );
     },
-    [onError],
+    [cwd, onError, onNavigate, remembered],
   );
 
   useEffect(() => {
@@ -214,7 +219,7 @@ export function Home(p: Props) {
     const e = entries[Math.max(0, Math.min(entries.length - 1, i))];
     if (!e || !cwd) return;
     setSelectedName(e.name);
-    remembered.current.set(cwd, e.name);
+    remembered.set(cwd, e.name);
   };
 
   const pathOf = (e: Entry) => join(cwd ?? '', e.name);
@@ -336,15 +341,20 @@ export function Home(p: Props) {
             return (
               <span key={c.path}>
                 {i > 1 && <span className="crumb-sep">/</span>}
-                <button
-                  type="button"
+                {/* リンクにして、中クリックなどではブラウザの新しいタブでそのディレクトリを開けるようにする */}
+                <a
+                  href={urlOf({ screen: 'home', dir: c.path })}
                   className={`crumb${initial ? ' initial' : ''}`}
                   title={initial ? ja.initialDir : undefined}
                   data-testid={initial ? 'crumb-initial' : undefined}
-                  onClick={() => go(c.path)}
+                  onClick={(e) => {
+                    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+                    e.preventDefault();
+                    go(c.path);
+                  }}
                 >
                   {c.name}
-                </button>
+                </a>
               </span>
             );
           })}
