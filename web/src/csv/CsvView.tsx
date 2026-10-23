@@ -345,7 +345,12 @@ export default function CsvView({ id, path, events, inputMode, onExitInput, onMe
     }
     return out;
   }, [smallRows, small, v.search, order.all]);
-  const found = smallMatches ? { matches: smallMatches.slice(0, MAX_MATCHES), truncated: smallMatches.length > MAX_MATCHES } : largeRows.matches;
+  // 大規模モードの一致は全列なので、隠した列のものは除く
+  const largeFound = useMemo(
+    () => (largeRows.matches ? { matches: largeRows.matches.matches.filter(([, c]) => order.all.includes(c)), truncated: largeRows.matches.truncated } : null),
+    [largeRows.matches, order.all],
+  );
+  const found = smallMatches ? { matches: smallMatches.slice(0, MAX_MATCHES), truncated: smallMatches.length > MAX_MATCHES } : largeFound;
   const goMatch = (dir: 1 | -1, from = matchIndex) => {
     const list = found?.matches ?? [];
     if (!list.length) return onMessage(ja.csv.searchCount(0, 0, false));
@@ -724,9 +729,9 @@ export default function CsvView({ id, path, events, inputMode, onExitInput, onMe
       <footer className="doc-status csv-status" data-testid="csv-status">
         <div className="doc-status-side">
           {deleted && <span className="doc-note error">{ja.csv.deleted}</span>}
-          {error && (
+          {(error ?? largeRows.error) && (
             <span className="doc-note error" data-testid="csv-error">
-              {error}
+              {error ?? largeRows.error}
             </span>
           )}
           <span className="doc-note" data-testid="csv-rows">

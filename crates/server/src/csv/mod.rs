@@ -1,15 +1,23 @@
 //! CSV(16章)の API。小規模モードは全件を解析してブラウザへ渡し、大規模モードは DuckDB に読み込んで
 //! 問い合わせごとにページを返す(16.1)
 
+mod duck;
 mod parse;
+mod sql;
 
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::UNIX_EPOCH;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::Json;
 use axum::extract::{Query, State};
-use dew_protocol::{CsvMode, CsvOptions, CsvPreview, CsvRows, CsvSchema, CsvView, TextEncoding};
+use dew_protocol::{
+    CsvMatches, CsvMode, CsvOptions, CsvPage, CsvPreview, CsvQuery, CsvRows, CsvSchema, CsvSearch,
+    CsvView, ServerEvent, TextEncoding,
+};
 
 use crate::App;
 use crate::files::{ApiError, resolve};
@@ -45,7 +53,16 @@ pub(crate) struct Csv {
     pub config: CsvConfig,
     small: Mutex<Vec<(Key, Arc<Small>)>>,
     /// ファイルの絶対パスごとの表示設定(メモリだけ。dew stop で消える。16.6)
-    views: Mutex<std::collections::HashMap<PathBuf, CsvView>>,
+    views: Mutex<HashMap<PathBuf, CsvView>>,
+    /// 大規模モードのデータベース(読み込み中・済み・失敗)
+    large: Mutex<HashMap<Key, Large>>,
+}
+
+enum Large {
+    /// 読み込み中。true にすると止める
+    Running(Arc<AtomicBool>),
+    Ready(Arc<duck::Db>),
+    Failed(String),
 }
 
 impl Csv {
@@ -53,7 +70,8 @@ impl Csv {
         Csv {
             config,
             small: Mutex::new(Vec::new()),
-            views: Mutex::new(std::collections::HashMap::new()),
+            views: Mutex::new(HashMap::new()),
+            large: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -205,7 +223,7 @@ pub(crate) async fn schema(
     let a = app.clone();
     blocking(move || match load_small(&a.csv, &path, &options)? {
         Some(s) => Ok(Json(s.schema.clone())),
-        None => Err(ApiError::Unavailable("大規模モードはまだありません".into())),
+        None => large_schema(&a, &path, &options).map(Json),
     })
     .await
 }
@@ -322,4 +340,213 @@ pub(crate) async fn preview(
         }))
     })
     .await
+}
+
+/// キャッシュの上限(media と合わせて。9.1)
+const CACHE_LIMIT: u64 = 5 * 1024 * 1024 * 1024;
+
+/// 大規模モードのデータベースの置き場所。元ファイル・大きさ・更新時刻・読み方から名前を決める
+fn db_path(app: &App, key: &Key) -> PathBuf {
+    let mut h = std::hash::DefaultHasher::new();
+    key.hash(&mut h);
+    app.cache_dir
+        .join("csv")
+        .join(format!("{:016x}.duckdb", h.finish()))
+}
+
+/// 読み込み中のスキーマ(列はまだ分からない)
+fn pending(encoding: TextEncoding, detected: TextEncoding) -> CsvSchema {
+    CsvSchema {
+        mode: CsvMode::Large,
+        columns: Vec::new(),
+        encoding,
+        detected,
+        delimiter: String::new(),
+        header: false,
+        rows: 0,
+        ragged: 0,
+        ready: false,
+    }
+}
+
+/// 大規模モードのスキーマ。データベースがなければ読み込みを始め、済むまでは ready: false を返す(進捗は CsvProgress で送る)
+fn large_schema(app: &Arc<App>, path: &Path, options: &CsvOptions) -> Result<CsvSchema, ApiError> {
+    let key = Key::of(path, options)?;
+    let detected = duck::detect_head(path)?;
+    let encoding = options.encoding.unwrap_or(detected);
+    let mut map = app.csv.large.lock().unwrap();
+    match map.get(&key) {
+        Some(Large::Ready(db)) => return Ok(db.schema.clone()),
+        Some(Large::Running(_)) => return Ok(pending(encoding, detected)),
+        Some(Large::Failed(e)) => {
+            let e = e.clone();
+            map.remove(&key);
+            return Err(ApiError::Internal(e));
+        }
+        None => {}
+    }
+    let cfg = &app.csv.config;
+    let file = db_path(app, &key);
+    if let Some(db) = duck::open_cached(&file, cfg.duckdb_threads, &cfg.duckdb_memory) {
+        let schema = db.schema.clone();
+        map.insert(key, Large::Ready(Arc::new(db)));
+        return Ok(schema);
+    }
+    let src = duck::Source {
+        path: path.to_owned(),
+        encoding,
+        detected,
+        delimiter: options.delimiter.as_deref().map(delimiter_of).transpose()?,
+        header: options.header,
+        threads: cfg.duckdb_threads,
+        memory: cfg.duckdb_memory.clone(),
+    };
+    let cancel = Arc::new(AtomicBool::new(false));
+    map.insert(key.clone(), Large::Running(cancel.clone()));
+    drop(map);
+    let a = app.clone();
+    std::thread::spawn(move || {
+        let shown = src.path.to_string_lossy().into_owned();
+        let send = |done: u64, total: u64, finished: bool, error: Option<String>| {
+            a.hub.broadcast(ServerEvent::CsvProgress {
+                path: shown.clone(),
+                done,
+                total,
+                finished,
+                error,
+            });
+        };
+        let _ = std::fs::create_dir_all(file.parent().unwrap());
+        let r = duck::import(&src, &file, cancel.clone(), &|done, total| {
+            send(done, total, false, None)
+        });
+        let mut map = a.csv.large.lock().unwrap();
+        match r {
+            Ok(db) => {
+                map.insert(key, Large::Ready(Arc::new(db)));
+                drop(map);
+                evict(&a);
+                send(1, 1, true, None);
+            }
+            Err(_) if cancel.load(Ordering::Relaxed) => {
+                map.remove(&key);
+            }
+            Err(e) => {
+                let msg = match e {
+                    ApiError::BadRequest(m)
+                    | ApiError::Forbidden(m)
+                    | ApiError::NotFound(m)
+                    | ApiError::Unavailable(m)
+                    | ApiError::Internal(m) => m,
+                };
+                map.insert(key, Large::Failed(msg.clone()));
+                drop(map);
+                send(0, 1, false, Some(msg));
+            }
+        }
+    });
+    Ok(pending(encoding, detected))
+}
+
+/// キャッシュ(media と csv の合計)が上限を超えていたら、古いデータベースから消す。開いているものは残す
+fn evict(app: &App) {
+    fn files(dir: &Path) -> Vec<(SystemTime, u64, PathBuf)> {
+        std::fs::read_dir(dir)
+            .into_iter()
+            .flatten()
+            .filter_map(Result::ok)
+            .filter_map(|e| {
+                let m = e.metadata().ok()?;
+                m.is_file()
+                    .then(|| (m.modified().unwrap_or(UNIX_EPOCH), m.len(), e.path()))
+            })
+            .collect()
+    }
+    let media: u64 = files(&app.cache_dir.join("media"))
+        .iter()
+        .map(|f| f.1)
+        .sum();
+    let mut csv = files(&app.cache_dir.join("csv"));
+    let mut total = media + csv.iter().map(|f| f.1).sum::<u64>();
+    let open: Vec<PathBuf> = app
+        .csv
+        .large
+        .lock()
+        .unwrap()
+        .keys()
+        .map(|k| db_path(app, k))
+        .collect();
+    csv.sort_by_key(|f| f.0);
+    for (_, len, path) in csv {
+        if total <= CACHE_LIMIT {
+            break;
+        }
+        if !open.contains(&path) && std::fs::remove_file(&path).is_ok() {
+            total -= len;
+        }
+    }
+}
+
+/// 読み込みの済んだデータベース。まだなら 409
+fn ready_db(app: &App, path: &Path, options: &CsvOptions) -> Result<Arc<duck::Db>, ApiError> {
+    let key = Key::of(path, options)?;
+    match app.csv.large.lock().unwrap().get(&key) {
+        Some(Large::Ready(db)) => Ok(db.clone()),
+        _ => Err(ApiError::BadRequest(
+            "まだ読み込んでいません。/api/csv/schema を先に呼んでください".into(),
+        )),
+    }
+}
+
+/// `POST /api/csv/query`: 大規模モードのページ(16.5)
+pub(crate) async fn query(
+    State(app): State<Arc<App>>,
+    Json(q): Json<CsvQuery>,
+) -> Result<Json<CsvPage>, ApiError> {
+    let path = csv_path(&app, &q.path)?;
+    blocking(move || ready_db(&app, &path, &q.options)?.page(&q).map(Json)).await
+}
+
+/// `POST /api/csv/search`: 大規模モードの検索
+pub(crate) async fn search(
+    State(app): State<Arc<App>>,
+    Json(q): Json<CsvSearch>,
+) -> Result<Json<CsvMatches>, ApiError> {
+    let path = csv_path(&app, &q.path)?;
+    blocking(move || ready_db(&app, &path, &q.options)?.search(&q).map(Json)).await
+}
+
+#[derive(serde::Deserialize)]
+pub(crate) struct LocateRequest {
+    #[serde(flatten)]
+    search: CsvSearch,
+    row: u64,
+}
+
+/// `POST /api/csv/locate`: 元の行番号の、並べ替え・フィルター後の位置(: 行番号)
+pub(crate) async fn locate(
+    State(app): State<Arc<App>>,
+    Json(q): Json<LocateRequest>,
+) -> Result<Json<Option<u64>>, ApiError> {
+    let path = csv_path(&app, &q.search.path)?;
+    blocking(move || {
+        ready_db(&app, &path, &q.search.options)?
+            .locate(&q.search, q.row)
+            .map(Json)
+    })
+    .await
+}
+
+/// `POST /api/csv/cancel`: 読み込み中なら止める(ウィンドウを閉じたとき。16.5)
+pub(crate) async fn cancel(
+    State(app): State<Arc<App>>,
+    Query(q): Query<PathParam>,
+) -> Result<axum::http::StatusCode, ApiError> {
+    let path = csv_path(&app, &q.path)?;
+    for (k, v) in app.csv.large.lock().unwrap().iter() {
+        if let (true, Large::Running(flag)) = (k.path == path, v) {
+            flag.store(true, Ordering::Relaxed);
+        }
+    }
+    Ok(axum::http::StatusCode::NO_CONTENT)
 }

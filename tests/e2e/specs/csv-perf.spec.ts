@@ -18,9 +18,11 @@ test('100万行は大規模モードで開き、進捗を出し、ソート・�
       if (document.querySelector('[data-testid="csv-progress"]')) w.csvProgressSeen = true;
     }).observe(document.body, { childList: true, subtree: true });
   });
+  const opened = Date.now();
   dew.run([join(dew.root, 'csv', 'rows1m.csv')]);
   const win = csvWindow(page, 'rows1m.csv');
   await expect(win.getByRole('gridcell').first()).toBeVisible({ timeout: 60_000 });
+  const loaded = Date.now() - opened;
   expect(await page.evaluate(() => (window as unknown as { csvProgressSeen: boolean }).csvProgressSeen)).toBe(true);
   await expect(status(win)).toContainText('大規模');
   await expect(win.getByTestId('csv-rows')).toHaveText('1,000,000 / 1,000,000 行');
@@ -38,6 +40,7 @@ test('100万行は大規模モードで開き、進捗を出し、ソート・�
     () => page.keyboard.press('s'),
     async () => {
       await expect(header(win, 2)).toHaveAttribute('aria-sort', 'ascending');
+      // 新しい結果が届くまでは前の結果が出ているので、先頭の行が変わるのを待つ
       await expect.poll(async () => (await rowNumbers(win))[0], { intervals: [20] }).not.toBe(first);
     },
   );
@@ -53,4 +56,6 @@ test('100万行は大規模モードで開き、進捗を出し、ソート・�
     () => expect.poll(() => win.getByTestId('csv-rows').textContent(), { intervals: [20] }).not.toBe(before),
   );
   expect(filtered).toBeLessThan(1000);
+  // 測った値を残す(人が見て、余裕がどれだけあるかを知るため)
+  console.log(`CSV 100万行: 読み込み ${loaded} ms、ソート ${sort} ms、フィルター ${filtered} ms`);
 });

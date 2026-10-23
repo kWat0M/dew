@@ -20,6 +20,12 @@ export function useLargeRows(enabled: boolean, path: string, v: CsvView, range: 
   const [error, setError] = useState<string | null>(null);
   const asked = useRef(new Set<string>());
 
+  // 条件が変わったら、問い合わせ済みの印を消す(同じ条件に戻ったときに問い合わせ直す)
+  useEffect(() => {
+    const set = asked.current;
+    return () => set.clear();
+  }, [key]);
+
   const first = Math.floor(range[0] / PAGE);
   const last = Math.floor(range[1] / PAGE);
   useEffect(() => {

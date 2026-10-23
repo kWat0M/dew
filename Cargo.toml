@@ -7,6 +7,10 @@ version = "0.1.2"
 edition = "2024"
 publish = false
 
+# DuckDB(C++)は開発ビルドでも最適化する。最適化なしでは遅く、大規模モードの応答時間の受け入れテストを満たせない
+[profile.dev.package.libduckdb-sys]
+opt-level = 3
+
 [profile.release]
 # 配布するのは単一バイナリなので、シンボルを落として小さくする
 strip = true
