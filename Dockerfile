@@ -60,6 +60,12 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
 # cargo-nextest（テストランナー。公式のビルド済みバイナリ）
 RUN curl -LsSf https://get.nexte.st/latest/linux | tar -xz -C /usr/local/cargo/bin
 
+# zig + cargo-zigbuild: 配布用の musl ビルドで、DuckDB（C++）を zig の C++ コンパイラでビルドする（spec 9.1、ADR 0029）
+RUN curl -fsSL https://ziglang.org/download/0.14.1/zig-x86_64-linux-0.14.1.tar.xz | tar -xJ -C /usr/local \
+ && ln -s /usr/local/zig-x86_64-linux-0.14.1/zig /usr/local/bin/zig \
+ && cargo install --locked cargo-zigbuild@0.24.0 \
+ && rm -rf /usr/local/cargo/registry
+
 # Node.js + pnpm: Web UI（React + TypeScript + Vite）。
 # Node.js は LTS の 24 系（NodeSource）。pnpm は corepack から使う（版は package.json の packageManager で固定）
 RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
