@@ -2,6 +2,7 @@
 // 状態(並べ替え・フィルター・列の表示と幅)は TanStack Table、行と列の仮想スクロールは TanStack Virtual。
 // 小規模モードはブラウザで全件を並べ替え・絞り込み、大規模モードはサーバの DuckDB からページを受け取る(16.1)
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
   columnFilteringFeature,
   columnSizingFeature,
@@ -20,12 +21,14 @@ import { basename } from '../format';
 import { ja } from '../i18n/ja';
 import { Icon } from '../icons';
 import { KeySequence } from '../keys';
+import { csvKeys, type CsvAction } from './keys';
 import type { CsvColumn } from '../protocol/CsvColumn';
 import type { CsvColumnView } from '../protocol/CsvColumnView';
 import type { CsvFilter } from '../protocol/CsvFilter';
 import type { CsvSchema } from '../protocol/CsvSchema';
 import type { CsvView as View } from '../protocol/CsvView';
 import { useKeys } from '../useKeys';
+import { useStable } from '../useStable';
 import { compareKeys, invalidValue, matches, searchHit, sortKey, type SortKey } from './compare';
 import { FilterDialog, InspectorDialog, JumpDialog, RenameDialog, RulesDialog, SettingsDialog } from './CsvDialogs';
 import { columnLetter, count, csvLine, defaultWidth, display, isNumeric, stepDecimals } from './format';
@@ -55,29 +58,6 @@ type R = { i: number };
 
 export const EMPTY_VIEW: View = { options: {}, sort: [], filters: [], search: '', columns: [], marks: [], rules: [], cell: [0, 0], scroll: [0, 0] };
 
-export type CsvAction =
-  | { do: 'move'; dr: number; dc: number }
-  | { do: 'page'; dir: 1 | -1; half?: boolean }
-  | { do: 'pageSide'; dir: 1 | -1 }
-  | { do: 'top' } | { do: 'bottom' } | { do: 'home' } | { do: 'end' }
-  | { do: 'jump' } | { do: 'inspect' } | { do: 'search' } | { do: 'match'; dir: 1 | -1 }
-  | { do: 'sort'; add: boolean } | { do: 'filter' } | { do: 'clearFilters' } | { do: 'rename' }
-  | { do: 'decimals'; dir: 1 | -1 } | { do: 'mark' } | { do: 'rules' } | { do: 'hide' } | { do: 'showAll' }
-  | { do: 'pin' } | { do: 'width'; f: number } | { do: 'fit' } | { do: 'copy'; row: boolean } | { do: 'settings' } | { do: 'reset' } | { do: 'exit' };
-
-/** 入力モードのキー(16.7) */
-export const csvKeys: Record<string, CsvAction> = {
-  h: { do: 'move', dr: 0, dc: -1 }, l: { do: 'move', dr: 0, dc: 1 }, j: { do: 'move', dr: 1, dc: 0 }, k: { do: 'move', dr: -1, dc: 0 },
-  ArrowLeft: { do: 'move', dr: 0, dc: -1 }, ArrowRight: { do: 'move', dr: 0, dc: 1 }, ArrowDown: { do: 'move', dr: 1, dc: 0 }, ArrowUp: { do: 'move', dr: -1, dc: 0 },
-  J: { do: 'page', dir: 1 }, K: { do: 'page', dir: -1 }, d: { do: 'page', dir: 1, half: true }, u: { do: 'page', dir: -1, half: true },
-  H: { do: 'pageSide', dir: -1 }, L: { do: 'pageSide', dir: 1 },
-  'g g': { do: 'top' }, G: { do: 'bottom' }, '0': { do: 'home' }, $: { do: 'end' },
-  ':': { do: 'jump' }, Enter: { do: 'inspect' }, '/': { do: 'search' }, n: { do: 'match', dir: 1 }, N: { do: 'match', dir: -1 },
-  s: { do: 'sort', add: false }, S: { do: 'sort', add: true }, f: { do: 'filter' }, F: { do: 'clearFilters' }, r: { do: 'rename' },
-  '+': { do: 'decimals', dir: 1 }, '-': { do: 'decimals', dir: -1 }, m: { do: 'mark' }, M: { do: 'rules' },
-  x: { do: 'hide' }, X: { do: 'showAll' }, p: { do: 'pin' }, '<': { do: 'width', f: 1 / 1.2 }, '>': { do: 'width', f: 1.2 }, '=': { do: 'fit' },
-  y: { do: 'copy', row: false }, Y: { do: 'copy', row: true }, o: { do: 'settings' }, R: { do: 'reset' }, q: { do: 'exit' }, 'C-]': { do: 'exit' },
-};
 const keymap = new KeySequence(csvKeys);
 
 type Dialog =
@@ -97,12 +77,14 @@ type Props = {
   onMessage: (m: string) => void;
   /** 選んでいるセルなどを入力モードの外から操作するとき(マウス)は、入力モードに入る */
   onEnterInput: () => void;
+  /** 操作パネルから操作を実行する入口を渡す(閉じるときは null) */
+  onRegister: (run: ((a: CsvAction) => void) | null) => void;
 };
 
 /** 読み込んだもの。小規模モードなら全セル(列ごと) */
 type Loaded = { schema: CsvSchema; cols: (string | null)[][] | null };
 
-export default function CsvView({ id, path, events, inputMode, onExitInput, onMessage, onEnterInput }: Props) {
+export default function CsvView({ id, path, events, inputMode, onExitInput, onMessage, onEnterInput, onRegister }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const [view, setViewState] = useState<View | null>(null);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
@@ -378,7 +360,9 @@ export default function CsvView({ id, path, events, inputMode, onExitInput, onMe
       () => onMessage(ja.copyFailed),
     );
 
-  const run = (a: CsvAction) => {
+  /** 操作する。at は対象の列(列の見出しのメニューから。なければ選択中の列) */
+  const run = (a: CsvAction, at: number = col) => {
+    const col = at;
     const ci = order.all.indexOf(col);
     switch (a.do) {
       case 'move':
@@ -485,6 +469,17 @@ export default function CsvView({ id, path, events, inputMode, onExitInput, onMe
     return Math.round(Math.max(40, Math.min(800, w)));
   };
 
+  // 操作パネルから(4.4)
+  const runFromPanel = useStable((a: CsvAction) => run(a));
+  const onRegisterRef = useRef(onRegister);
+  useLayoutEffect(() => {
+    onRegisterRef.current = onRegister;
+  });
+  useEffect(() => {
+    onRegisterRef.current(runFromPanel);
+    return () => onRegisterRef.current(null);
+  }, [runFromPanel]);
+
   useKeys((k, e) => {
     if (dialog || searching) {
       if (k.key === 'C-]') {
@@ -537,6 +532,10 @@ export default function CsvView({ id, path, events, inputMode, onExitInput, onMe
           </span>
         )}
         {v.filters.some((f) => f.col === c) && <Icon name="filter" size={14} />}
+        <ColumnMenu onPick={(a) => {
+          select(row, c, false);
+          run(a, c);
+        }} numeric={isNumeric(col0)} />
       </div>
     );
   };
@@ -780,5 +779,43 @@ export default function CsvView({ id, path, events, inputMode, onExitInput, onMe
         </div>
       </footer>
     </>
+  );
+}
+
+/** 列の見出しのメニュー(マウスで列を操作する。説明にキーも書く) */
+function ColumnMenu({ onPick, numeric }: { onPick: (a: CsvAction) => void; numeric: boolean }) {
+  const C = ja.csv;
+  const items: [string, CsvAction][] = [
+    [C.sortAsc, { do: 'sort', add: false }],
+    [C.sortAdd, { do: 'sort', add: true }],
+    [C.filterKey, { do: 'filter' }],
+    [C.rename, { do: 'rename' }],
+    [C.hide, { do: 'hide' }],
+    [C.pin, { do: 'pin' }],
+    [C.wider, { do: 'width', f: 1.2 }],
+    [C.narrower, { do: 'width', f: 1 / 1.2 }],
+    [C.fit, { do: 'fit' }],
+    ...(numeric
+      ? ([
+          [C.moreDecimals, { do: 'decimals', dir: 1 }],
+          [C.fewerDecimals, { do: 'decimals', dir: -1 }],
+        ] as [string, CsvAction][])
+      : []),
+  ];
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger className="icon-button small csv-th-menu" title={C.menu} aria-label={C.menu} onClick={(e) => e.stopPropagation()}>
+        <Icon name="menu" size={16} />
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content className="doc-menu" align="start" sideOffset={4}>
+          {items.map(([label, a]) => (
+            <DropdownMenu.Item key={label} className="menu-item doc-menu-item" onSelect={() => onPick(a)}>
+              {label}
+            </DropdownMenu.Item>
+          ))}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   );
 }

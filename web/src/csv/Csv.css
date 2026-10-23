@@ -195,11 +195,11 @@
   z-index: 5;
 }
 
-/* 重ねて出す小さな画面 */
+/* 重ねて出す小さな画面。操作パネル(右から出る)に隠れないよう、左に出す */
 .csv-panel {
   position: absolute;
   top: 40px;
-  right: 16px;
+  left: 72px;
   z-index: 6;
   display: flex;
   flex-direction: column;
@@ -302,4 +302,19 @@
 
 .csv-cell-name {
   font-variant-numeric: tabular-nums;
+}
+
+/* 列の見出しのメニューのボタン: 選択中の列と、マウスを載せた列だけに出す */
+.csv-th-menu {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin-left: auto;
+  opacity: 0;
+}
+
+.csv-th:hover .csv-th-menu,
+.csv-th.current .csv-th-menu,
+.csv-th-menu[data-state='open'] {
+  opacity: 1;
 }

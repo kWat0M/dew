@@ -11,7 +11,8 @@ if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
 fi
 
 pnpm -C web build
-cargo build --release --target x86_64-unknown-linux-musl
+# DuckDB(C++)を musl で静的リンクするため、zig を C/C++ コンパイラにする cargo-zigbuild でビルドする(spec 9.1、ADR 0029)
+cargo zigbuild --release --target x86_64-unknown-linux-musl
 bin=target/x86_64-unknown-linux-musl/release/dew
 
 # 静的リンクになっているか(どの Linux でも動くように)

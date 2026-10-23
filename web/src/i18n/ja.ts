@@ -152,6 +152,15 @@ export const ja = {
   docDeleted: '削除されました(最後の内容を表示しています)',
   docLarge: '5 MB を超えるので、描画せずにそのまま表示しています',
   docInputHint: 'i で操作できます',
+  secCsv: 'CSV(フォーカス中の表)',
+  /** 操作パネルの CSV の節 */
+  csvOps: {
+    sort: '並べ替え', sortAdd: '並べ替えキーを足す', filter: 'フィルター', clearFilters: 'フィルターを解除',
+    search: '検索', next: '次の一致', prev: '前の一致', inspect: 'セルの全文', jump: '行番号へ',
+    rename: '表示名', moreDecimals: '小数を増やす', fewerDecimals: '小数を減らす', mark: 'マーク', rules: '条件付き強調',
+    hide: '列を隠す', showAll: '列をすべて表示', pin: '列を固定 / 解除', narrower: '列幅を狭く', wider: '列幅を広く', fit: '列幅を合わせる',
+    copy: 'セルをコピー', copyRow: '行をコピー', top: '先頭の行', bottom: '末尾の行', settings: '表示設定', reset: 'すべて初期化',
+  },
   /** CSV のウィンドウ(16章) */
   csv: {
     small: '小規模',

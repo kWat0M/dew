@@ -12,6 +12,7 @@ import { OpsPanel } from './ui/OpsPanel';
 import type { ToolbarActions } from './ui/Toolbar';
 import { HistoryWindow } from './history/HistoryWindow';
 import { docCommands } from './doc/DocumentWindow';
+import { csvCommands } from './csv/keys';
 import { Home, homeCommands, homeQuick, type DirRequest, type HomeAction } from './home/Home';
 import { ja } from './i18n/ja';
 import { nav, type Place } from './nav';
@@ -364,6 +365,8 @@ export function App() {
   const focusedWin = windows.find((w) => w.id === focused);
   if (screen === 'canvas' && focusedWin && isDocument(focusedWin))
     sections.push({ title: ja.secMarkdown, items: docCommands.map((d) => ({ key: d.key, label: d.label, run: () => canvasRun.current?.doc(d.id) })) });
+  if (screen === 'canvas' && focusedWin && isCsv(focusedWin))
+    sections.push({ title: ja.secCsv, items: csvCommands.map((d) => ({ key: d.key, label: d.label, run: () => canvasRun.current?.csv(d.id) })) });
 
   /** ドキュメントのリンクから、ディレクトリを Home で開く */
   const openDir = useCallback((dir: string) => homeAt(dir), [homeAt]);

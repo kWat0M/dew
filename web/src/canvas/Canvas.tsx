@@ -17,6 +17,7 @@ import { Dialog } from '../ui/Dialog';
 import { PlayerWindow, type PlayerApi } from './PlayerWindow';
 import { DocumentWindow, type DocAction } from '../doc/DocumentWindow';
 import { CsvWindow } from '../csv/CsvWindow';
+import type { CsvAction } from '../csv/keys';
 import type { Events } from '../api/events';
 import { SyncGroup } from './sync';
 import './Canvas.css';
@@ -40,6 +41,8 @@ export type CanvasRun = {
   pauseAll: () => void;
   /** フォーカス中のドキュメントウィンドウの操作 */
   doc: (a: DocAction) => void;
+  /** フォーカス中の CSV のウィンドウの操作 */
+  csv: (a: CsvAction) => void;
 };
 
 export type NormalAction =
@@ -200,6 +203,7 @@ export function Canvas(p: Props) {
   const apis = useRef(new Map<number, PlayerApi | null>());
   /** ドキュメントウィンドウの操作の入口(操作パネルから使う) */
   const docRuns = useRef(new Map<number, (a: DocAction) => void>());
+  const csvRuns = useRef(new Map<number, (a: CsvAction) => void>());
 
   useLayoutEffect(() => {
     const el = area.current;
@@ -514,6 +518,7 @@ export function Canvas(p: Props) {
     // ライブウィンドウは止めない(戻ったときにライブのまま見られるように。7.6 は動画の話)
     pauseAll: () => apis.current.forEach((a, id) => !ws.find((w) => w.id === id)?.live && a?.setPlaying(false)),
     doc: (a) => p.focused !== null && docRuns.current.get(p.focused)?.(a),
+    csv: (a) => p.focused !== null && csvRuns.current.get(p.focused)?.(a),
   }));
 
   const windowMap = new KeySequence(windowKeys);
@@ -699,6 +704,7 @@ export function Canvas(p: Props) {
                 }}
                 onExitInput={exitInput}
                 onMessage={p.onMessage}
+                onRegister={(run) => (run ? csvRuns.current.set(w.id, run) : csvRuns.current.delete(w.id))}
               />
             );
           if (isDocument(w))

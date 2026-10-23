@@ -6,6 +6,7 @@ import { WindowFrame, type FrameProps } from '../canvas/WindowFrame';
 import { basename } from '../format';
 import { ja } from '../i18n/ja';
 import { Icon } from '../icons';
+import type { CsvAction } from './keys';
 
 const CsvView = lazy(() => import('./CsvView'));
 
@@ -18,9 +19,10 @@ type Props = FrameProps & {
   onEnterInput: () => void;
   onExitInput: () => void;
   onMessage: (m: string) => void;
+  onRegister: (run: ((a: CsvAction) => void) | null) => void;
 };
 
-export function CsvWindow({ id, path, events, inputMode, onToggleInput, onEnterInput, onExitInput, onMessage, ...frame }: Props) {
+export function CsvWindow({ id, path, events, inputMode, onToggleInput, onEnterInput, onExitInput, onMessage, onRegister, ...frame }: Props) {
   const section = useRef<HTMLElement>(null);
   useEffect(() => {
     const el = section.current;
@@ -49,7 +51,7 @@ export function CsvWindow({ id, path, events, inputMode, onToggleInput, onEnterI
     >
       <div className="csv">
         <Suspense fallback={<div className="doc-message">{ja.loading}</div>}>
-          <CsvView id={id} path={path} events={events} inputMode={inputMode} onExitInput={onExitInput} onEnterInput={onEnterInput} onMessage={onMessage} />
+          <CsvView id={id} path={path} events={events} inputMode={inputMode} onExitInput={onExitInput} onEnterInput={onEnterInput} onMessage={onMessage} onRegister={onRegister} />
         </Suspense>
       </div>
     </WindowFrame>

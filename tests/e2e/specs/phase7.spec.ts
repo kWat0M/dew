@@ -273,3 +273,27 @@ test('Home のプレビューに CSV の先頭を小さな表で出す', async (
   // 最大10列
   await expect(preview.getByRole('columnheader')).toHaveCount(10);
 });
+
+// マウスだけで: 列の見出しのメニューで並べ替え・隠す、操作パネルの CSV の節でフィルター
+test('列の見出しのメニューと操作パネルで、マウスだけで操作できる', async ({ page, dew }) => {
+  copyCsv(dew, ['rows10k.csv']);
+  await start(page, dew);
+  const win = await openCsv(page, dew, 'rows10k.csv');
+  await header(win, 1).hover();
+  await header(win, 1).getByRole('button', { name: '列の操作' }).click();
+  await page.getByRole('menuitem', { name: /^並べ替え/ }).click();
+  await expect(header(win, 1)).toHaveAttribute('aria-sort', 'ascending');
+  await header(win, 5).getByRole('button', { name: '列の操作' }).click({ force: true });
+  await page.getByRole('menuitem', { name: /^隠す/ }).click();
+  await expect(header(win, 5)).toHaveCount(0);
+  // 見出しを押すと、その列を選ぶ(score には空のセルがある)
+  await header(win, 2).click();
+  await page.getByRole('button', { name: '操作パネル' }).click();
+  const csv = page.getByTestId('ops-panel').getByTestId('ops-all').locator('section').last();
+  await expect(csv.locator('h3')).toHaveText(/^CSV/);
+  await csv.getByRole('button', { name: /^フィルター f/ }).click();
+  const dialog = page.getByRole('dialog', { name: /フィルター/ });
+  await dialog.getByLabel('条件').selectOption('notEmpty');
+  await dialog.getByRole('button', { name: '適用' }).click();
+  await expect(win.getByTestId('csv-rows')).not.toHaveText('10,000 / 10,000 行');
+});
