@@ -41,13 +41,23 @@ import zoomOut from '@material-symbols/svg-400/rounded/zoom_out.svg?raw';
 import keyboard from '@material-symbols/svg-400/rounded/keyboard.svg?raw';
 import record from '@material-symbols/svg-400/rounded/radio_button_checked.svg?raw';
 import stopRecord from '@material-symbols/svg-400/rounded/stop_circle-fill.svg?raw';
+import article from '@material-symbols/svg-400/rounded/article-fill.svg?raw';
+import copy from '@material-symbols/svg-400/rounded/content_copy.svg?raw';
+import arrowBack from '@material-symbols/svg-400/rounded/arrow_back.svg?raw';
+import arrowForward from '@material-symbols/svg-400/rounded/arrow_forward.svg?raw';
+import toc from '@material-symbols/svg-400/rounded/toc.svg?raw';
+import textDecrease from '@material-symbols/svg-400/rounded/text_decrease.svg?raw';
+import textIncrease from '@material-symbols/svg-400/rounded/text_increase.svg?raw';
+import arrowUp from '@material-symbols/svg-400/rounded/keyboard_arrow_up.svg?raw';
+import arrowDown from '@material-symbols/svg-400/rounded/keyboard_arrow_down.svg?raw';
 import './icons.css';
 
 const svgs = {
   folder, image, movie, audio, file, lock, home, canvas,
   play, pause, playCircle, pauseCircle, back5, back30, fwd5, fwd30, frameBack, frameNext,
   close, fullscreen, volume, volumeOff, grid, list, minimize, maximize, restore,
-  history, help, menu, power, tile, free, search, sync, compare, zoomIn, zoomOut, keyboard, record, stopRecord,
+  history, help, menu, power, tile, free, search, sync, compare, zoomIn, zoomOut, keyboard, record, stopRecord, article, copy,
+  arrowBack, arrowForward, toc, textDecrease, textIncrease, arrowUp, arrowDown,
 };
 
 export type IconName = keyof typeof svgs;

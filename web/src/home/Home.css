@@ -281,3 +281,17 @@
   line-height: 16px;
   text-align: center;
 }
+
+/* Markdown のプレビュー(15.5)。小さめに描いて、上から読めるようにする */
+.preview-markdown {
+  align-self: stretch;
+  justify-self: stretch;
+  overflow: hidden;
+  color: var(--md-sys-color-on-surface);
+  --doc-scale: 0.75;
+  pointer-events: none;
+}
+
+.preview-markdown .md-body {
+  padding: 0 8px;
+}

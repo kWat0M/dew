@@ -41,4 +41,108 @@ ff "${long[@]}" "${vf[@]}" -c:v mpeg4 -tag:v mp4v -q:v 3 -c:a aac -b:a 128k "$ou
 # 16bit PNG と TIFF(ブラウザでそのまま正確に表示できない形式)
 ff -i "$out/image.png" -pix_fmt rgb48be "$out/p2/image16.png"
 ff -i "$out/image.png" "$out/p2/image.tif"
+# フェーズ6(Markdown)。Home の一覧の検査に入らないよう md/ に置き、テストが必要なときに複製する
+mkdir -p "$out/md/img" "$out/md/docs"
+cp "$out/image.png" "$out/md/img/pic.png"
+# 全要素: 見出し・表・タスクリスト・打ち消し線・数式(誤りを含む)・色分けしたコード・フロントマター
+cat > "$out/md/all.md" <<'MD'
+---
+title: 全要素の見本
+tags: [dew, test]
+---
+
+# 全要素の見本
+
+本文の段落。**太字**、*斜体*、~~打ち消し線~~、`インラインのコード`。[見出しへ](#表)
+
+## 表
+
+| 名前 | 値 | 説明 |
+| --- | ---: | :---: |
+| alpha | 1 | 最初 |
+| beta | 22 | 二番目 |
+
+## タスクリスト
+
+- [x] 済んだこと
+- [ ] まだのこと
+
+## 数式
+
+インライン $E = mc^2$ と、ブロック:
+
+$$
+\int_0^1 x^2 \, dx = \frac{1}{3}
+$$
+
+誤った数式 $\frac{1}{$ はその式だけ error 色になる。
+
+## コード
+
+```python
+def hello(name: str) -> str:
+    return f"hello {name}"  # コメント
+```
+
+```rust
+fn main() {
+    println!("{}", 1 + 2);
+}
+```
+
+> 引用の段落
+
+1. 番号付き
+2. リスト
+MD
+# 相対リンクで互いにつながる2ファイル。a.md は長くして、戻ったときのスクロール位置を確かめる
+{
+  echo '# A の文書'
+  echo
+  echo '[全要素の見本へ](all.md)'
+  echo
+  for i in $(seq 1 60); do echo "A の段落 $i。スクロールの確認用の文です。"; echo; done
+  echo '[B へ移動](docs/b.md)'
+  echo
+  echo '[画像を見る](img/pic.png)'
+  echo
+  for i in $(seq 61 80); do echo "A の段落 $i。"; echo; done
+} > "$out/md/a.md"
+cat > "$out/md/docs/b.md" <<'MD'
+# B の文書
+
+[A へ戻る](../a.md)
+
+[上のディレクトリ](..)
+MD
+# 画像: 相対・閲覧範囲の外(テストでは md/ を範囲の起点の直下に置くので ../../ は外)・外部・data:
+cat > "$out/md/images.md" <<'MD'
+# 画像
+
+![相対の画像](img/pic.png)
+
+![範囲外の画像](../../outside.png)
+
+![外部の画像](https://example.invalid/remote.png)
+
+![data の画像](data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==)
+MD
+# 危険なリンクや HTML(どれも実行されてはいけない)
+cat > "$out/md/danger.md" <<'MD'
+# 危険な内容
+
+[スクリプトのリンク](javascript:window.__dewPwned=1)
+
+<script>window.__dewPwned = 1</script>
+
+<img src="x" onerror="window.__dewPwned=1">
+
+<a href="javascript:window.__dewPwned=1">生のリンク</a>
+
+[data の HTML](data:text/html,<script>window.__dewPwned=1</script>)
+
+[外部のリンク](https://example.invalid/)
+MD
+# Shift_JIS(Excel やふるい Windows のエディタで作った文書)
+python3 -c 'import sys; sys.stdout.buffer.write("# 日本語の見出し\n\nこれは Shift_JIS で書いた文書です。ソースコード表示（全角括弧）も含みます。\n".encode("cp932"))' > "$out/md/sjis.md"
 echo "生成しました: $out"

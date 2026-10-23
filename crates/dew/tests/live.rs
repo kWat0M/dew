@@ -73,19 +73,25 @@ fn stopping_server_stops_xvfb_and_pulseaudio() {
     let text = String::from_utf8_lossy(&out.stdout);
     let display = text
         .lines()
-        .find_map(|l| l.strip_prefix("export DISPLAY="))
+        .find_map(|l| l.strip_prefix("export DISPLAY=:"))
         .unwrap()
         .trim()
         .to_owned();
+    // 番号につながるかでは確かめない(止めた直後に、並列で動く別のテストが同じ番号で Xvfb を立てることがあるため)。
+    // 起動した Xvfb のプロセスがいなくなったことを見る
+    let lock = std::fs::read_to_string(format!("/tmp/.X{display}-lock")).unwrap();
+    let pid: u32 = lock.trim().parse().unwrap();
     a.dew(&["stop"]);
-    let check = std::process::Command::new("xdpyinfo")
-        .args(["-display", &display])
-        .output()
-        .unwrap();
-    assert!(
-        !check.status.success(),
-        "サーバを止めたら仮想ディスプレイも止まる"
-    );
+    assert!(!alive(pid), "サーバを止めたら仮想ディスプレイも止まる");
+}
+
+/// プロセスが動いているか(終わったが回収されていないものは止まったとみなす)
+fn alive(pid: u32) -> bool {
+    std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|s| {
+        !s.rsplit(')')
+            .next()
+            .is_some_and(|rest| rest.trim_start().starts_with('Z'))
+    })
 }
 
 /// 受信を待つ上限つきで、条件に合う通知を読む

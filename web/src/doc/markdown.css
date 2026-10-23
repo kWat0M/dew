@@ -1,0 +1,95 @@
+/* Markdown の見た目(17.3)。色・角丸・影は MD3 のトークンだけで指定する */
+.md-body {
+  max-width: 80ch;
+  margin: 0 auto;
+  padding: 16px 24px 48px;
+  font: var(--md-sys-typescale-body-large);
+  color: var(--md-sys-color-on-surface);
+  overflow-wrap: anywhere;
+  zoom: var(--doc-scale, 1);
+}
+.md-body h1 { font: var(--md-sys-typescale-headline-large); margin: 24px 0 12px; }
+.md-body h2 { font: var(--md-sys-typescale-headline-small); margin: 24px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--md-sys-color-outline-variant); }
+.md-body h3 { font: var(--md-sys-typescale-title-large); margin: 20px 0 8px; }
+.md-body h4 { font: var(--md-sys-typescale-title-medium); margin: 16px 0 8px; }
+.md-body h5, .md-body h6 { font: var(--md-sys-typescale-title-small); margin: 16px 0 8px; }
+.md-body p, .md-body ul, .md-body ol, .md-body blockquote, .md-body .md-wide { margin: 0 0 12px; }
+.md-body a { color: var(--md-sys-color-primary); }
+.md-body .md-dead-link { color: var(--md-sys-color-on-surface-variant); }
+.md-body blockquote {
+  padding: 4px 16px;
+  border-left: 4px solid var(--md-sys-color-outline-variant);
+  color: var(--md-sys-color-on-surface-variant);
+}
+.md-body code {
+  font-family: var(--md-ref-typeface-mono);
+  font-size: 0.9em;
+  padding: 1px 4px;
+  border-radius: var(--md-sys-shape-corner-extra-small);
+  background: var(--md-sys-color-surface-container-high);
+}
+.md-body pre {
+  padding: 12px 16px;
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface-container-high);
+  overflow-x: auto;
+  overflow-wrap: normal;
+}
+.md-body pre code { padding: 0; background: none; font-size: 0.875em; }
+.md-body .md-wide { overflow-x: auto; }
+.md-body table { border-collapse: collapse; }
+.md-body th, .md-body td { padding: 6px 12px; border: 1px solid var(--md-sys-color-outline-variant); }
+.md-body th { background: var(--md-sys-color-surface-container); font: var(--md-sys-typescale-title-small); }
+.md-body img { max-width: 100%; }
+.md-body li:has(> input[type='checkbox']) { list-style: none; }
+.md-body input[type='checkbox'] { margin: 0 6px 0 -20px; accent-color: var(--md-sys-color-primary); }
+.md-body hr { border: none; border-top: 1px solid var(--md-sys-color-outline-variant); }
+.md-body .katex-error { color: var(--md-sys-color-error) !important; }
+.md-blocked, .md-external-image {
+  display: inline-block;
+  padding: 8px 12px;
+  border: 1px dashed var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-small);
+  color: var(--md-sys-color-on-surface-variant);
+  background: var(--md-sys-color-surface-container-low);
+  font: var(--md-sys-typescale-label-large);
+}
+.md-external-image { cursor: pointer; }
+.md-frontmatter {
+  max-width: 80ch;
+  margin: 12px auto 0;
+  padding: 0 24px;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-large);
+  zoom: var(--doc-scale, 1);
+}
+.md-frontmatter pre {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface-container);
+  font: var(--md-sys-typescale-body-medium);
+  font-family: var(--md-ref-typeface-mono);
+}
+
+/* コードの色分け(highlight.js の class を MD3 の色に対応させる。ライト / ダークはトークンが切り替える) */
+.hljs-keyword, .hljs-selector-tag, .hljs-built_in, .hljs-type { color: var(--md-sys-color-primary); }
+.hljs-string, .hljs-regexp, .hljs-addition, .hljs-attribute { color: var(--md-sys-color-tertiary); }
+.hljs-number, .hljs-literal, .hljs-symbol, .hljs-variable, .hljs-template-variable { color: var(--md-sys-color-secondary); }
+.hljs-title, .hljs-section, .hljs-name, .hljs-selector-id, .hljs-selector-class { color: var(--md-sys-color-on-primary-container); font-weight: 600; }
+.hljs-comment, .hljs-quote, .hljs-meta { color: var(--md-sys-color-outline); font-style: italic; }
+.hljs-deletion { color: var(--md-sys-color-error); }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: 700; }
+.md-body del { text-decoration: line-through; }
+
+/* コードブロックのコピーボタン(右上) */
+.md-body .md-code { position: relative; margin: 0 0 12px; }
+.md-body .md-code pre { margin: 0; }
+.md-code-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface-variant);
+}

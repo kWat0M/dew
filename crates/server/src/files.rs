@@ -165,6 +165,7 @@ pub(crate) fn media_kind(name: &str) -> MediaKind {
         "mp4" | "m4v" | "webm" | "mkv" | "avi" | "mov" | "flv" | "wmv" | "mpg" | "mpeg" | "ts"
         | "m2ts" | "3gp" | "ogv" => MediaKind::Video,
         "mp3" | "wav" | "flac" | "aac" | "m4a" | "ogg" | "opus" => MediaKind::Audio,
+        "md" | "markdown" => MediaKind::Markdown,
         _ => MediaKind::Other,
     }
 }
@@ -269,5 +270,6 @@ mod tests {
         assert_eq!(media_kind("a.webp"), MediaKind::Image);
         assert_eq!(media_kind("a.flac"), MediaKind::Audio);
         assert_eq!(media_kind("Makefile"), MediaKind::Other);
+        assert_eq!(media_kind("README.MD"), MediaKind::Markdown);
     }
 }

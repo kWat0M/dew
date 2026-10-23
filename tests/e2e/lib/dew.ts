@@ -164,6 +164,13 @@ export function copyP2(dew: Dew, names: string[]) {
   for (const name of names) cpSync(join(repo, 'tests/fixtures/p2', name), join(dew.root, name));
 }
 
+/** フェーズ6の素材(tests/fixtures/md)を、閲覧範囲の起点の md/ に複製する。複製先を返す */
+export function copyMd(dew: Dew) {
+  const dir = join(dew.root, 'md');
+  cpSync(join(repo, 'tests/fixtures/md'), dir, { recursive: true });
+  return dir;
+}
+
 /** 素材の1画素の値を ffmpeg で読む(8bit は rgb24、16bit は rgb48le) */
 export function pixelOf(path: string, x: number, y: number, bits: 8 | 16 = 8): number[] {
   const fmt = bits === 8 ? 'rgb24' : 'rgb48le';

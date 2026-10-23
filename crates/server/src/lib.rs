@@ -8,6 +8,7 @@ mod live;
 mod media;
 mod persist;
 mod shells;
+mod text;
 mod tls;
 mod web;
 
@@ -241,6 +242,7 @@ fn router(app: Arc<App>) -> Router {
         .route("/sprite", get(media::sprite))
         .route("/image", get(media::image))
         .route("/pixels", get(media::pixels))
+        .route("/text", get(text::text))
         .route("/open", post(open))
         .route("/shell", post(shell))
         .route("/shells", get(shells))

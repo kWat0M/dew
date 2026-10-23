@@ -1,0 +1,213 @@
+/* ドキュメントウィンドウ(15章)。色・角丸・影は MD3 のトークンだけで指定する */
+.doc-scroll {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--md-sys-color-surface);
+  container-type: size;
+}
+
+/* 最後の見出しも上端まで送れるよう、末尾に余白を足す */
+.doc-scroll::after {
+  content: '';
+  display: block;
+  height: 70cqh;
+}
+
+.doc-message {
+  padding: 24px;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-large);
+}
+
+.doc-message[role='alert'] {
+  color: var(--md-sys-color-error);
+}
+
+.md-plain {
+  margin: 0;
+  white-space: pre-wrap;
+  font: var(--md-sys-typescale-body-medium);
+  font-family: var(--md-ref-typeface-mono);
+}
+
+.doc-status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 0 8px 0 4px;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-medium);
+}
+
+.doc-spacer {
+  flex: 1;
+}
+
+.doc-note.error {
+  color: var(--md-sys-color-error);
+}
+
+.doc-encoding {
+  height: 28px;
+  padding: 0 8px;
+}
+
+.doc-menu {
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+  padding: 8px 0;
+  border-radius: var(--md-sys-shape-corner-extra-small);
+  background: var(--md-sys-color-surface-container);
+  color: var(--md-sys-color-on-surface);
+  box-shadow: var(--md-sys-elevation-level2);
+  z-index: 95;
+}
+
+.doc-menu-item {
+  display: flex;
+  align-items: center;
+  outline: none;
+}
+
+.doc-menu-item[data-highlighted] {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) var(--md-sys-state-hover-opacity), transparent);
+}
+
+.doc-menu-item[data-state='checked'] {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+/* リンクヒント(vimium 風)。リンクの左上に重ねる */
+.link-hint {
+  position: absolute;
+  z-index: 5;
+  padding: 0 4px;
+  border-radius: var(--md-sys-shape-corner-extra-small);
+  background: var(--md-sys-color-tertiary-container);
+  color: var(--md-sys-color-on-tertiary-container);
+  box-shadow: var(--md-sys-elevation-level1);
+  font: var(--md-sys-typescale-label-medium);
+  font-family: var(--md-ref-typeface-mono);
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.doc-search {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 40px;
+  z-index: 5;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-body-medium);
+  box-shadow: var(--md-sys-elevation-level2);
+}
+
+/* 目次(o)。Radix の Popover で、ウィンドウの右上に出す */
+.doc-toc {
+  width: 280px;
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0;
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface-container);
+  color: var(--md-sys-color-on-surface);
+  box-shadow: var(--md-sys-elevation-level2);
+  z-index: 95;
+}
+
+.doc-toc-title {
+  padding: 4px 16px 8px;
+  font: var(--md-sys-typescale-title-small);
+}
+
+.doc-toc-empty {
+  padding: 4px 16px;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-medium);
+}
+
+.doc-toc ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.doc-toc-item {
+  padding: 6px 16px;
+  font: var(--md-sys-typescale-body-medium);
+  cursor: pointer;
+}
+
+.doc-toc-item.level-1 { font: var(--md-sys-typescale-title-small); }
+.doc-toc-item.level-3 { padding-left: 28px; }
+.doc-toc-item.level-4, .doc-toc-item.level-5, .doc-toc-item.level-6 { padding-left: 40px; }
+
+.doc-toc-item[aria-selected='true'] {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+/* f で選んだ画像(H で文書へ戻る)。ウィンドウに収まるように出す */
+.doc-image {
+  display: grid;
+  place-items: center;
+  min-height: 100cqh;
+  padding: 8px;
+  box-sizing: border-box;
+}
+
+.doc-image img {
+  max-width: 100%;
+  max-height: calc(100cqh - 16px);
+  object-fit: contain;
+}
+
+.doc-scroll.image::after {
+  display: none;
+}
+
+/* 下部のバーのボタン(戻る・進む、検索、目次、文字の大きさ) */
+.doc-status .doc-bar-button {
+  width: 28px;
+  height: 28px;
+}
+
+.doc-bar-button[aria-pressed='true'] {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+.doc-bar-button:disabled {
+  opacity: var(--md-sys-state-disabled-opacity);
+  background: none;
+  cursor: default;
+}
+
+.doc-scale {
+  height: 28px;
+  min-width: 52px;
+  padding: 0 4px;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-medium);
+}
+
+.doc-divider {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: var(--md-sys-color-outline-variant);
+}

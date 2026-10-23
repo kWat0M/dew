@@ -106,7 +106,7 @@ export function HistoryWindow(p: Props) {
             onDoubleClick={(i) => open([entries[i]!.name])}
             empty={history ? ja.historyEmpty : ja.loading}
           />
-          <Preview dir={root} entry={entries[selected]} showHidden />
+          <Preview dir={root} root={root} entry={entries[selected]} showHidden />
         </div>
       </section>
     </div>
