@@ -108,7 +108,6 @@ README の紹介動画を撮り直すときは `scripts/demo/record.sh`(1本だ�
 - テストが読む口: `data-decoded`、`data-input`、`data-recording`、`data-paused`・`data-rewind`(live / paused / playing)、`data-exact`、`window.dewTest.audioPeakHz()`(鳴らす設定の音だけを測る)、`data-testid="live-window"`・`"hint-bar"`・`"tool-missing"`
 - E2E の dew は素材の複製(`dew.root`)の中で起動する。録画はそこの `dew-recordings/` にできる
 - 一時ファイルの削除で `rm -rf $HOME` のような変数を使うと安全装置で止まる。テストの HOME は新しいディレクトリを作って使う
-- `tests/fixtures/komasan.png` はユーザーが置いた、**著作権の都合で公開できないファイル**。消さない・公開しない(`tests/fixtures/` ごと git 管理外)
 
 ### 4.1 開発する場所(WSL とサーバ)
 
@@ -116,7 +115,7 @@ README の紹介動画を撮り直すときは `scripts/demo/record.sh`(1本だ�
 - 共用のサーバなので、`DEW_PORT` / `VITE_PORT` は他の人と重ならない番号にする。dev-tools のイメージ名にはユーザー名が入る(`dev-tools-<ユーザー名>`)
 - Windows からサーバへは踏み台を経由して入る(経路はユーザーに聞く)。dew 本体はトークン付き URL で直結できる(確かめ済み)。Vite の開発サーバはサーバの `127.0.0.1` だけで受けるので、`ssh -J <踏み台> -L 5173:localhost:<VITE_PORT> <サーバ>` で開く
 - Claude Code のメモリ(`~/.claude/projects/…/memory/`)はサーバへ持っていかない。続きに要る決めごとはこの文書・spec・ADR に書く。サーバでは `claude` に入り直し、dotfiles の `setup.sh` で `~/.claude` を用意する
-- 素材(`tests/fixtures/`)は git 管理外なので、サーバでは `scripts/gen-fixtures.sh` で作る。ただし `tests/fixtures/komasan.png` は作れない(4章の最後。要るならユーザーが自分で運ぶ)
+- 素材(`tests/fixtures/`)は git 管理外なので、サーバでは `scripts/gen-fixtures.sh` で作る
 - 新しいコンテナでは Playwright の Firefox を入れ直す(`pnpm -C tests/e2e exec playwright install firefox`)
 
 ### 4.2 作業の進め方(ユーザーとの決めごと)
