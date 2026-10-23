@@ -9,6 +9,7 @@ anyhow = "1"
 axum = { version = "0.8", features = ["ws"] }
 axum-server = { version = "0.8", default-features = false, features = ["tls-rustls-no-provider"] }
 chardetng = "1.0.0"
+csv = "1.4.0"
 dew-capture = { version = "0.1.0", path = "../capture" }
 dew-media = { version = "0.1.0", path = "../media" }
 dew-protocol = { version = "0.1.0", path = "../protocol" }

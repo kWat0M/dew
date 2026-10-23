@@ -6,4 +6,4 @@ import type { MediaKind } from "./MediaKind";
 /**
  * `WS /ws/events` でサーバから送る通知
  */
-export type ServerEvent = { "type": "dirChanged", dir: string, name: string, } | { "type": "watching", dirs: Array<string>, } | { "type": "liveWindows", windows: Array<LiveWindow>, } | { "type": "open", path: string, kind: EntryKind, media: MediaKind, };
+export type ServerEvent = { "type": "dirChanged", dir: string, name: string, } | { "type": "watching", dirs: Array<string>, } | { "type": "liveWindows", windows: Array<LiveWindow>, } | { "type": "open", path: string, kind: EntryKind, media: MediaKind, } | { "type": "csvProgress", path: string, done: number, total: number, finished: boolean, error: string | null, };

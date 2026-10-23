@@ -3,4 +3,4 @@
 /**
  * 拡張子から判断した種別
  */
-export type MediaKind = "image" | "video" | "audio" | "markdown" | "other";
+export type MediaKind = "image" | "video" | "audio" | "markdown" | "csv" | "other";
