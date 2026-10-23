@@ -252,6 +252,8 @@ fn router(app: Arc<App>) -> Router {
         .route("/text", get(text::text))
         .route("/csv/schema", get(csv::schema))
         .route("/csv/rows", get(csv::rows))
+        .route("/csv/view", get(csv::view).put(csv::save_view))
+        .route("/csv/preview", get(csv::preview))
         .route("/open", post(open))
         .route("/shell", post(shell))
         .route("/shells", get(shells))

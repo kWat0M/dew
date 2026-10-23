@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api/http';
 import { Events } from './api/events';
 import { notificationAvailable, requestNotification, showNotification, UNSEEN_MARK } from './attention';
-import { canvasCommands, isDocument, playCommands, quickPlayCommands, quickWindowCommands, windowCommands, windowHelp, Canvas, type CanvasRun, type NormalAction, type WindowAction, type Win } from './canvas/Canvas';
+import { canvasCommands, isCsv, isDocument, playCommands, quickPlayCommands, quickWindowCommands, windowCommands, windowHelp, Canvas, type CanvasRun, type NormalAction, type WindowAction, type Win } from './canvas/Canvas';
 import type { Command, Section } from './commands';
 import type { LiveWindow } from './protocol/LiveWindow';
 import { useSettings } from './settings';
@@ -181,14 +181,15 @@ export function App() {
     (files: Omit<Win, 'id'>[]) => {
       api.addHistory(files.map((f) => f.path));
       // 同じ文書がすでにあれば、新しく開かずにそのウィンドウへ(15.2)
-      const existing = (f: Omit<Win, 'id'>) => windowsRef.current.find((w) => f.media === 'markdown' && isDocument(w) && w.path === f.path);
+      const existing = (f: Omit<Win, 'id'>) =>
+        windowsRef.current.find((w) => (f.media === 'markdown' || f.media === 'csv') && (isDocument(w) || isCsv(w)) && w.path === f.path);
       const fresh = files.filter((f) => !existing(f));
       const added = fresh.map((f) => ({ ...f, id: nextId.current++ }));
       if (added.length) setWindows((ws) => [...ws, ...added]);
       const lastFile = files.at(-1)!;
       const target = existing(lastFile)?.id ?? added.at(-1)!.id;
       setFocused(target);
-      if (lastFile.media === 'markdown' && settingsRef.current.documentAutoInput) setInputRequest({ id: target, seq: inputSeq.current++ });
+      if ((lastFile.media === 'markdown' || lastFile.media === 'csv') && settingsRef.current.documentAutoInput) setInputRequest({ id: target, seq: inputSeq.current++ });
       // 開いたばかりのウィンドウはまだ windowsRef にないので、文書なら最初の文書として積む
       if (screenRef.current !== 'canvas') pushPlace({ screen: 'canvas', focus: target, ...(lastFile.media === 'markdown' ? { doc: { win: target, index: 0 } } : {}) });
       showCanvas();

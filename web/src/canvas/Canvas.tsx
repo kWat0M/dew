@@ -16,6 +16,7 @@ import { LiveWindow, type LiveApi, type LiveInfo } from './LiveWindow';
 import { Dialog } from '../ui/Dialog';
 import { PlayerWindow, type PlayerApi } from './PlayerWindow';
 import { DocumentWindow, type DocAction } from '../doc/DocumentWindow';
+import { CsvWindow } from '../csv/CsvWindow';
 import type { Events } from '../api/events';
 import { SyncGroup } from './sync';
 import './Canvas.css';
@@ -78,9 +79,14 @@ for (let n = 1; n <= 9; n++) windowKeys[String(n)] = { do: 'focusN', n };
 
 const normalMap = new KeySequence(normal);
 
-/** ドキュメントウィンドウか(15.1) */
+/** ドキュメントウィンドウ(Markdown)か(15.1) */
 export function isDocument(w: Win): boolean {
   return !w.live && !w.members && w.media === 'markdown';
+}
+
+/** CSV のドキュメントウィンドウか(15.1、16章) */
+export function isCsv(w: Win): boolean {
+  return !w.live && !w.members && w.media === 'csv';
 }
 
 /** 操作パネルに出すキャンバスの操作(4.4) */
@@ -212,7 +218,7 @@ export function Canvas(p: Props) {
   /** I の送信用の入力欄 */
   const [textBox, setTextBox] = useState<string | null>(null);
   const focusedLive = ws.find((w) => w.id === p.focused && w.live && !w.live.ended);
-  const focusedDoc = ws.find((w) => w.id === p.focused && isDocument(w));
+  const focusedDoc = ws.find((w) => w.id === p.focused && (isDocument(w) || isCsv(w)));
   /** 入力モードにできるのは、動いているライブウィンドウとドキュメントウィンドウ */
   const inputTarget = focusedLive ?? focusedDoc;
   /** ノーマルモードの文書で再生のキーを押したときの案内は1回だけ(15.3) */
@@ -239,6 +245,9 @@ export function Canvas(p: Props) {
     let own: [string, string][] = [];
     if (w && isDocument(w)) {
       if (inputWindow === w.id) return hintingDoc === w.id ? H.docHinting : H.docInput;
+      own = H.doc;
+    } else if (w && isCsv(w)) {
+      if (inputWindow === w.id) return H.csvInput;
       own = H.doc;
     } else if (w?.live) {
       if (inputWindow === w.id) return H.input;
@@ -669,6 +678,27 @@ export function Canvas(p: Props) {
                 }}
                 onExitInput={exitInput}
                 api={register}
+              />
+            );
+          if (isCsv(w))
+            return (
+              <CsvWindow
+                key={w.id}
+                {...frame}
+                id={w.id}
+                path={w.path}
+                events={p.events}
+                inputMode={inputWindow === w.id && p.active}
+                onToggleInput={() => {
+                  p.onFocus(w.id);
+                  setInputWindow((cur) => (cur === w.id ? null : w.id));
+                }}
+                onEnterInput={() => {
+                  p.onFocus(w.id);
+                  setInputWindow(w.id);
+                }}
+                onExitInput={exitInput}
+                onMessage={p.onMessage}
               />
             );
           if (isDocument(w))

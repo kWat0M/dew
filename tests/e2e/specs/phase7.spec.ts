@@ -28,8 +28,8 @@ test('1万行は小規模モードで開き、ソート・フィルター・検�
   await filter(page, 'contains', 'alpha');
   await expect(status(win)).not.toContainText('10,000 / 10,000 行');
   await page.keyboard.press('/');
-  await win.getByLabel('検索').fill('alpha1');
-  await win.getByLabel('検索').press('Enter');
+  await win.getByRole('textbox', { name: '検索' }).fill('alpha1');
+  await win.getByRole('textbox', { name: '検索' }).press('Enter');
   await expect(win.locator('[data-match="true"]').first()).toBeVisible();
   await page.keyboard.press('n');
   expect(asked.slice(before)).toEqual([]);
@@ -131,8 +131,8 @@ for (const mode of ['小規模', '大規模'] as const) {
     await expect(win.getByTestId('csv-rows')).toHaveText('0 / 3 行');
     await page.keyboard.press('F');
     await page.keyboard.press('/');
-    await win.getByLabel('検索').fill("'; DROP");
-    await win.getByLabel('検索').press('Enter');
+    await win.getByRole('textbox', { name: '検索' }).fill("'; DROP");
+    await win.getByRole('textbox', { name: '検索' }).press('Enter');
     await expect(win.locator('[data-match="true"]')).toHaveCount(1);
     await expect(win.getByTestId('csv-error')).toHaveCount(0);
     await expect(win.getByTestId('csv-rows')).toHaveText('3 / 3 行');
@@ -153,8 +153,8 @@ test('丸め・表示名・マーク・固定は表示だけを変え、y は元
   for (let i = 0; i < 4; i++) await page.keyboard.press('-');
   await expect(score).toHaveText(/^-?\d+\.\d{2}$/);
   await page.keyboard.press('r');
-  await win.getByLabel('表示名').fill('スコア');
-  await win.getByLabel('表示名').press('Enter');
+  await win.getByRole('textbox', { name: '表示名' }).fill('スコア');
+  await win.getByRole('textbox', { name: '表示名' }).press('Enter');
   await expect(header(win, 2)).toContainText('スコア');
   await expect(header(win, 2)).toHaveAttribute('title', /score/);
   await page.keyboard.press('m');
@@ -174,8 +174,8 @@ test('表示設定は再読み込みしても戻り、dew stop で初期状態�
   await goCol(page, win, 1);
   await page.keyboard.press('s');
   await page.keyboard.press('r');
-  await win.getByLabel('表示名').fill('名前');
-  await win.getByLabel('表示名').press('Enter');
+  await win.getByRole('textbox', { name: '表示名' }).fill('名前');
+  await win.getByRole('textbox', { name: '表示名' }).press('Enter');
   await expect(header(win, 1)).toContainText('名前');
   await reloadPage(page);
   win = await openCsv(page, dew, 'rows10k.csv');
