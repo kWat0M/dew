@@ -624,7 +624,7 @@ Rust だけ(Leptos 等)でも書けるが、(1) 動画のデコードと描画�
 | 分類 | パッケージ / ツール | 用途 |
 | --- | --- | --- |
 | [4] dev-tools(dotfiles) | starship、yazi、lazygit、Neovim(設定・プラグイン込み)、tree-sitter、Claude Code、Release 版の dew(版はすべて dotfiles で固定) | 共通の作業環境 |
-| [1][2] | git、openssh-client、ripgrep、fd-find、file、jq、gh | dev-tools が使うもの、Releases の公開・取得 |
+| [1][2] | zsh(作業用のシェル。設定と oh-my-zsh は dev-tools)、fzf、bat、git、openssh-client、ripgrep、fd-find、file、jq、gh | dev-tools が使うもの、Releases の公開・取得 |
 | ビルド基盤 | build-essential、pkg-config、clang、nasm、cmake、musl-tools、libopus-dev | Rust のネイティブ依存、musl 静的ビルド |
 | Rust | rustup(stable)、rustfmt、clippy、rust-src、`x86_64-unknown-linux-musl` ターゲット、cargo-nextest | サーバ本体とテスト、配布用ビルド |
 | フロント | Node.js 24 LTS(NodeSource)、pnpm(corepack。版は package.json の `packageManager` で固定) | Web UI のビルド |
@@ -633,7 +633,7 @@ Rust だけ(Leptos 等)でも書けるが、(1) 動画のデコードと描画�
 | 音声 | pulseaudio、pulseaudio-utils | 音声キャプチャの開発 |
 | OpenGL | libgl1-mesa-dri、mesa-utils | OpenGL アプリの表示確認 |
 | テスト用アプリ | python3、python3-opencv(GUI 付き)、python3-matplotlib、python3-tk、python3-pygame(すべて apt) | プログラム無改変の確認 |
-| シェル連携 | zsh(bash は元から入っている) | `dew activate` を bash と zsh の両方で確かめる(13章) |
+| シェル連携 | zsh([1] で入れる。bash は元から入っている) | `dew activate` を bash と zsh の両方で確かめる(13章) |
 | E2E | google-chrome-stable、fonts-noto-cjk(Playwright はプロジェクトの devDependencies で入れる)、Playwright の Firefox(`playwright install firefox`) | ブラウザでの自動確認 |
 | エディタ | rust-analyzer、vtsls(mason)、Rust / TypeScript / TSX ほかの treesitter パーサー | 補完・定義ジャンプ |
 

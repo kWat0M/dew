@@ -34,8 +34,8 @@ services:
 
     # --- [1] 基本設定: コンテナに入ったときの作業ディレクトリ（リポジトリのルート）---
     working_dir: /home/dev/${PROJECT_PATH}
-    command: bash
-    # up -d で起動したときに bash が終了しないよう、端末と標準入力を割り当てる（docker run -it 相当）
+    command: zsh
+    # up -d で起動したときに zsh が終了しないよう、端末と標準入力を割り当てる（docker run -it 相当）
     stdin_open: true
     tty: true
     # --- [1] 基本設定: ホスト名をプロジェクト名にする（starship のプロンプトに @dew と表示される）---

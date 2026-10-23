@@ -78,11 +78,12 @@ FROM toolchain AS development
 # [1] 基本設定
 # -----------------------------------------------------------------------------
 # 対話シェルを明示する（nvim の 'shell' などはこの値を既定値に使う。未設定だと sh になる）
-ENV SHELL=/bin/bash
+ENV SHELL=/bin/zsh
 
 # dev-tools のツールが使う apt パッケージ（一覧は dev-tools/Dockerfile の冒頭。残りは toolchain で入れている）
+# zsh は作業用のシェルで、dew activate を bash と zsh の両方で確かめるテスト（フェーズ5）にも使う
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    unzip git openssh-client ripgrep fd-find file jq \
+    unzip git openssh-client ripgrep fd-find file jq zsh fzf bat \
  && rm -rf /var/lib/apt/lists/*
 
 # -----------------------------------------------------------------------------
@@ -121,11 +122,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-numpy python3-opencv python3-matplotlib python3-tk python3-pygame \
  && rm -rf /var/lib/apt/lists/*
 
-# シェル連携のテスト: dew activate を bash と zsh の両方で確かめる（フェーズ5）。
 # rc ファイルへの dew shell-init の追記はしない（利用者が自分で行う。ADR 0022）
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    zsh \
- && rm -rf /var/lib/apt/lists/*
 
 # E2E: Google Chrome（Playwright の channel: 'chrome' で使う）。
 # Playwright 同梱の Chromium は H.264 / AAC を再生できないため、Google Chrome を入れる。
@@ -143,7 +140,7 @@ RUN curl -fsSL -o /tmp/chrome.deb https://dl.google.com/linux/direct/google-chro
 ARG UID=1000
 ARG GID=1000
 RUN groupadd -g ${GID} dev \
- && useradd -m -u ${UID} -g ${GID} -s /bin/bash dev
+ && useradd -m -u ${UID} -g ${GID} -s /bin/zsh dev
 
 # [6] 依存クレート・pnpm のストア・gh のログイン情報はユーザー側に置く（compose/compose.yaml の [6] でボリュームにする）
 ENV CARGO_HOME=/home/dev/.cargo \

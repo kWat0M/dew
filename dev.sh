@@ -79,4 +79,4 @@ for dir in "${CACHE_DIRS[@]}"; do
   fi
 done
 
-exec docker compose exec "$SERVICE" bash
+exec docker compose exec "$SERVICE" zsh
