@@ -313,19 +313,9 @@ test('コードブロックをボタンと f でコピーする', async ({ page,
   else await expect(page.getByRole('status').filter({ hasText: 'コードをコピーしました' })).toBeVisible();
 });
 
-/** マウスのサイドボタン(3: 戻る、4: 進む)。Playwright では押せないので、ブラウザと同じ順にイベントを送る */
-async function sideButton(target: Locator, button: 3 | 4) {
-  return target.evaluate((el, b) => {
-    const init = { bubbles: true, cancelable: true, button: b, buttons: 0 };
-    el.dispatchEvent(new MouseEvent('mousedown', init));
-    const up = new MouseEvent('mouseup', init);
-    el.dispatchEvent(up);
-    return up.defaultPrevented;
-  }, button);
-}
-
-// マウスだけで: リンクで移り、バーのボタンとマウスのサイドボタンで戻る・進む。中クリックは dew の新しいウィンドウ
-test('バーのボタンとサイドボタンで戻る・進み、中クリックで新しいウィンドウに開く', async ({ page, dew }) => {
+// マウスだけで: リンクで移り、バーのボタンで戻る・進む。中クリックは dew の新しいウィンドウ
+// (戻る・進むはブラウザの履歴と同じ。サイドボタンを含めて specs/history.spec.ts で確かめる)
+test('バーのボタンで戻る・進み、中クリックで新しいウィンドウに開く', async ({ page, dew }) => {
   copyMd(dew);
   await start(page, dew);
   await openDoc(page, dew, 'docs/b.md');
@@ -333,20 +323,14 @@ test('バーのボタンとサイドボタンで戻る・進み、中クリッ�
   const h1 = win.getByTestId('doc-body').locator('h1');
   const back = win.getByRole('button', { name: /^戻る/ });
   const forward = win.getByRole('button', { name: /^進む/ });
-  await expect(back).toBeDisabled();
   await expect(forward).toBeDisabled();
   await win.getByRole('link', { name: 'A へ戻る' }).click();
   await expect(h1).toHaveText('A の文書');
   await back.click();
   await expect(h1).toHaveText('B の文書');
-  await expect(back).toBeDisabled();
   await forward.click();
   await expect(h1).toHaveText('A の文書');
-  // サイドボタンはブラウザのページ移動を止めて(preventDefault)、ウィンドウ内の履歴を移る
-  expect(await sideButton(win.getByTestId('doc-scroll'), 3)).toBe(true);
-  await expect(h1).toHaveText('B の文書');
-  expect(await sideButton(win.getByTestId('doc-scroll'), 4)).toBe(true);
-  await expect(h1).toHaveText('A の文書');
+  await expect(forward).toBeDisabled();
   // 中クリック: ブラウザの新しいタブは開かず、dew の新しいウィンドウで開く
   const link = win.getByRole('link', { name: '全要素の見本へ' });
   await expect(link).toHaveAttribute('title', /中クリック/);

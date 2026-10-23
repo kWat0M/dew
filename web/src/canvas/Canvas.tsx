@@ -20,8 +20,11 @@ import type { Events } from '../api/events';
 import { SyncGroup } from './sync';
 import './Canvas.css';
 
-/** キャンバスのウィンドウ。members があれば比較ウィンドウ、media が markdown ならドキュメントウィンドウ */
-export type Win = { id: number; path: string; media: MediaKind; members?: Member[]; live?: LiveInfo };
+/**
+ * キャンバスのウィンドウ。members があれば比較ウィンドウ、media が markdown ならドキュメントウィンドウ。
+ * doc はドキュメントウィンドウで今出している文書が、ウィンドウ内で何番目に移った先か(ブラウザの履歴が決める。4.5)
+ */
+export type Win = { id: number; path: string; media: MediaKind; members?: Member[]; live?: LiveInfo; doc?: number };
 
 /** 再生のキー(選択中のウィンドウ、なければフォーカス中のウィンドウに効く) */
 type PlayAction =
@@ -169,6 +172,8 @@ type Props = {
   onOpenDir: (dir: string) => void;
   /** ドキュメントウィンドウの中で別の文書へ移った */
   onPathChange: (id: number, path: string) => void;
+  /** ドキュメントウィンドウの中でリンクから移った(index はウィンドウ内で何番目の文書か) */
+  onVisit: (id: number, index: number) => void;
 };
 
 export function Canvas(p: Props) {
@@ -673,6 +678,7 @@ export function Canvas(p: Props) {
                 {...frame}
                 id={w.id}
                 path={w.path}
+                index={w.doc ?? 0}
                 root={p.root}
                 events={p.events}
                 inputMode={inputWindow === w.id && p.active}
@@ -683,6 +689,7 @@ export function Canvas(p: Props) {
                 }}
                 onExitInput={exitInput}
                 onNavigate={(path) => p.onPathChange(w.id, path)}
+                onVisit={(index) => p.onVisit(w.id, index)}
                 onHintsChange={(on) => setHintingDoc((cur) => (on ? w.id : cur === w.id ? null : cur))}
                 onRegister={(run) => (run ? docRuns.current.set(w.id, run) : docRuns.current.delete(w.id))}
                 onOpenFiles={p.onOpenFiles}

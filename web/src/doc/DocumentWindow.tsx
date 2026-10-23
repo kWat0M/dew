@@ -11,6 +11,7 @@ import { basename } from '../format';
 import { ja } from '../i18n/ja';
 import { Icon, type IconName } from '../icons';
 import { KeySequence, readKey } from '../keys';
+import { nav, useNavState } from '../nav';
 import type { MediaKind } from '../protocol/MediaKind';
 import type { TextDoc } from '../protocol/TextDoc';
 import type { TextEncoding } from '../protocol/TextEncoding';
@@ -111,8 +112,8 @@ type Hint = {
   y: number;
 };
 
-/** ウィンドウ内の履歴(H / L)。スクロール位置も覚える。image なら文書ではなく画像を出す(f で選んだ画像の気軽なプレビュー) */
-type Visit = { path: string; scroll: number; image?: boolean };
+/** ウィンドウ内で移った文書。image なら文書ではなく画像を出す(f で選んだ画像の気軽なプレビュー) */
+type Visit = { path: string; image?: boolean };
 
 /** n 個のヒントの文字。全部同じ長さにして、打ち終わりを分かりやすくする */
 export function hintLabels(n: number): string[] {
@@ -134,6 +135,7 @@ function BarButton({
   onClick,
   disabled,
   pressed,
+  large,
   ref,
 }: {
   icon: IconName;
@@ -141,11 +143,13 @@ function BarButton({
   onClick: () => void;
   disabled?: boolean;
   pressed?: boolean;
+  /** 戻る・進む(バーの中央に大きめに出す) */
+  large?: boolean;
   ref?: Ref<HTMLButtonElement>;
 }) {
   return (
-    <button ref={ref} type="button" className="icon-button doc-bar-button" title={label} aria-label={label} aria-pressed={pressed} disabled={disabled} onClick={onClick}>
-      <Icon name={icon} size={18} />
+    <button ref={ref} type="button" className={`icon-button doc-bar-button${large ? ' large' : ''}`} title={label} aria-label={label} aria-pressed={pressed} disabled={disabled} onClick={onClick}>
+      <Icon name={icon} size={large ? 24 : 18} />
     </button>
   );
 }
@@ -154,6 +158,8 @@ type Props = FrameProps & {
   id: number;
   /** 開いた文書(ウィンドウ内で移動すると onNavigate で知らせる) */
   path: string;
+  /** 出す文書が、ウィンドウ内で何番目に移った先か。ブラウザの履歴(戻る・進む)が決める(4.5) */
+  index: number;
   /** 閲覧範囲の起点 */
   root: string;
   events: Events;
@@ -162,6 +168,8 @@ type Props = FrameProps & {
   onToggleInput: () => void;
   onExitInput: () => void;
   onNavigate: (path: string) => void;
+  /** リンクから別の文書へ移った(index 番目の文書として履歴に積んでもらう) */
+  onVisit: (index: number) => void;
   /** リンクヒントを出しているか(画面下のヒントの帯を切り替える) */
   onHintsChange: (on: boolean) => void;
   /** 操作パネルから操作を実行する入口を渡す(閉じるときは null) */
@@ -174,6 +182,7 @@ type Props = FrameProps & {
 export function DocumentWindow({
   id,
   path: initial,
+  index: wanted,
   root,
   events,
   inputMode,
@@ -181,6 +190,7 @@ export function DocumentWindow({
   onToggleInput,
   onExitInput,
   onNavigate,
+  onVisit,
   onHintsChange,
   onRegister,
   onOpenFiles,
@@ -190,12 +200,15 @@ export function DocumentWindow({
 }: Props) {
   const section = useRef<HTMLElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
-  const [visits, setVisits] = useState<{ list: Visit[]; index: number }>({
-    list: [{ path: initial, scroll: 0 }],
-    index: 0,
-  });
-  const path = visits.list[visits.index]!.path;
-  const isImage = visits.list[visits.index]!.image === true;
+  const [visits, setVisits] = useState<Visit[]>([{ path: initial }]);
+  const index = Math.min(wanted, visits.length - 1);
+  const path = visits[index]!.path;
+  const isImage = visits[index]!.image === true;
+  /** 文書ごとのスクロール位置(ウィンドウ内の番号 → 位置。戻ったときに同じ位置にする) */
+  const scrolls = useRef(new Map<number, number>());
+  /** リンクで移った直後: 先頭から(# があればその見出しから)出す */
+  const fresh = useRef<{ hash?: string } | null>(null);
+  const navState = useNavState();
   const [loaded, setLoaded] = useState<{ path: string; doc: TextDoc } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deleted, setDeleted] = useState(false);
@@ -288,6 +301,19 @@ export function DocumentWindow({
     if (el) scrollToEl(el);
   };
 
+  // 出す文書が変わったら、戻す位置を決める(読み込みを待つ間にスクロール位置が 0 に縮むので、ここで覚えておく)
+  useLayoutEffect(() => {
+    const f = fresh.current;
+    fresh.current = null;
+    pending.current = f ? { scroll: 0, hash: f.hash } : { scroll: scrolls.current.get(index) ?? 0 };
+    matches.current = [];
+  }, [index]);
+  const [shownIndex, setShownIndex] = useState(index);
+  if (shownIndex !== index) {
+    setShownIndex(index);
+    setSearch(null);
+  }
+
   // 描画し直したら、覚えておいた位置へ
   const doc = loaded?.path === path ? loaded.doc : null;
   useLayoutEffect(() => {
@@ -316,54 +342,16 @@ export function DocumentWindow({
     }
   }
 
-  /** ウィンドウ内で別の文書へ(今の位置を覚えて、履歴に積む) */
+  /**
+   * ウィンドウ内で別の文書へ。ブラウザの履歴に積むので、戻る・進む(ボタン、H / L、ブラウザ、マウスのサイドボタン)で
+   * 前の文書へ戻る(4.5)。今より先に移っていた文書は捨てる(ブラウザの履歴と同じ)
+   */
   const navigate = (to: string, hash?: string, image?: boolean) => {
-    const scroll = scroller.current?.scrollTop ?? 0;
-    setVisits((v) => {
-      const list = v.list.slice(0, v.index + 1);
-      list[v.index] = { ...list[v.index]!, scroll };
-      return { list: [...list, { path: to, scroll: 0, image }], index: list.length };
-    });
-    pending.current = { scroll: 0, hash };
-    matches.current = [];
-    setSearch(null);
+    for (const k of [...scrolls.current.keys()]) if (k > index) scrolls.current.delete(k);
+    fresh.current = { hash };
+    setVisits((v) => [...v.slice(0, index + 1), { path: to, image }]);
+    onVisit(index + 1);
   };
-
-  const go = (dir: 1 | -1) => {
-    const next = visits.index + dir;
-    if (next < 0 || next >= visits.list.length) return;
-    const scroll = scroller.current?.scrollTop ?? 0;
-    pending.current = { scroll: visits.list[next]!.scroll };
-    setVisits((v) => {
-      const list = [...v.list];
-      list[v.index] = { ...list[v.index]!, scroll };
-      return { list, index: next };
-    });
-  };
-
-  // マウスのサイドボタン(戻る・進む)で、ウィンドウ内の履歴を移る。ブラウザのページの戻る・進むは止める
-  const goStable = useStable(go);
-  useEffect(() => {
-    const el = section.current;
-    if (!el) return;
-    const side = (e: MouseEvent) => e.button === 3 || e.button === 4;
-    const block = (e: MouseEvent) => {
-      if (side(e)) e.preventDefault();
-    };
-    const up = (e: MouseEvent) => {
-      if (!side(e)) return;
-      e.preventDefault();
-      goStable(e.button === 3 ? -1 : 1);
-    };
-    el.addEventListener('mousedown', block);
-    el.addEventListener('auxclick', block);
-    el.addEventListener('mouseup', up);
-    return () => {
-      el.removeEventListener('mousedown', block);
-      el.removeEventListener('auxclick', block);
-      el.removeEventListener('mouseup', up);
-    };
-  }, [goStable]);
 
   const copy = (text: string, done = ja.copied(text)) =>
     void navigator.clipboard?.writeText(text).then(
@@ -508,9 +496,9 @@ export function DocumentWindow({
       case 'hints':
         return showHints(a.mode);
       case 'back':
-        return go(-1);
+        return nav.back();
       case 'forward':
-        return go(1);
+        return nav.forward();
       case 'search':
         return setSearch((x) => ({
           query: x?.query ?? '',
@@ -635,7 +623,13 @@ export function DocumentWindow({
     >
       <Popover.Root open={toc !== null} onOpenChange={(o) => !o && setToc(null)}>
         <Popover.Anchor asChild>
-          <div ref={scroller} className={`doc-scroll${isImage ? ' image' : ''}`} data-testid="doc-scroll" style={{ ['--doc-scale' as string]: SCALES[scale] }}>
+          <div
+            ref={scroller}
+            className={`doc-scroll${isImage ? ' image' : ''}`}
+            data-testid="doc-scroll"
+            style={{ ['--doc-scale' as string]: SCALES[scale] }}
+            onScroll={(e) => scrolls.current.set(index, e.currentTarget.scrollTop)}
+          >
             {isImage ? (
               <div className="doc-image">
                 <img src={api.mediaUrl(path)} alt={name} data-testid="doc-image" />
@@ -722,57 +716,63 @@ export function DocumentWindow({
         />
       )}
       <footer className="doc-status" data-testid="doc-status">
-        <BarButton icon="arrowBack" label={ja.docBack} disabled={visits.index === 0} onClick={() => go(-1)} />
-        <BarButton icon="arrowForward" label={ja.docForward} disabled={visits.index >= visits.list.length - 1} onClick={() => go(1)} />
-        {deleted && <span className="doc-note error">{ja.docDeleted}</span>}
-        {large && <span className="doc-note">{ja.docLarge}</span>}
-        {search && !search.editing && (
-          <>
-            <span className="doc-note">{ja.searchCount(search.index, search.count)}</span>
-            {search.count > 1 && (
-              <>
-                <BarButton icon="arrowUp" label={ja.matchPrev} onClick={() => run({ do: 'match', dir: -1 })} />
-                <BarButton icon="arrowDown" label={ja.matchNext} onClick={() => run({ do: 'match', dir: 1 })} />
-              </>
-            )}
-          </>
-        )}
-        <span className="doc-spacer" />
-        {!isImage && (
-          <>
-            <BarButton icon="search" label={ja.docSearch} pressed={search?.editing ?? false} onClick={() => (search?.editing ? setSearch(null) : run({ do: 'search' }))} />
-            <BarButton ref={tocButton} icon="toc" label={ja.docToc} pressed={toc !== null} onClick={() => (toc ? setToc(null) : run({ do: 'toc' }))} />
-            <span className="doc-divider" />
-            <BarButton icon="textDecrease" label={ja.docSmaller} disabled={scale === 0} onClick={() => run({ do: 'scale', dir: -1 })} />
-            <button type="button" className="text-button doc-scale" title={ja.docScaleReset} aria-label={ja.docScaleReset} onClick={() => run({ do: 'scale', dir: 0 })}>
-              {Math.round(SCALES[scale]! * 100)}%
-            </button>
-            <BarButton icon="textIncrease" label={ja.docLarger} disabled={scale === SCALES.length - 1} onClick={() => run({ do: 'scale', dir: 1 })} />
-            {doc && <span className="doc-divider" />}
-          </>
-        )}
-        {doc && (
-          <>
-            <span className="doc-label">{ja.encoding}</span>
-            <DropdownMenu.Root>
-              <DropdownMenu.Trigger className="text-button doc-encoding" data-testid="doc-encoding" title={ja.encodingKey}>
-                {ja.encodings[doc.encoding]}
-              </DropdownMenu.Trigger>
-              <DropdownMenu.Portal>
-                <DropdownMenu.Content className="doc-menu" align="end" sideOffset={4}>
-                  <DropdownMenu.RadioGroup value={doc.encoding} onValueChange={(v) => setEncodings((m) => ({ ...m, [path]: v as TextEncoding }))}>
-                    {CHOICES.map((c) => (
-                      <DropdownMenu.RadioItem key={c} value={c} className="menu-item doc-menu-item">
-                        {ja.encodings[c]}
-                        {c === doc.detected && ` (${ja.detected})`}
-                      </DropdownMenu.RadioItem>
-                    ))}
-                  </DropdownMenu.RadioGroup>
-                </DropdownMenu.Content>
-              </DropdownMenu.Portal>
-            </DropdownMenu.Root>
-          </>
-        )}
+        <div className="doc-status-side">
+          {deleted && <span className="doc-note error">{ja.docDeleted}</span>}
+          {large && <span className="doc-note">{ja.docLarge}</span>}
+          {search && !search.editing && (
+            <>
+              <span className="doc-note">{ja.searchCount(search.index, search.count)}</span>
+              {search.count > 1 && (
+                <>
+                  <BarButton icon="arrowUp" label={ja.matchPrev} onClick={() => run({ do: 'match', dir: -1 })} />
+                  <BarButton icon="arrowDown" label={ja.matchNext} onClick={() => run({ do: 'match', dir: 1 })} />
+                </>
+              )}
+            </>
+          )}
+        </div>
+        {/* 戻る・進むはブラウザの戻る・進むと同じ(4.5)。押しやすいよう、バーの中央に大きめに置く */}
+        <div className="doc-nav">
+          <BarButton large icon="arrowBack" label={ja.docBack} disabled={!navState.back} onClick={() => nav.back()} />
+          <BarButton large icon="arrowForward" label={ja.docForward} disabled={!navState.forward} onClick={() => nav.forward()} />
+        </div>
+        <div className="doc-status-side end">
+          {!isImage && (
+            <>
+              <BarButton icon="search" label={ja.docSearch} pressed={search?.editing ?? false} onClick={() => (search?.editing ? setSearch(null) : run({ do: 'search' }))} />
+              <BarButton ref={tocButton} icon="toc" label={ja.docToc} pressed={toc !== null} onClick={() => (toc ? setToc(null) : run({ do: 'toc' }))} />
+              <span className="doc-divider" />
+              <BarButton icon="textDecrease" label={ja.docSmaller} disabled={scale === 0} onClick={() => run({ do: 'scale', dir: -1 })} />
+              <button type="button" className="text-button doc-scale" title={ja.docScaleReset} aria-label={ja.docScaleReset} onClick={() => run({ do: 'scale', dir: 0 })}>
+                {Math.round(SCALES[scale]! * 100)}%
+              </button>
+              <BarButton icon="textIncrease" label={ja.docLarger} disabled={scale === SCALES.length - 1} onClick={() => run({ do: 'scale', dir: 1 })} />
+              {doc && <span className="doc-divider" />}
+            </>
+          )}
+          {doc && (
+            <>
+              <span className="doc-label">{ja.encoding}</span>
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger className="text-button doc-encoding" data-testid="doc-encoding" title={ja.encodingKey}>
+                  {ja.encodings[doc.encoding]}
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Portal>
+                  <DropdownMenu.Content className="doc-menu" align="end" sideOffset={4}>
+                    <DropdownMenu.RadioGroup value={doc.encoding} onValueChange={(v) => setEncodings((m) => ({ ...m, [path]: v as TextEncoding }))}>
+                      {CHOICES.map((c) => (
+                        <DropdownMenu.RadioItem key={c} value={c} className="menu-item doc-menu-item">
+                          {ja.encodings[c]}
+                          {c === doc.detected && ` (${ja.detected})`}
+                        </DropdownMenu.RadioItem>
+                      ))}
+                    </DropdownMenu.RadioGroup>
+                  </DropdownMenu.Content>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Root>
+            </>
+          )}
+        </div>
       </footer>
     </WindowFrame>
   );
