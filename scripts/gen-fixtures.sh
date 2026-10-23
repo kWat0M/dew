@@ -146,3 +146,66 @@ MD
 # Shift_JIS(Excel やふるい Windows のエディタで作った文書)
 python3 -c 'import sys; sys.stdout.buffer.write("# 日本語の見出し\n\nこれは Shift_JIS で書いた文書です。ソースコード表示（全角括弧）も含みます。\n".encode("cp932"))' > "$out/md/sjis.md"
 echo "生成しました: $out"
+
+# フェーズ7(CSV)。Home の一覧の検査に入らないよう csv/ に置き、テストが必要なときに複製する。
+# 乱数の種を固定して、いつ作っても同じ中身にする(小規模モードと大規模モードの結果の一致を確かめるため)
+mkdir -p "$out/csv"
+python3 -I - "$out/csv" <<'PY'
+import csv, random, sys
+out = sys.argv[1]
+
+def table(path, rows, memo_len):
+    """id(整数)・name(文字列。大文字小文字だけ違う値や同じ値を混ぜる)・score(小数。空あり)・day(日付)・flag(真偽値)・memo"""
+    r = random.Random(7)
+    names = ['alpha', 'Alpha', 'beta', 'Beta', 'gamma', 'delta', 'abc', 'ABD', 'über', 'Zeta', '日本', 'にほん', '']
+    with open(path, 'w', newline='', encoding='utf-8') as f:
+        w = csv.writer(f)
+        w.writerow(['id', 'name', 'score', 'day', 'flag', 'memo'])
+        for i in range(rows):
+            name = r.choice(names) + (str(r.randrange(50)) if r.random() < 0.5 else '')
+            score = '' if r.random() < 0.05 else f'{r.uniform(-1000, 1000):.6f}'
+            day = f'2026-{r.randrange(1, 13):02d}-{r.randrange(1, 29):02d}'
+            flag = r.choice(['true', 'false', 'TRUE', 'False'])
+            memo = '' if r.random() < 0.1 else 'm' * r.randrange(1, memo_len)
+            w.writerow([i + 1, name, score, day, flag, memo])
+
+table(f'{out}/rows10k.csv', 10_000, 20)
+table(f'{out}/rows1m.csv', 1_000_000, 120)
+
+# Excel が出力する形: Shift_JIS(CP932)、CRLF
+with open(f'{out}/sjis.csv', 'w', newline='', encoding='cp932') as f:
+    w = csv.writer(f, lineterminator='\r\n')
+    w.writerow(['名前', '年齢', '住所'])
+    w.writerow(['山田太郎', '30', '東京都千代田区'])
+    w.writerow(['鈴木花子', '25', '大阪府大阪市（北区）'])
+
+# 引用符の中の改行・カンマ・"" のエスケープ
+with open(f'{out}/quoted.csv', 'w', newline='', encoding='utf-8') as f:
+    f.write('key,text\n')
+    f.write('a,"1行目\n2行目"\n')
+    f.write('b,"カンマ, を含む"\n')
+    f.write('c,"引用符 ""です"""\n')
+
+# 列数が不揃いな行(足りない行が1つ、多い行が2つ)
+with open(f'{out}/ragged.csv', 'w', newline='', encoding='utf-8') as f:
+    f.write('a,b,c\n1,2,3\n4,5\n6,7,8,9\n10,11,12,13,14\n15,16,17\n')
+
+# 1,000 列
+with open(f'{out}/wide.csv', 'w', newline='', encoding='utf-8') as f:
+    w = csv.writer(f)
+    w.writerow([f'c{i}' for i in range(1, 1001)])
+    for r in range(1, 51):
+        w.writerow([f'r{r}c{i}' for i in range(1, 1001)])
+
+# 列名と値に SQL で特別な意味を持つ記号
+with open(f'{out}/symbols.csv', 'w', newline='', encoding='utf-8') as f:
+    w = csv.writer(f)
+    w.writerow(['say "hi"', "it's", 'a;b', 'x--y'])
+    w.writerow(['he said "yes"', "don't", 'semi;colon', 'drop -- table'])
+    w.writerow(['plain', 'plain', 'plain', 'plain'])
+    w.writerow(["'; DROP TABLE t; --", '"', ';', '--'])
+
+# タブ区切り
+with open(f'{out}/tabs.tsv', 'w', newline='', encoding='utf-8') as f:
+    f.write('k\tv\nx\t1\ny\t2\n')
+PY

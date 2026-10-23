@@ -1,6 +1,6 @@
 // E2E 用のテスト部品: dew をテスト用の HOME と素材の複製で起動し、ページを開く
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
-import { cpSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -17,6 +17,8 @@ export type Dew = {
   url: string;
   /** --root に渡した、テスト素材の複製 */
   root: string;
+  /** テスト用の HOME(~/.config/dew/config.toml を置くのに使う) */
+  home: string;
   /** 同じサーバに対して dew を実行する(dew <ファイル> など) */
   run: (args: string[]) => string;
   /** `dew run <コマンド>` を前面で動かし続ける(テストの終わりに止める)。extraEnv はアプリに渡す環境変数 */
@@ -81,7 +83,7 @@ export const test = base.extend<Options & { dew: Dew }>({
       return child;
     };
     const stop = () => execFileSync(bin, ['stop', '--force'], { env });
-    await use({ url: `https://127.0.0.1:${server.port}/?token=${server.token}`, root, run, spawnRun, stop, restart: launch });
+    await use({ url: `https://127.0.0.1:${server.port}/?token=${server.token}`, root, home, run, spawnRun, stop, restart: launch });
     for (const c of children) c.kill('SIGTERM');
     // 失敗したら、原因を追えるよう dew run の出力とサーバのログを出す
     if (testInfo.status !== testInfo.expectedStatus) {
@@ -169,6 +171,30 @@ export function copyMd(dew: Dew) {
   const dir = join(dew.root, 'md');
   cpSync(join(repo, 'tests/fixtures/md'), dir, { recursive: true });
   return dir;
+}
+
+/** フェーズ7の素材(tests/fixtures/csv)を、閲覧範囲の起点の csv/ に複製する。複製先を返す */
+export function copyCsv(dew: Dew, names: string[]) {
+  const dir = join(dew.root, 'csv');
+  mkdirSync(dir, { recursive: true });
+  for (const name of names) cpSync(join(repo, 'tests/fixtures/csv', name), join(dir, name));
+  return dir;
+}
+
+/** 設定ファイル(~/.config/dew/config.toml)を書く。サーバが読むのは起動したときだけ */
+export function writeConfig(dew: Dew, toml: string) {
+  mkdirSync(join(dew.home, '.config/dew'), { recursive: true });
+  writeFileSync(join(dew.home, '.config/dew/config.toml'), toml);
+}
+
+/** ページを読み直し、「クリックかキーで開始」を済ませる */
+export async function reloadPage(page: Page) {
+  await page.reload();
+  const overlay = page.getByTestId('start-overlay');
+  await expect(async () => {
+    await page.keyboard.press('Shift');
+    await expect(overlay).toBeHidden({ timeout: 500 });
+  }).toPass();
 }
 
 /** 素材の1画素の値を ffmpeg で読む(8bit は rgb24、16bit は rgb48le) */
