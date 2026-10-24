@@ -25,15 +25,23 @@ export async function rowNumbers(win: Locator) {
   return (await win.locator('[role="row"][data-row]').evaluateAll((rows) => rows.map((r) => Number(r.getAttribute('data-row'))))).filter((n) => n > 0);
 }
 
-/** 選択中の列にフィルターを付ける(f で開き、条件と値を選んで Enter) */
+/** 選択欄で選ぶ(マウスで開き、値が value の項目を押す) */
+export async function choose(page: Page, scope: Locator, label: string, value: string) {
+  await scope.getByRole('combobox', { name: label }).click();
+  await page.getByRole('listbox', { name: label }).locator(`[role="option"][data-value="${value}"]`).click();
+}
+
+/** 選択中の列にフィルターを付ける(f で開き、条件を選び、値を打って Enter。値がなければ適用のボタン) */
 export async function filter(page: Page, op: string, value?: string) {
   await page.keyboard.press('f');
   const dialog = page.getByRole('dialog', { name: /フィルター/ });
   await expect(dialog).toBeVisible();
-  await dialog.getByLabel('条件').selectOption(op);
-  const input = dialog.getByLabel('値');
-  if (value !== undefined) await input.fill(value);
-  await input.press('Enter');
+  await choose(page, dialog, '条件', op);
+  if (value !== undefined) {
+    const input = dialog.getByLabel('値');
+    await input.fill(value);
+    await input.press('Enter');
+  } else await dialog.getByRole('button', { name: '適用' }).click();
   await expect(dialog).toBeHidden();
 }
 

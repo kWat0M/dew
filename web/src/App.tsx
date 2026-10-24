@@ -276,10 +276,11 @@ export function App() {
         events.active();
       }
     };
-    // マウスで押したボタンやチェックボックスにフォーカスを残さない(Space や Enter で押し直されないように)
+    // マウスで押したボタンやチェックボックスにフォーカスを残さない(Space や Enter で押し直されないように)。
+    // 選択欄(data-keep-focus)は、開いた一覧を続けてキーで選べるように残す。キー(Enter)で押したとき(detail が 0)も残す
     const onClick = (e: MouseEvent) => {
       const t = e.target;
-      if (t instanceof HTMLElement && !isTyping(t) && t.closest('button, input')) {
+      if (e.detail > 0 && t instanceof HTMLElement && !isTyping(t) && t.closest('button, input') && !t.closest('[data-keep-focus]')) {
         (document.activeElement as HTMLElement | null)?.blur();
       }
     };

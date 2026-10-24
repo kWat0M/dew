@@ -56,6 +56,7 @@ import textDecrease from '@material-symbols/svg-400/rounded/text_decrease.svg?ra
 import textIncrease from '@material-symbols/svg-400/rounded/text_increase.svg?raw';
 import arrowUp from '@material-symbols/svg-400/rounded/keyboard_arrow_up.svg?raw';
 import arrowDown from '@material-symbols/svg-400/rounded/keyboard_arrow_down.svg?raw';
+import dropDown from '@material-symbols/svg-400/rounded/arrow_drop_down.svg?raw';
 import './icons.css';
 
 const svgs = {
@@ -63,7 +64,7 @@ const svgs = {
   play, pause, playCircle, pauseCircle, back5, back30, fwd5, fwd30, frameBack, frameNext,
   close, fullscreen, volume, volumeOff, grid, list, minimize, maximize, restore,
   history, help, menu, power, tile, free, search, sync, compare, zoomIn, zoomOut, keyboard, record, stopRecord, article, table, copy,
-  arrowBack, arrowForward, toc, textDecrease, textIncrease, arrowUp, arrowDown,
+  arrowBack, arrowForward, toc, textDecrease, textIncrease, arrowUp, arrowDown, dropDown,
   filter, filterOff, visibility, palette, tune,
 };
 
