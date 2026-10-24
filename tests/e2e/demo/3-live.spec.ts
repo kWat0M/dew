@@ -25,8 +25,8 @@ test('3-live', async ({ page, demo }) => {
   await caption(page, 'キーも届く(このアプリは g で重力を切り替える)');
   await keys(page, ['g'], 2500);
   await keys(page, ['g'], 1500);
-  await caption(page, 'Ctrl+] で入力モードを抜ける');
-  await keys(page, ['Control+BracketRight'], 1500);
+  await caption(page, 'Ctrl+[ で入力モードを抜ける');
+  await keys(page, ['Control+BracketLeft'], 1500);
 
   await caption(page, 'eval "$(dew env)" のあとは、ふつうに起動するだけで映る');
   await terminal(page, 'eval "$(dew env)"');

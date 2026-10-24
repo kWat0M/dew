@@ -23,8 +23,8 @@ function keysIn(rows: readonly (readonly [string, string])[]): Set<string> {
   return out;
 }
 
-/** 一覧に載せなくてよいキー(矢印は j/k/h/l の別名、Esc は閉じる操作の共通キー) */
-const ALIASES = new Set(['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Escape']);
+/** 一覧に載せなくてよいキー(矢印は j/k/h/l の別名、Esc・Ctrl+[ は抜ける操作の共通キー) */
+const ALIASES = new Set(['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Escape', 'C-[']);
 
 describe('キー一覧に全キーが載っている', () => {
   test.each([

@@ -23,7 +23,7 @@ export const csvKeys: Record<string, CsvAction> = {
   s: { do: 'sort', add: false }, S: { do: 'sort', add: true }, f: { do: 'filter' }, F: { do: 'clearFilters' }, r: { do: 'rename' },
   '+': { do: 'decimals', dir: 1 }, '-': { do: 'decimals', dir: -1 }, m: { do: 'mark' }, M: { do: 'rules' },
   x: { do: 'hide' }, X: { do: 'showAll' }, p: { do: 'pin' }, '<': { do: 'width', f: 1 / 1.2 }, '>': { do: 'width', f: 1.2 }, '=': { do: 'fit' },
-  y: { do: 'copy', row: false }, Y: { do: 'copy', row: true }, o: { do: 'settings' }, R: { do: 'reset' }, q: { do: 'exit' }, 'C-]': { do: 'exit' },
+  y: { do: 'copy', row: false }, Y: { do: 'copy', row: true }, o: { do: 'settings' }, R: { do: 'reset' }, q: { do: 'exit' }, 'C-[': { do: 'exit' },
 };
 
 const O = ja.csvOps;

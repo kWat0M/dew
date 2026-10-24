@@ -21,7 +21,7 @@ test('4-rewind', async ({ page, demo }) => {
     await clickOn(page, canvas, fx, fy);
     await pause(page, 500);
   }
-  await keys(page, ['Control+BracketRight'], 500);
+  await keys(page, ['Control+BracketLeft'], 500);
   await caption(page, 'もう一度 R で止めると、dew-recordings/ に MP4 で保存');
   await keys(page, ['R'], 2500);
   await expect(win).toHaveAttribute('data-recording', 'false');

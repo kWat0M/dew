@@ -176,8 +176,8 @@ test('Shift_JIS の Markdown を文字化けせずに出す', async ({ page, dew
   await expect(win.getByTestId('doc-encoding')).toHaveText('Shift_JIS');
 });
 
-// 基準8: 開いた直後から j でスクロールでき、q か Ctrl+] で抜けたあとは w や Tab のキャンバス操作が効く
-test('開いた直後から j で読め、q / Ctrl+] で抜けるとキャンバスの操作が効く', async ({ page, dew }) => {
+// 基準8: 開いた直後から j でスクロールでき、q か Ctrl+[ で抜けたあとは w や Tab のキャンバス操作が効く
+test('開いた直後から j で読め、q / Ctrl+[ で抜けるとキャンバスの操作が効く', async ({ page, dew }) => {
   copyMd(dew);
   await start(page, dew);
   // Home から Enter で開く(yazi から開いたときと同じく、すぐ読めること)
@@ -190,15 +190,14 @@ test('開いた直後から j で読め、q / Ctrl+] で抜けるとキャンバ
   await expect(win).toHaveAttribute('data-input', 'true');
   await page.keyboard.press('j');
   await expect.poll(() => scrollTop(win)).toBeGreaterThan(0);
-  // Esc では抜けない(ライブウィンドウと同じ)。ヒント中の帯には抜け方を出し、Ctrl+] で入力モードごと抜ける
+  // 抜けるキーは1回で1段ずつ戻る: ヒントを閉じ、次に入力モードを抜ける(ADR 0030)
   await page.keyboard.press('f');
   await expect(win.getByTestId('link-hint').first()).toBeVisible();
   await expect(page.getByTestId('hint-bar').filter({ visible: true })).toContainText('ヒントを閉じる');
   await page.keyboard.press('Escape');
-  await expect(win.getByTestId('link-hint').first()).toBeVisible();
-  await expect(win).toHaveAttribute('data-input', 'true');
-  await page.keyboard.press('Control+BracketRight');
   await expect(win.getByTestId('link-hint')).toHaveCount(0);
+  await expect(win).toHaveAttribute('data-input', 'true');
+  await page.keyboard.press('Control+BracketLeft');
   await expect(win).toHaveAttribute('data-input', 'false');
   await expect(page.getByTestId('hint-bar').filter({ visible: true })).not.toContainText('ヒントを閉じる');
   // ノーマルモードの再生キーは効かず、i で操作できると1回だけ知らせる
@@ -209,10 +208,10 @@ test('開いた直後から j で読め、q / Ctrl+] で抜けるとキャンバ
   await page.keyboard.press('w');
   await expect(page.getByTestId('window-mode')).toBeVisible();
   await page.keyboard.press('q');
-  // i で入り直し、Ctrl+] で抜ける
+  // i で入り直し、Ctrl+[ で抜ける
   await page.keyboard.press('i');
   await expect(win).toHaveAttribute('data-input', 'true');
-  await page.keyboard.press('Control+BracketRight');
+  await page.keyboard.press('Control+BracketLeft');
   await expect(win).toHaveAttribute('data-input', 'false');
   await page.keyboard.press('Tab');
   await expect(page.getByTestId('col-current')).toBeVisible();

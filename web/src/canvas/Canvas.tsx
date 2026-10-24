@@ -66,7 +66,7 @@ export const normal: Record<string, NormalAction> = {
   '[': { do: 'speed', dir: -1 }, ']': { do: 'speed', dir: 1 },
   b: { do: 'ab' }, m: { do: 'mute' }, z: { do: 'zoom' }, '+': { do: 'zoomBy', f: 1.25 }, '-': { do: 'zoomBy', f: 0.8 }, f: { do: 'maximize' }, K: { do: 'all' },
   h: { do: 'home' }, H: { do: 'homeInitial' }, Tab: { do: 'home' }, '?': { do: 'help' },
-  w: { do: 'windowMode' }, r: { do: 'history' }, s: { do: 'sync' }, c: { do: 'compareMode' }, M: { do: 'globalMute' }, i: { do: 'input' }, I: { do: 'sendText' }, R: { do: 'record' }, q: { do: 'live' }, Escape: { do: 'escape' },
+  w: { do: 'windowMode' }, r: { do: 'history' }, s: { do: 'sync' }, c: { do: 'compareMode' }, M: { do: 'globalMute' }, i: { do: 'input' }, I: { do: 'sendText' }, R: { do: 'record' }, q: { do: 'live' }, Escape: { do: 'escape' }, 'C-[': { do: 'escape' },
 };
 for (let n = 0; n <= 9; n++) normal[String(n)] = { do: 'percent', n };
 
@@ -76,7 +76,7 @@ export const windowKeys: Record<string, WindowAction> = {
   ' ': { do: 'select' }, a: { do: 'selectAll' },
   '+': { do: 'grow', f: 1.1 }, '-': { do: 'grow', f: 1 / 1.1 }, '=': { do: 'equalize' }, t: { do: 'layout' },
   m: { do: 'minimize' }, f: { do: 'maximize' }, o: { do: 'only' }, x: { do: 'close' }, X: { do: 'closeAll' }, r: { do: 'fitApp' },
-  q: { do: 'exit' }, Escape: { do: 'exit' },
+  q: { do: 'exit' }, Escape: { do: 'exit' }, 'C-[': { do: 'exit' },
 };
 for (let n = 1; n <= 9; n++) windowKeys[String(n)] = { do: 'focusN', n };
 

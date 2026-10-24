@@ -10,7 +10,7 @@ import type { CommandDef } from '../commands';
 import { basename } from '../format';
 import { ja } from '../i18n/ja';
 import { Icon, type IconName } from '../icons';
-import { KeySequence, readKey } from '../keys';
+import { isLeaveKey, KeySequence, leavesInput } from '../keys';
 import { nav, useNavState } from '../nav';
 import type { MediaKind } from '../protocol/MediaKind';
 import type { TextDoc } from '../protocol/TextDoc';
@@ -84,7 +84,7 @@ export const docKeys: Record<string, DocAction> = {
   '=': { do: 'scale', dir: 0 },
   e: { do: 'encoding' },
   q: { do: 'exit' },
-  'C-]': { do: 'exit' },
+  'C-[': { do: 'exit' },
 };
 const docMap = new KeySequence(docKeys);
 
@@ -231,6 +231,7 @@ export function DocumentWindow({
     index: number;
   } | null>(null);
   const matches = useRef<Range[]>([]);
+  const searchInput = useRef<HTMLInputElement>(null);
   /** 下部のバーの目次のボタン(押したときに、目次の外を押したとみなして閉じ、すぐ開き直さないように) */
   const tocButton = useRef<HTMLButtonElement>(null);
   /** 描画し直したあとに戻すスクロール位置と、開く見出し */
@@ -500,6 +501,8 @@ export function DocumentWindow({
       case 'forward':
         return nav.forward();
       case 'search':
+        // 検索欄を出したまま抜けていたら、欄に戻る
+        searchInput.current?.focus();
         return setSearch((x) => ({
           query: x?.query ?? '',
           editing: true,
@@ -560,16 +563,10 @@ export function DocumentWindow({
   }, [runFromPanel]);
 
   useKeys((k, e) => {
-    // Ctrl+] はどこからでも抜ける
-    if (k.key === 'C-]') {
-      e.preventDefault();
-      docMap.reset();
-      return run({ do: 'exit' });
-    }
     if (hints) {
-      // ヒントを出している間は、ほかのキーを受け付けない(17.4)。Esc では閉じない(15.3)
+      // ヒントを出している間は、ほかのキーを受け付けない(17.4)。抜けるキーと Backspace で閉じる
       e.preventDefault();
-      if (k.key === 'Backspace') return setHints(null);
+      if (k.key === 'Backspace' || isLeaveKey(k.key)) return setHints(null);
       if (!HINT_CHARS.includes(k.key)) return;
       const typed = hints.typed + k.key;
       const left = hints.items.filter((h) => h.label.startsWith(typed));
@@ -579,7 +576,7 @@ export function DocumentWindow({
     }
     if (toc) {
       e.preventDefault();
-      if (k.key === 'o' || k.key === 'Backspace') return setToc(null);
+      if (k.key === 'o' || k.key === 'Backspace' || isLeaveKey(k.key)) return setToc(null);
       if (k.key === 'j' || k.key === 'ArrowDown')
         return setToc({
           ...toc,
@@ -592,6 +589,12 @@ export function DocumentWindow({
         if (h) scrollToEl(h);
       }
       return;
+    }
+    // 検索欄を出したまま抜けていたら、抜けるキーでまず検索欄を閉じる(1回で1段ずつ戻る)
+    if (search?.editing && isLeaveKey(k.key)) {
+      e.preventDefault();
+      docMap.reset();
+      return setSearch(null);
     }
     const a = docMap.push(k.key);
     if (a === null) return;
@@ -700,16 +703,16 @@ export function DocumentWindow({
           ))}
       {search?.editing && (
         <input
+          ref={searchInput}
           className="doc-search"
           autoFocus
           defaultValue={search.query}
           placeholder={ja.searchPlaceholder}
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return;
-            // 文字を打っている間だけ Esc で検索欄を閉じる。Ctrl+] は入力欄からでも抜ける(15.3)
+            // Esc・Ctrl+[ は入力欄から抜けるだけ(検索欄は残し、もう一度押すと閉じる)
             if (e.key === 'Enter') runSearch(e.currentTarget.value);
-            else if (e.key === 'Escape') setSearch(null);
-            else if (readKey(e.nativeEvent)?.key === 'C-]') run({ do: 'exit' });
+            else if (leavesInput(e.nativeEvent)) e.currentTarget.blur();
             else return;
             e.preventDefault();
           }}

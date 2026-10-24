@@ -98,7 +98,7 @@ test('閉じるボタンでアプリに閉じるよう頼む', async ({ page, de
   }
 });
 
-// 基準5: 入力モードで押したキーをアプリが受け取り、Ctrl+] で抜けた後のキーは受け取らない
+// 基準5: 入力モードで押したキーをアプリが受け取り、Ctrl+[ で抜けた後のキーは受け取らない(Ctrl+] から変えた。ADR 0030)
 test('入力モードのキーだけがアプリに届く', async ({ page, dew }) => {
   const keylog = join(mkdtempSync(join(tmpdir(), 'dew-keys-')), 'keys.txt');
   writeFileSync(keylog, '');
@@ -112,7 +112,7 @@ test('入力モードのキーだけがアプリに届く', async ({ page, dew }
   await expect(win).toHaveAttribute('data-input', 'true');
   await page.keyboard.type('abc');
   await expect.poll(() => readFileSync(keylog, 'utf8').split('\n').filter(Boolean)).toEqual(['a', 'b', 'c']);
-  await page.keyboard.press('Control+]');
+  await page.keyboard.press('Control+BracketLeft');
   await expect(win).toHaveAttribute('data-input', 'false');
   await page.keyboard.type('x');
   await page.waitForTimeout(800);
@@ -143,7 +143,7 @@ test('タイトルバーのボタンで入力モードを切り替え、表示�
   await expect(win.locator('.window-body .input-hint')).toHaveCount(0);
   await page.keyboard.type('ab');
   await expect.poll(() => readFileSync(keylog, 'utf8').split('\n').filter(Boolean)).toEqual(['a', 'b']);
-  await win.getByRole('button', { name: '入力モードを抜ける(Ctrl+])' }).click();
+  await win.getByRole('button', { name: '入力モードを抜ける(Ctrl+[)' }).click();
   await expect(win).toHaveAttribute('data-input', 'false');
   await expect(win.locator('.input-hint')).toHaveCount(0);
 });

@@ -16,7 +16,7 @@ type Action = 'down' | 'up' | 'top' | 'bottom' | 'mark' | 'open' | 'close';
 
 const keymap = new KeySequence<Action>({
   j: 'down', ArrowDown: 'down', k: 'up', ArrowUp: 'up', 'g g': 'top', G: 'bottom',
-  ' ': 'mark', Enter: 'open', l: 'open', q: 'close', Escape: 'close',
+  ' ': 'mark', Enter: 'open', l: 'open', q: 'close', Escape: 'close', 'C-[': 'close',
 });
 
 type Props = {

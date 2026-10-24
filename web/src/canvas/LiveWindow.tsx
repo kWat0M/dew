@@ -236,7 +236,7 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, onMessage, on
     else if (!live.recording) recHere.current = null;
   }, [live.ended, live.recording]);
 
-  // 入力モード: ページのキー入力をすべて受け取り、アプリへ送る。Ctrl+] で抜ける(5.5)
+  // 入力モード: ページのキー入力をすべて受け取り、アプリへ送る。Ctrl+[ で抜ける(5.5。Esc はアプリへ送る)
   useEffect(() => {
     const el = win.current;
     el?.setAttribute('data-input', String(inputMode));
@@ -245,7 +245,7 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, onMessage, on
     const onKey = (e: KeyboardEvent) => {
       e.preventDefault();
       e.stopImmediatePropagation();
-      if (e.type === 'keydown' && e.ctrlKey && (e.key === ']' || e.code === 'BracketRight')) return onExitInput();
+      if (e.ctrlKey && !e.altKey && !e.metaKey && e.key === '[') return e.type === 'keydown' ? onExitInput() : undefined;
       // 変換中の文字は送らない(日本語は I の送信用の入力欄から)
       if (e.isComposing || e.key === 'Process') return;
       send({ type: 'key', key: e.key, down: e.type === 'keydown' });

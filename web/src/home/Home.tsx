@@ -11,7 +11,7 @@ import type { Tree } from '../protocol/Tree';
 import { basename, join } from '../format';
 import { ja } from '../i18n/ja';
 import { Icon } from '../icons';
-import { KeySequence } from '../keys';
+import { KeySequence, leavesInput } from '../keys';
 import { urlOf } from '../nav';
 import { useKeys } from '../useKeys';
 import { EntryList, type View } from './EntryList';
@@ -44,7 +44,7 @@ export const homeBindings: Record<string, HomeAction> = {
   j: 'down', ArrowDown: 'down', k: 'up', ArrowUp: 'up',
   h: 'parent', ArrowLeft: 'parent', l: 'enter', ArrowRight: 'enter',
   Enter: 'open', ' ': 'mark', 'g g': 'top', G: 'bottom',
-  '/': 'filter', n: 'follow', v: 'view', '.': 'hidden', Tab: 'canvas', H: 'initial', r: 'history', '?': 'help', c: 'compare', Escape: 'escape',
+  '/': 'filter', n: 'follow', v: 'view', '.': 'hidden', Tab: 'canvas', H: 'initial', r: 'history', '?': 'help', c: 'compare', Escape: 'escape', 'C-[': 'escape',
 };
 const keymap = new KeySequence<Action>(homeBindings);
 
@@ -390,10 +390,12 @@ export function Home(p: Props) {
           />
         </div>
       </header>
-      {filtering && (
+      {/* 抜けたあとも、絞り込んでいる間は欄を出しておく(Esc でもう一度押すと解除) */}
+      {(filtering || filter !== '') && (
         <input
           className="filter"
-          autoFocus
+          autoFocus={filtering}
+          onFocus={() => setFiltering(true)}
           placeholder={`${ja.filter}(${ja.filterHint})`}
           value={filter}
           onChange={(e) => {
@@ -401,9 +403,10 @@ export function Home(p: Props) {
             setSelectedName(null);
           }}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === 'Escape') {
+            // Enter・Esc・Ctrl+[ で欄から抜ける(絞り込みは残す)
+            if ((e.key === 'Enter' && !e.nativeEvent.isComposing) || leavesInput(e.nativeEvent)) {
               e.preventDefault();
-              if (e.key === 'Escape') setFilter('');
+              e.currentTarget.blur();
               setFiltering(false);
             }
           }}

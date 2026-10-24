@@ -25,7 +25,7 @@
 ## 守ること
 - プログラム無改変が原則。ライブ描画のためにユーザーのコードを書き換える機能は作らない
 - ffmpeg はライブラリとしてリンクせず CLI で呼ぶ
-- ブラウザの Ctrl 系ショートカットをキーマップに使わない(入力モードを抜ける Ctrl+] だけ例外)。キー判定は KeyboardEvent.key が基本、IME 有効時(key が Process)だけ code で判定
+- ブラウザの Ctrl 系ショートカットをキーマップに使わない(モードや入力を抜ける Ctrl+[ だけ例外。物理キーの位置では判定しない)。キー判定は KeyboardEvent.key が基本、IME 有効時(key が Process)だけ code で判定
 - UI は Material Design 3 のトークン(web/src/theme/)だけで色・角丸・影を指定する。直接の色指定をしない
 - UI の文言は日本語で、1ファイル(web/src/i18n/ja.ts)に集約する。コード内の識別子は英語、コメント・コミットメッセージ・ADR は日本語
 - E2E は Playwright の channel: 'chrome'(同梱 Chromium は H.264 非対応)と、Playwright の Firefox(`playwright install firefox` で入れる)の2つで実行する

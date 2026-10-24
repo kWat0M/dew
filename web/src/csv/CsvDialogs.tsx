@@ -1,7 +1,9 @@
 // CSV のウィンドウの中に重ねて出す小さな画面: フィルター・表示名・行番号・セルの全文・条件付き強調・表示設定(16.3〜16.7)。
-// どれも閉じるボタンがあり、文字を打つ欄では Enter で確定、Esc で閉じる
+// どれも閉じるボタンがあり、文字を打つ欄では Enter で確定、Esc・Ctrl+[ で欄から抜ける。欄の外では Esc・Ctrl+[・q で閉じる
 import { useState, type ReactNode } from 'react';
 import { ja } from '../i18n/ja';
+import { isLeaveKey, leavesInput, readKey } from '../keys';
+import { isTyping } from '../useKeys';
 import { Icon } from '../icons';
 import type { CsvColor } from '../protocol/CsvColor';
 import type { CsvColumn } from '../protocol/CsvColumn';
@@ -32,7 +34,15 @@ function Panel({ title, onClose, children, wide }: { title: string; onClose: () 
       }}
       onKeyDown={(e) => {
         if (e.nativeEvent.isComposing) return;
-        if (e.key === 'Escape' || (e.target === e.currentTarget && ['Enter', 'q', 'Backspace'].includes(e.key))) {
+        if (isTyping(e.target)) {
+          // 文字を打つ欄からは抜けるだけ(画面は閉じない)
+          if (!leavesInput(e.nativeEvent)) return;
+          e.preventDefault();
+          e.stopPropagation();
+          return e.currentTarget.focus();
+        }
+        const k = readKey(e.nativeEvent);
+        if ((k && isLeaveKey(k.key)) || (e.target === e.currentTarget && ['Enter', 'Backspace'].includes(e.key))) {
           e.preventDefault();
           e.stopPropagation();
           onClose();

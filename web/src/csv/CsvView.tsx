@@ -20,7 +20,7 @@ import type { Events } from '../api/events';
 import { basename } from '../format';
 import { ja } from '../i18n/ja';
 import { Icon } from '../icons';
-import { KeySequence } from '../keys';
+import { isLeaveKey, KeySequence, leavesInput } from '../keys';
 import { csvKeys, type CsvAction } from './keys';
 import type { CsvColumn } from '../protocol/CsvColumn';
 import type { CsvColumnView } from '../protocol/CsvColumnView';
@@ -86,6 +86,7 @@ type Loaded = { schema: CsvSchema; cols: (string | null)[][] | null };
 
 export default function CsvView({ id, path, events, inputMode, onExitInput, onMessage, onEnterInput, onRegister }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
   const [view, setViewState] = useState<View | null>(null);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -389,6 +390,8 @@ export default function CsvView({ id, path, events, inputMode, onExitInput, onMe
         return r && setDialog({ kind: 'inspect', text: r.cells[col] ?? '' });
       }
       case 'search':
+        // 検索欄を出したまま抜けていたら、欄に戻る
+        searchInput.current?.focus();
         return setSearching(true);
       case 'match':
         return goMatch(a.dir);
@@ -481,13 +484,15 @@ export default function CsvView({ id, path, events, inputMode, onExitInput, onMe
   }, [runFromPanel]);
 
   useKeys((k, e) => {
-    if (dialog || searching) {
-      if (k.key === 'C-]') {
-        e.preventDefault();
-        run({ do: 'exit' });
-      }
-      return;
+    // 小さな画面や検索欄を出したまま抜けていたら、抜けるキーでまずそれを閉じる(1回で1段ずつ戻る)
+    if ((dialog || searching) && isLeaveKey(k.key)) {
+      e.preventDefault();
+      keymap.reset();
+      if (dialog) return setDialog(null);
+      return setSearching(false);
     }
+    // 小さな画面のキーは、その画面が受け持つ
+    if (dialog) return;
     const a = keymap.push(k.key);
     if (a === null) return;
     e.preventDefault();
@@ -642,6 +647,7 @@ export default function CsvView({ id, path, events, inputMode, onExitInput, onMe
       </div>
       {searching && (
         <input
+          ref={searchInput}
           className="doc-search csv-search"
           autoFocus
           aria-label={ja.csv.search}
@@ -655,7 +661,7 @@ export default function CsvView({ id, path, events, inputMode, onExitInput, onMe
               setView((w) => ({ ...w, search: query }));
               setMatchIndex(0);
               setPendingFirst(true);
-            } else if (e.key === 'Escape') setSearching(false);
+            } else if (leavesInput(e.nativeEvent)) e.currentTarget.blur();
             else return;
             e.preventDefault();
           }}
