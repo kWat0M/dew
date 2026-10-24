@@ -471,7 +471,6 @@ export function App() {
           onToggleGlobalMute={() => setGlobalMuted((m) => !m)}
           onMessage={onError}
           runRef={canvasRun}
-          onHomeInitial={toInitial}
           events={events}
           root={root}
           externalImages={settings.externalImages}

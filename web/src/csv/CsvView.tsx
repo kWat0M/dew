@@ -60,8 +60,6 @@ type R = { i: number };
 
 export const EMPTY_VIEW: View = { options: {}, sort: [], filters: [], search: '', columns: [], marks: [], rules: [], cell: [0, 0], scroll: [0, 0] };
 
-const keymap = new KeySequence(csvKeys);
-
 type Dialog =
   | { kind: 'filter'; col: number }
   | { kind: 'rename'; col: number }
@@ -102,6 +100,8 @@ type Props = {
 type Loaded = { schema: CsvSchema; cols: (string | null)[][] | null };
 
 export default function CsvView({ id, path, events, opMode, onMessage, onRegister, onOp, onShare }: Props) {
+  // 押しかけのキー(gg の1つ目の g など)はウィンドウごとに持つ。複数のウィンドウで操作モードのとき、同じキーが全部に届くため
+  const [keymap] = useState(() => new KeySequence(csvKeys));
   const scroller = useRef<HTMLDivElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const [view, setViewState] = useState<View | null>(null);

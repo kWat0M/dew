@@ -85,7 +85,6 @@ export const docKeys: Record<string, DocAction> = {
 };
 /** 複数のウィンドウで操作モードのとき、フォーカス中のウィンドウだけで行う操作(ブラウザの履歴・検索欄・目次・コピーなど) */
 const LEAD_ONLY = new Set<DocAction['do']>(['back', 'forward', 'search', 'toc', 'up', 'copyPath', 'encoding']);
-const docMap = new KeySequence(docKeys);
 
 /** 操作パネルの Markdown の節(4.4)。続けてキーで選ぶもの(f / F / yf、目次)は、押すと操作モードに入る */
 const O = ja.docOps;
@@ -199,6 +198,8 @@ export function DocumentWindow({
   ...frame
 }: Props) {
   const opMode = frame.opMode;
+  // 押しかけのキー(gg の1つ目の g など)はウィンドウごとに持つ。複数のウィンドウで操作モードのとき、同じキーが全部に届くため
+  const [docMap] = useState(() => new KeySequence(docKeys));
   const scroller = useRef<HTMLDivElement>(null);
   const [visits, setVisits] = useState<Visit[]>([{ path: initial }]);
   const index = Math.min(wanted, visits.length - 1);

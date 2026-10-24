@@ -271,15 +271,34 @@ test('画像の操作モード: + で拡大し、hjkl で表示位置を動か�
   await expect.poll(async () => (await img.boundingBox())!.x).toBeGreaterThan(x0 + 40);
 });
 
-/** w で選択する: フォーカス中を選び、h で左へ移ってそれも選ぶ */
+/** ノーマルモードの Space で選択する: フォーカス中を選び、h で左へ移ってそれも選ぶ */
 async function selectTwo(page: Page) {
   await page.keyboard.press('Escape');
-  await page.keyboard.press('w');
   await page.keyboard.press(' ');
   await page.keyboard.press('h');
   await page.keyboard.press(' ');
-  await page.keyboard.press('q');
 }
+
+test('ノーマルモードの Space で選び、まとめて操作モードに入る。H では Home へ移らない', async ({ page, dew }) => {
+  copyMd(dew);
+  await start(page, dew);
+  for (const name of ['a.md', 'all.md']) {
+    dew.run([join(dew.root, 'md', name)]);
+    await expect(page.getByTestId('document-window').and(page.getByLabel(name, { exact: true })).getByTestId('doc-body')).toBeVisible();
+  }
+  const wins = page.getByTestId('document-window');
+  await selectTwo(page);
+  // 選んだウィンドウにはタイトルバーのチェックが付く
+  for (const i of [0, 1]) await expect(wins.nth(i).getByRole('checkbox', { name: '選択', exact: true })).toBeChecked();
+  // キャンバスの H は何もしない(Home の初期位置へは、Tab で Home に戻ってから H)
+  await page.keyboard.press('H');
+  await expect(wins.nth(0)).toBeVisible();
+  await page.keyboard.press('i');
+  for (const i of [0, 1]) await expect(wins.nth(i)).toHaveAttribute('data-op', 'true');
+  // 操作モードの Space は選択を変えない
+  await page.keyboard.press(' ');
+  for (const i of [0, 1]) await expect(wins.nth(i).getByRole('checkbox', { name: '選択', exact: true })).toBeChecked();
+});
 
 test('選択した Markdown をまとめて操作する。f のヒントは全ウィンドウで重ならない', async ({ page, dew }) => {
   copyMd(dew);
@@ -296,6 +315,15 @@ test('選択した Markdown をまとめて操作する。f のヒントは全�
   // j で両方スクロールする
   await page.keyboard.press('j');
   for (const i of [0, 1]) await expect.poll(() => wins.nth(i).getByTestId('doc-scroll').evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  // gg と G も両方に効く(押しかけの g はウィンドウごとに持つ)
+  const atBottom = (i: number) => wins.nth(i).getByTestId('doc-scroll').evaluate((el) => el.scrollTop + el.clientHeight >= el.scrollHeight - 2);
+  for (const round of [0, 1]) {
+    await page.keyboard.press('G');
+    for (const i of [0, 1]) await expect.poll(() => atBottom(i), `G round ${round} window ${i}`).toBe(true);
+    await page.keyboard.press('g');
+    await page.keyboard.press('g');
+    for (const i of [0, 1]) await expect.poll(() => wins.nth(i).getByTestId('doc-scroll').evaluate((el) => el.scrollTop)).toBe(0);
+  }
   // f のヒントは両方に出て、文字が重ならない
   await page.keyboard.press('f');
   const hints = page.getByTestId('link-hint');
@@ -326,6 +354,14 @@ test('選択した CSV をまとめて操作する。型が合わないウィン
   await page.keyboard.press('j');
   await page.keyboard.press('l');
   for (const w of [a, b]) await expect(status(w)).toContainText('B2');
+  // G と gg も両方に効く(押しかけの g はウィンドウごとに持つ)
+  for (const round of [0, 1]) {
+    await page.keyboard.press('G');
+    for (const w of [a, b]) await expect(status(w), `G round ${round}`).toContainText('B10000');
+    await page.keyboard.press('g');
+    await page.keyboard.press('g');
+    for (const w of [a, b]) await expect(status(w), `gg round ${round}`).toContainText(/B1(?!\d)/);
+  }
   await page.keyboard.press('s');
   for (const w of [a, b]) await expect(w.locator('[role="columnheader"][data-col="1"]')).toHaveAttribute('aria-sort', 'ascending');
   // フィルターの画面はフォーカス中のウィンドウだけに出し、決めた条件は両方に付く

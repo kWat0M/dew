@@ -81,7 +81,10 @@ test('キャンバスから戻ると Home の状態が残っている', async ({
   await page.keyboard.press('Tab');
   await expect(current(page).getByRole('option')).toHaveText(['nested.webp']);
 
-  // H は初期位置へ(画像の操作モードでは H を使わないので、キャンバスのキーとして効く)
+  // H は Home の初期位置へ。キャンバスの H は何もしない(Tab で Home に戻ってから H。ADR 0030)
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('H');
+  await expect(page.getByTestId('player-window')).toBeVisible();
   await page.keyboard.press('Tab');
   await page.keyboard.press('H');
   await expect(current(page).getByRole('option', { name: 'sub' })).toBeVisible();

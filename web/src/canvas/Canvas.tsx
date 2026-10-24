@@ -49,7 +49,7 @@ export type CanvasRun = {
 export type NormalAction =
   | PlayAction
   | { do: 'focusDir'; dir: Dir } | { do: 'operate' }
-  | { do: 'maximize' } | { do: 'all' } | { do: 'home' } | { do: 'homeInitial' } | { do: 'help' } | { do: 'history' }
+  | { do: 'maximize' } | { do: 'all' } | { do: 'home' } | { do: 'select' } | { do: 'help' } | { do: 'history' }
   | { do: 'windowMode' } | { do: 'sync' } | { do: 'compareMode' } | { do: 'globalMute' } | { do: 'input' } | { do: 'sendText' }
   | { do: 'record' } | { do: 'live' } | { do: 'escape' };
 
@@ -66,8 +66,8 @@ export type WindowAction =
 export const normal: Record<string, NormalAction> = {
   h: { do: 'focusDir', dir: 'h' }, j: { do: 'focusDir', dir: 'j' }, k: { do: 'focusDir', dir: 'k' }, l: { do: 'focusDir', dir: 'l' },
   ArrowLeft: { do: 'focusDir', dir: 'h' }, ArrowDown: { do: 'focusDir', dir: 'j' }, ArrowUp: { do: 'focusDir', dir: 'k' }, ArrowRight: { do: 'focusDir', dir: 'l' },
-  i: { do: 'operate' }, Enter: { do: 'operate' },
-  f: { do: 'maximize' }, K: { do: 'all' }, H: { do: 'homeInitial' }, Tab: { do: 'home' }, '?': { do: 'help' },
+  i: { do: 'operate' }, Enter: { do: 'operate' }, ' ': { do: 'select' },
+  f: { do: 'maximize' }, K: { do: 'all' }, Tab: { do: 'home' }, '?': { do: 'help' },
   w: { do: 'windowMode' }, r: { do: 'history' }, s: { do: 'sync' }, M: { do: 'globalMute' }, R: { do: 'record' },
   Escape: { do: 'escape' }, 'C-[': { do: 'escape' },
 };
@@ -146,7 +146,7 @@ export const playCommands: CommandDef<NormalAction>[] = [
 ];
 export const canvasCommands: CommandDef<NormalAction>[] = [
   { id: { do: 'operate' }, key: 'i', label: '操作モード' }, { id: { do: 'escape' }, key: 'Esc', label: '操作モードを抜ける' },
-  { id: { do: 'home' }, key: 'Tab', label: 'Home へ戻る' }, { id: { do: 'homeInitial' }, key: 'H', label: 'Home の初期位置へ' },
+  { id: { do: 'home' }, key: 'Tab', label: 'Home へ戻る' }, { id: { do: 'select' }, key: 'Space', label: '選択を切替' },
   { id: { do: 'maximize' }, key: 'f', label: 'ウィンドウ最大化' }, { id: { do: 'windowMode' }, key: 'w', label: 'ウィンドウ操作モード' },
   { id: { do: 'all' }, key: 'K', label: '全ウィンドウ再生 / 停止' },
   { id: { do: 'globalMute' }, key: 'M', label: '全体のミュート' }, { id: { do: 'sync' }, key: 's', label: '同期再生' },
@@ -193,7 +193,6 @@ type Props = {
   onClose: (ids: number[]) => void;
   onReorder: (ids: number[]) => void;
   onHome: () => void;
-  onHomeInitial: () => void;
   onHistory: () => void;
   onHelp: () => void;
   onError: (m: string) => void;
@@ -530,7 +529,7 @@ export function Canvas(p: Props) {
         return list.forEach((x) => x.setPlaying(anyPaused));
       }
       case 'home': return p.onHome();
-      case 'homeInitial': return p.onHomeInitial();
+      case 'select': return runWindow(a);
       case 'help': return p.onHelp();
       case 'history': return p.onHistory();
       case 'windowMode': return setWindowMode(true);
@@ -691,9 +690,9 @@ export function Canvas(p: Props) {
         return exitOp();
       }
       // ウィンドウが使わなかったキーは、キャンバス全体のキー(Tab・w・r・f・? など)として効かせる。
-      // ウィンドウを選ぶ hjkl と、操作モードに入る i / Enter は除く
+      // ウィンドウを選ぶ hjkl・Space と、操作モードに入る i / Enter は除く
       const g = normal[k.key];
-      if (g && g.do !== 'focusDir' && g.do !== 'operate') {
+      if (g && g.do !== 'focusDir' && g.do !== 'operate' && g.do !== 'select') {
         e.preventDefault();
         return runNormal(g);
       }
