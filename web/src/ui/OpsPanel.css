@@ -134,3 +134,26 @@
   outline: 2px solid var(--md-sys-color-secondary);
   outline-offset: -2px;
 }
+
+/* 幅の狭い画面(18.2): 画面の幅いっぱいに出す */
+@media (max-width: 599.98px) {
+  .ops-panel,
+  .ops-panel.with-hints {
+    width: 100%;
+    bottom: 0;
+    border-radius: 0;
+  }
+
+  .ops-item,
+  .ops-switch,
+  .ops-radio label {
+    min-height: 48px;
+  }
+}
+
+@media (max-width: 599.98px) {
+  /* キーボードがない前提なので、キーの案内は出さない */
+  .ops-item kbd {
+    display: none;
+  }
+}

@@ -32,13 +32,28 @@ export function start(items: DownloadItem[]) {
     return;
   }
   // パスが多いと URL に収まらないので、フォームで POST する。応答は見えない iframe で受ける
-  let frame = document.querySelector<HTMLIFrameElement>('iframe[name="dew-download"]');
-  if (!frame) {
-    frame = document.createElement('iframe');
+  void target().then(() => submit(items));
+}
+
+/**
+ * 応答を受ける見えない iframe。作った直後に送ると、iframe の最初の読み込みと重なって保存が取り消される
+ * ことがある(Chrome)ので、読み込みを待つ
+ */
+function target(): Promise<void> {
+  if (document.querySelector('iframe[name="dew-download"]')) return Promise.resolve();
+  return new Promise((resolve) => {
+    const frame = document.createElement('iframe');
     frame.name = 'dew-download';
     frame.hidden = true;
+    frame.src = 'about:blank';
+    frame.addEventListener('load', () => resolve(), { once: true });
+    // 読み込みの知らせが来ないブラウザでも止まらないように
+    setTimeout(resolve, 1000);
     document.body.append(frame);
-  }
+  });
+}
+
+function submit(items: DownloadItem[]) {
   const form = document.createElement('form');
   form.method = 'POST';
   form.action = '/api/download';

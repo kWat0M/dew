@@ -7,6 +7,7 @@ import { join } from '../format';
 import { EntryList } from '../home/EntryList';
 import { Preview } from '../home/Preview';
 import { ja } from '../i18n/ja';
+import { useCompact } from '../useCompact';
 import { Icon } from '../icons';
 import { KeySequence } from '../keys';
 import { useKeys } from '../useKeys';
@@ -29,6 +30,7 @@ export function HistoryWindow(p: Props) {
   const [history, setHistory] = useState<History | null>(null);
   const [selected, setSelected] = useState(0);
   const [marked, setMarked] = useState<Set<string>>(new Set());
+  const compact = useCompact();
   const { onError } = p;
 
   useEffect(() => {
@@ -102,11 +104,12 @@ export function HistoryWindow(p: Props) {
             view="list"
             marked={marked}
             thumbs
-            onClick={(i) => select(i)}
+            // 幅の狭い画面ではタップで開く(18.2)
+            onClick={(i) => (compact ? open([entries[i]!.name]) : select(i))}
             onDoubleClick={(i) => open([entries[i]!.name])}
             empty={history ? ja.historyEmpty : ja.loading}
           />
-          <Preview dir={root} root={root} entry={entries[selected]} showHidden />
+          {!compact && <Preview dir={root} root={root} entry={entries[selected]} showHidden />}
         </div>
       </section>
     </div>

@@ -6,6 +6,7 @@ import type { LiveInput } from '../protocol/LiveInput';
 import { api } from '../api/http';
 import { ja } from '../i18n/ja';
 import { Icon } from '../icons';
+import { useCompact } from '../useCompact';
 import { useLiveSound, type LiveAudioMix } from './liveAudio';
 import { LiveControls } from './LiveControls';
 import { LiveRewind, type Chunk } from './liveRewind';
@@ -328,7 +329,9 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, onMessage, on
       <Icon name={recording ? 'stopRecord' : 'record'} size={18} />
     </button>
   );
-  const inputButton = !live.ended && (
+  // 幅の狭い画面はキーボードがない前提なので、入力モードは出さない(見るだけ。18.2)
+  const compact = useCompact();
+  const inputButton = !live.ended && !compact && (
     <button
       type="button"
       className={`icon-button small${inputMode ? ' input-on' : ''}`}

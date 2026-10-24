@@ -9,6 +9,7 @@ import type { DownloadItem } from '../download';
 import { ja } from '../i18n/ja';
 import { Icon } from '../icons';
 import { isLeaveKey, KeySequence } from '../keys';
+import { useCompact } from '../useCompact';
 import { useKeys } from '../useKeys';
 import { cascade, neighbor, tile, type Dir, type Rect } from './layout';
 import { CompareWindow, type Member } from './CompareWindow';
@@ -243,6 +244,9 @@ export function Canvas(p: Props) {
   const [mode, setMode] = useState<'tile' | 'free'>('tile');
   const [free, setFree] = useState(new Map<number, Rect>());
   const [maximized, setMaximized] = useState<number | null>(null);
+  // 幅の狭い画面では、ウィンドウを1つずつ全画面で出し、タブで切り替える(18.2)
+  const compact = useCompact();
+  const tabbar = compact ? 'top' : p.tabbar;
   const [minimized, setMinimized] = useState<Set<number>>(new Set());
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [windowMode, setWindowMode] = useState(false);
@@ -774,7 +778,7 @@ export function Canvas(p: Props) {
 
   // タブバー(4.2)。上部に横並び、または左端に縦並びで普段は隠す
   const taskbar = (
-        <div className={`chips ${p.tabbar}`} role="tablist" aria-label={ja.taskbar} data-testid="taskbar">
+        <div className={`chips ${tabbar}`} role="tablist" aria-label={ja.taskbar} data-testid="taskbar">
           {ws.map((w, i) => (
             <button
               key={w.id}
@@ -785,7 +789,8 @@ export function Canvas(p: Props) {
               onClick={() => {
                 // Windows のタスクバーと同じ: 最小化中なら戻し、フォーカス中なら最小化する。操作モードには入らない
                 exitOp();
-                if (minimized.has(w.id)) focus(w.id);
+                if (compact) focus(w.id);
+                else if (minimized.has(w.id)) focus(w.id);
                 else if (w.id === p.focused) minimize(w.id);
                 else focus(w.id);
               }}
@@ -798,8 +803,8 @@ export function Canvas(p: Props) {
   );
 
   return (
-    <div className={`canvas${windowMode ? ' window-mode' : ''}${opIds.length ? ' op-mode' : ''}`}>
-      {p.tabbar === 'side' && (
+    <div className={`canvas${windowMode ? ' window-mode' : ''}${opIds.length ? ' op-mode' : ''}${compact ? ' compact' : ''}`}>
+      {tabbar === 'side' && (
         <>
           <div className="side-edge" onPointerEnter={() => setSideOpen(true)} />
           <nav className={`side-tabs${sideOpen ? ' open' : ''}`} onPointerLeave={() => setSideOpen(false)} onPointerDown={exitOp}>
@@ -812,7 +817,7 @@ export function Canvas(p: Props) {
         <button type="button" className="icon-button" title={ja.toHome} aria-label={ja.toHome} onClick={p.onHome}>
           <Icon name="home" />
         </button>
-        {p.tabbar === 'top' ? taskbar : <div className="chips" />}
+        {tabbar === 'top' ? taskbar : <div className="chips" />}
         {synced && (
           <span className="chip sync-chip" data-testid="sync-indicator">
             {ja.syncing}
@@ -832,7 +837,7 @@ export function Canvas(p: Props) {
           <Icon name={p.globalMuted ? 'volumeOff' : 'volume'} />
           {p.globalMuted && p.muteLabel && hasAudio && <span>{ja.globalUnmute}</span>}
         </button>
-        {ws.length > 1 && (
+        {ws.length > 1 && !compact && (
           <button
             type="button"
             className={`icon-button${synced ? ' toggled' : ''}`}
@@ -844,7 +849,7 @@ export function Canvas(p: Props) {
             <Icon name="sync" />
           </button>
         )}
-        {ws.length > 1 && (
+        {ws.length > 1 && !compact && (
           <button
             type="button"
             className="text-button with-icon"
@@ -868,13 +873,13 @@ export function Canvas(p: Props) {
           // 枠と配置は1ファイルのウィンドウと比較ウィンドウで共通
           const frame = {
             number: i + 1,
-            rect: rectOf.get(w.id) ?? full,
+            rect: compact ? full : (rectOf.get(w.id) ?? full),
             focused: w.id === p.focused,
             opMode: opIds.includes(w.id) && p.active,
             selected: selected.has(w.id),
-            maximized: maximized === w.id,
-            minimized: minimized.has(w.id),
-            free: mode === 'free' && shown.length > 1 && maximized !== w.id,
+            maximized: compact ? w.id === p.focused : maximized === w.id,
+            minimized: compact ? w.id !== p.focused : minimized.has(w.id),
+            free: !compact && mode === 'free' && shown.length > 1 && maximized !== w.id,
             dropTarget: reorder?.target === w.id,
             onFocus: () => focusOnly(w.id),
             onActivate: () => activate(w.id),
@@ -888,7 +893,9 @@ export function Canvas(p: Props) {
             onResize: (dw: number, dh: number) => updateFree(w.id, (r) => ({ ...r, w: Math.max(240, r.w + dw), h: Math.max(180, r.h + dh) })),
           };
           const audible =
-            p.visible && !p.globalMuted && !minimized.has(w.id) && (shown.length === 1 || w.id === p.focused || (synced && p.syncAudio));
+            p.visible &&
+            !p.globalMuted &&
+            (compact ? w.id === p.focused : !minimized.has(w.id) && (shown.length === 1 || w.id === p.focused || (synced && p.syncAudio)));
           const register = (x: PlayerApi | null) => {
             apis.current.set(w.id, x);
           };
@@ -993,7 +1000,7 @@ export function Canvas(p: Props) {
           />
         </Dialog>
       )}
-      {p.hints && (
+      {p.hints && !compact && (
         <div className="canvas-hints" onPointerDown={exitOp}>
           <HintBar items={windowMode ? ja.windowHints : canvasHints()} onHide={p.onHideHints} />
         </div>

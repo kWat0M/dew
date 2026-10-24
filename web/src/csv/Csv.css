@@ -333,3 +333,12 @@
 .csv-th-menu[data-state='open'] {
   opacity: 1;
 }
+
+/* 幅の狭い画面(18.2): 小さな画面は幅いっぱい */
+@media (max-width: 599.98px) {
+  .csv-panel,
+  .csv-panel.wide {
+    left: 8px;
+    width: calc(100% - 16px);
+  }
+}

@@ -3,6 +3,7 @@
 import type { ReactNode, Ref } from 'react';
 import { ja } from '../i18n/ja';
 import { Icon, type IconName } from '../icons';
+import { useCompact } from '../useCompact';
 import type { Rect } from './layout';
 
 /** キャンバスが渡す、配置と枠の操作 */
@@ -71,6 +72,7 @@ export function WindowFrame({ sectionRef, ...p }: Props) {
     window.addEventListener('pointerup', up);
   };
   const stop = (e: React.SyntheticEvent) => e.stopPropagation();
+  const compact = useCompact();
 
   return (
     <section
@@ -88,9 +90,12 @@ export function WindowFrame({ sectionRef, ...p }: Props) {
     >
       <header className="window-title" data-testid="window-title" onPointerDown={drag('move')} onDoubleClick={p.onToggleMaximize}>
         {/* ボタンを押したときはドラッグを始めない */}
-        <span className="title-controls" onPointerDown={stop} onDoubleClick={stop}>
-          <input type="checkbox" className="checkbox" checked={p.selected} aria-label={ja.select} onChange={p.onToggleSelect} />
-        </span>
+        {/* 幅の狭い画面では、選択・最小化・最大化は出さない(1つずつ全画面で出す。18.2) */}
+        {!compact && (
+          <span className="title-controls" onPointerDown={stop} onDoubleClick={stop}>
+            <input type="checkbox" className="checkbox" checked={p.selected} aria-label={ja.select} onChange={p.onToggleSelect} />
+          </span>
+        )}
         <span className="window-number">{p.number}</span>
         <Icon name={p.icon} size={18} />
         <span className="window-name">{p.name}</span>
@@ -101,18 +106,22 @@ export function WindowFrame({ sectionRef, ...p }: Props) {
               <Icon name="download" size={18} />
             </button>
           )}
-          <button type="button" className="icon-button small" title={ja.minimize} aria-label={ja.minimize} onClick={p.onMinimize}>
-            <Icon name="minimize" size={18} />
-          </button>
-          <button
-            type="button"
-            className="icon-button small"
-            title={p.maximized ? ja.restore : ja.maximize}
-            aria-label={p.maximized ? ja.restore : ja.maximize}
-            onClick={p.onToggleMaximize}
-          >
-            <Icon name={p.maximized ? 'restore' : 'maximize'} size={18} />
-          </button>
+          {!compact && (
+            <>
+              <button type="button" className="icon-button small" title={ja.minimize} aria-label={ja.minimize} onClick={p.onMinimize}>
+                <Icon name="minimize" size={18} />
+              </button>
+              <button
+                type="button"
+                className="icon-button small"
+                title={p.maximized ? ja.restore : ja.maximize}
+                aria-label={p.maximized ? ja.restore : ja.maximize}
+                onClick={p.onToggleMaximize}
+              >
+                <Icon name={p.maximized ? 'restore' : 'maximize'} size={18} />
+              </button>
+            </>
+          )}
           <button type="button" className="icon-button small" title={ja.close} aria-label={ja.close} onClick={p.onClose}>
             <Icon name="close" size={18} />
           </button>

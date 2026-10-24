@@ -341,3 +341,29 @@
 .preview-markdown .md-body {
   padding: 0 8px;
 }
+
+/* 幅の狭い画面(18.2): 今のディレクトリの一覧だけの1カラム。パンくずは横にスクロールする */
+.home.compact .home-bar {
+  gap: 0;
+  padding: 0 4px;
+}
+
+.home.compact .columns {
+  grid-template-columns: 1fr;
+  padding: 0;
+}
+
+.home.compact .entry-list {
+  border-radius: 0;
+}
+
+.home.compact .crumbs {
+  overflow-x: auto;
+  text-overflow: clip;
+  scrollbar-width: none;
+}
+
+.home.compact .fab {
+  right: 16px;
+  bottom: 16px;
+}

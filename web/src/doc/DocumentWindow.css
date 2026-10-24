@@ -230,3 +230,42 @@
   margin: 0 4px;
   background: var(--md-sys-color-outline-variant);
 }
+
+/* 幅の狭い画面(18.2): 下部のバーのボタンを指で押せる大きさに。目次は幅いっぱい */
+@media (max-width: 599.98px) {
+  .doc-status .doc-bar-button,
+  .doc-status .doc-bar-button.large {
+    width: 48px;
+    height: 48px;
+  }
+
+  .doc-toc {
+    width: calc(100vw - 32px);
+  }
+
+  /* 1行に収まらないので、戻る・進むの段と、ほかのボタンの段に分けて折り返す。ボタンは縮めない */
+  .doc-status {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    padding: 0 4px;
+  }
+
+  .doc-status-side:empty {
+    display: none;
+  }
+
+  .doc-status-side.end {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .doc-status button,
+  .doc-status .doc-bar-button {
+    flex: none;
+  }
+
+  .doc-status .doc-label {
+    display: none;
+  }
+}

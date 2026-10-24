@@ -5,8 +5,11 @@ import { Icon, type IconName } from '../icons';
 import { api } from '../api/http';
 import { join } from '../format';
 import { ja } from '../i18n/ja';
+import { useCompact } from '../useCompact';
 
 const ROW_HEIGHT = 36;
+/** 幅の狭い画面では指で押せる高さにする(18.2) */
+const ROW_HEIGHT_TOUCH = 48;
 const TILE = { width: 168, height: 148 };
 const OVERSCAN = 4;
 
@@ -59,9 +62,10 @@ export function EntryList(p: Props) {
     return () => ro.disconnect();
   }, []);
 
+  const compact = useCompact();
   const grid = p.view === 'grid';
   const cols = grid ? Math.max(1, Math.floor(size.width / TILE.width)) : 1;
-  const rowH = grid ? TILE.height : ROW_HEIGHT;
+  const rowH = grid ? TILE.height : compact ? ROW_HEIGHT_TOUCH : ROW_HEIGHT;
   const rows = Math.ceil(p.entries.length / cols);
   const first = Math.max(0, Math.floor(scroll / rowH) - OVERSCAN);
   const last = Math.min(rows, Math.ceil((scroll + size.height) / rowH) + OVERSCAN);

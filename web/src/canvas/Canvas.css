@@ -815,3 +815,22 @@
   color: var(--md-sys-color-on-error-container);
 }
 
+
+/* 幅の狭い画面(18.2): タブとタイトルバーのボタンを指で押せる大きさに */
+.canvas.compact .canvas-bar {
+  gap: 4px;
+  padding: 0 4px;
+}
+
+.canvas.compact .chip.assist {
+  height: 48px;
+}
+
+.canvas.compact .window-title {
+  height: 48px;
+}
+
+.canvas.compact .global-mute {
+  height: 48px;
+  min-width: 48px;
+}

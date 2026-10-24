@@ -13,6 +13,7 @@ import type { DownloadItem } from '../download';
 import { ja } from '../i18n/ja';
 import { Icon } from '../icons';
 import { KeySequence, leavesInput } from '../keys';
+import { useCompact } from '../useCompact';
 import { urlOf } from '../nav';
 import { useKeys } from '../useKeys';
 import { EntryList, type View } from './EntryList';
@@ -108,6 +109,7 @@ export function Home(p: Props) {
 
   /** Space・Ctrl+クリックなどで選んだファイル(フルパス → 項目)。別のディレクトリへ移っても残す */
   const [marked, setMarked] = useState<Map<string, Entry>>(new Map());
+  const compact = useCompact();
   const [changed, setChanged] = useState<Set<string>>(new Set());
   /** ディレクトリごとに最後に選んでいた名前(戻ったとき・ブラウザの履歴で戻ったときに同じ位置にする) */
   const [remembered] = useState(() => new Map<string, string>());
@@ -239,6 +241,11 @@ export function Home(p: Props) {
 
   /** クリック: Shift で今の位置からの範囲を、Ctrl で1つずつ複数選択に加える */
   const clickEntry = (i: number, e: React.MouseEvent) => {
+    // 幅の狭い画面: タップでディレクトリの中へ、ファイルは開く(18.2)
+    if (compact && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      select(i);
+      return enter(entries[i]);
+    }
     if (e.shiftKey && selected >= 0) {
       const [a, b] = selected < i ? [selected, i] : [i, selected];
       setMarked((m) => {
@@ -346,6 +353,13 @@ export function Home(p: Props) {
     if (a !== 'pending') run(a);
   }, p.active && !filtering);
 
+  // 幅の狭い画面では、パンくずの末尾(今のディレクトリ)が見えるように右端まで送る
+  const crumbsRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = crumbsRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [cwd, compact]);
+
   const crumbs = useMemo(() => {
     if (!cwd) return [];
     const parts = cwd.split('/').filter(Boolean);
@@ -353,13 +367,20 @@ export function Home(p: Props) {
   }, [cwd]);
 
   return (
-    <div className="home">
+    <div className={`home${compact ? ' compact' : ''}`}>
       <header className="home-bar">
-        {/* キャンバスの Home ボタンと同じ位置に置く */}
-        <button type="button" className="icon-button" title={ja.toCanvas} aria-label={ja.canvasButton} onClick={p.onCanvas}>
-          <Icon name="canvas" />
-        </button>
-        <nav className="crumbs" aria-label="path">
+        {compact ? (
+          // 幅の狭い画面: 親へ戻るボタン(キャンバスへは右下のボタン)
+          <button type="button" className="icon-button" title={ja.toParent} aria-label={ja.toParent} disabled={!parentPath} onClick={() => run('parent')}>
+            <Icon name="arrowBack" />
+          </button>
+        ) : (
+          // キャンバスの Home ボタンと同じ位置に置く
+          <button type="button" className="icon-button" title={ja.toCanvas} aria-label={ja.canvasButton} onClick={p.onCanvas}>
+            <Icon name="canvas" />
+          </button>
+        )}
+        <nav className="crumbs" aria-label="path" ref={crumbsRef}>
           {crumbs.map((c, i) => {
             const initial = c.path === p.initialDir;
             return (
@@ -391,13 +412,13 @@ export function Home(p: Props) {
         </nav>
         <div className="home-status">
           {marked.size > 0 && <span className="chip">{ja.selectedCount(marked.size)}</span>}
-          {marked.size > 0 && (
+          {marked.size > 0 && !compact && (
             <button type="button" className="text-button with-icon" onClick={() => run('download')}>
               <Icon name="download" size={18} />
               {ja.download}
             </button>
           )}
-          {marked.size > 1 && (
+          {marked.size > 1 && !compact && (
             <button type="button" className="text-button with-icon" title={ja.compareKey} onClick={() => run('compare')}>
               <Icon name="compare" size={18} />
               {ja.compare}
@@ -413,9 +434,11 @@ export function Home(p: Props) {
               </button>
             }
             middle={
-              <button type="button" className="icon-button" title={view === 'list' ? ja.viewGrid : ja.viewList} aria-label={view === 'list' ? ja.viewGrid : ja.viewList} onClick={() => run('view')}>
-                <Icon name={view === 'list' ? 'grid' : 'list'} />
-              </button>
+              !compact && (
+                <button type="button" className="icon-button" title={view === 'list' ? ja.viewGrid : ja.viewList} aria-label={view === 'list' ? ja.viewGrid : ja.viewList} onClick={() => run('view')}>
+                  <Icon name={view === 'list' ? 'grid' : 'list'} />
+                </button>
+              )
             }
           />
         </div>
@@ -443,22 +466,24 @@ export function Home(p: Props) {
         />
       )}
       <div className="columns">
-        <EntryList
-          testId="col-parent"
-          label="parent"
-          dir={parentPath ?? ''}
-          entries={parentEntries}
-          selected={cwd ? parentEntries.findIndex((e) => e.name === basename(cwd)) : -1}
-          view="list"
-          onClick={(i) => parentPath && go(join(parentPath, parentEntries[i]!.name))}
-        />
+        {!compact && (
+          <EntryList
+            testId="col-parent"
+            label="parent"
+            dir={parentPath ?? ''}
+            entries={parentEntries}
+            selected={cwd ? parentEntries.findIndex((e) => e.name === basename(cwd)) : -1}
+            view="list"
+            onClick={(i) => parentPath && go(join(parentPath, parentEntries[i]!.name))}
+          />
+        )}
         <EntryList
           testId="col-current"
           label="current"
           dir={cwd ?? ''}
           entries={entries}
           selected={selected}
-          view={view}
+          view={compact ? 'list' : view}
           changed={changed}
           marked={markedHere}
           thumbs
@@ -466,9 +491,9 @@ export function Home(p: Props) {
           onDoubleClick={(i) => enter(entries[i])}
           empty={tree ? ja.emptyDir : ja.loading}
         />
-        <Preview dir={cwd ?? ''} root={p.root} entry={current} showHidden={showHidden} reload={previewReload} onPick={pick} />
+        {!compact && <Preview dir={cwd ?? ''} root={p.root} entry={current} showHidden={showHidden} reload={previewReload} onPick={pick} />}
       </div>
-      {p.hints && <HintBar items={ja.homeHints} onHide={p.onHideHints} />}
+      {p.hints && !compact && <HintBar items={ja.homeHints} onHide={p.onHideHints} />}
       <button type="button" className="fab" title={ja.toCanvas} onClick={p.onCanvas}>
         <Icon name="canvas" size={24} />
         {p.liveCount > 0 && (
