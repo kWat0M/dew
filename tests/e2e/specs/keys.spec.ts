@@ -1,7 +1,9 @@
 // キー操作の見直し(2026-10-24、ADR 0030)の受け入れ基準: 抜けるキー(Esc・Ctrl+[・q)、CSV の小さな画面のキー操作、
 // Home のプレビューのクリック、キャンバスのノーマルモード / 操作モード / 入力モード、マウスでの操作モード
 import { csvWindow, goCol, openCsv, status } from '../lib/csv';
-import { copyCsv, current, expect, start, test } from '../lib/dew';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { copyCsv, current, expect, selected, start, test } from '../lib/dew';
 
 test.describe.configure({ timeout: 60_000 });
 
@@ -115,4 +117,28 @@ test('強調の画面を矢印と Enter だけで操作し、Esc で1段ずつ�
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
   await expect(csvWindow(page, 'rows10k.csv')).toHaveAttribute('data-input', 'true');
+});
+
+// Home の右カラム(ディレクトリの中身)は押して開ける: ディレクトリはその中へ、ファイルはキャンバスで
+test('Home の右カラムのディレクトリとファイルを押して開く', async ({ page, dew }) => {
+  mkdirSync(join(dew.root, 'sub/inner'));
+  writeFileSync(join(dew.root, 'sub/inner/note.md'), '# note\n');
+  await start(page, dew);
+  await current(page).getByRole('option', { name: 'sub' }).click();
+  const preview = page.getByTestId('col-preview');
+  // ディレクトリ: 2階層下がり、押したディレクトリが左のカラムで選ばれる
+  await preview.locator('li[data-name="inner"]').click();
+  await expect(page.getByTestId('col-parent').getByRole('option', { selected: true })).toHaveText('inner');
+  await expect(current(page).getByRole('option', { name: 'note.md' })).toBeVisible();
+  await expect(page).toHaveURL(/\/home\/.*\/sub\/inner$/);
+  // ブラウザの戻るで元の場所へ
+  await page.goBack();
+  await expect.poll(() => selected(page)).toBe('sub');
+  // ファイル: 選んでいたディレクトリへ移り、そのファイルを選んでキャンバスで開く
+  await preview.locator('li[data-name="nested.webp"]').click();
+  await expect(page.getByTestId('player-window').filter({ hasText: 'nested.webp' })).toBeVisible();
+  await expect(page).toHaveURL(/\/canvas$/);
+  await page.goBack();
+  await expect(page.getByTestId('col-parent').getByRole('option', { selected: true })).toHaveText('sub');
+  await expect.poll(() => selected(page)).toBe('nested.webp');
 });

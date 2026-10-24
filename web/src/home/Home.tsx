@@ -124,7 +124,7 @@ export function Home(p: Props) {
 
   // 先に一覧を読めるか確かめ、読めたときだけ移る(閲覧範囲の外などは、メッセージだけ出して今の場所に留まる)
   const go = useCallback(
-    (dir: string, select?: string) => {
+    (dir: string, select?: string, then?: () => void) => {
       api.tree(dir).then(
         () => {
           if (select !== undefined) remembered.set(dir, select);
@@ -133,6 +133,7 @@ export function Home(p: Props) {
           setFilter('');
           setChanged(new Set());
           if (dir !== cwd) onNavigate(dir);
+          then?.();
         },
         (err: unknown) => onError(err instanceof ApiError ? err.message : String(err)),
       );
@@ -267,6 +268,20 @@ export function Home(p: Props) {
     } else {
       openEntries([[pathOf(e), e]]);
     }
+  };
+
+  /**
+   * 右カラムのディレクトリの中身を押した: ディレクトリならその中へ(押したものが左のカラムで選ばれる)、
+   * ファイルなら選んでいたディレクトリへ移り、そのファイルを選んでキャンバスで開く
+   */
+  const pick = (child: Entry) => {
+    if (!previewDir || !cwd || !current) return;
+    remembered.set(cwd, current.name);
+    if (child.kind === 'dir') {
+      remembered.set(previewDir, child.name);
+      return go(join(previewDir, child.name));
+    }
+    go(previewDir, child.name, () => openEntries([[join(previewDir, child.name), child]]));
   };
 
   const run = (a: Action) => {
@@ -436,7 +451,7 @@ export function Home(p: Props) {
           onDoubleClick={(i) => enter(entries[i])}
           empty={tree ? ja.emptyDir : ja.loading}
         />
-        <Preview dir={cwd ?? ''} root={p.root} entry={current} showHidden={showHidden} reload={previewReload} />
+        <Preview dir={cwd ?? ''} root={p.root} entry={current} showHidden={showHidden} reload={previewReload} onPick={pick} />
       </div>
       {p.hints && <HintBar items={ja.homeHints} onHide={p.onHideHints} />}
       <button type="button" className="fab" title={ja.toCanvas} onClick={p.onCanvas}>

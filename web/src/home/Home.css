@@ -223,8 +223,18 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 0;
+  padding: 4px 8px;
+  border-radius: var(--md-sys-shape-corner-small);
   color: var(--md-sys-color-on-surface);
+}
+
+/* Home では押して開ける(ディレクトリはその中へ、ファイルはキャンバスで) */
+.preview-children li.pickable {
+  cursor: pointer;
+}
+
+.preview-children li.pickable:hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) var(--md-sys-state-hover-opacity), transparent);
 }
 
 .preview-meta {
