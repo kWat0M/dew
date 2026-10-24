@@ -33,7 +33,7 @@ type Props = {
 export function iconFor(e: Entry): IconName {
   if (!e.readable) return 'lock';
   if (e.kind === 'dir') return 'folder';
-  return ({ image: 'image', video: 'movie', audio: 'audio', markdown: 'article', other: 'file' } as const)[e.media];
+  return ({ image: 'image', video: 'movie', audio: 'audio', markdown: 'article', csv: 'table', other: 'file' } as const)[e.media];
 }
 
 /** サムネイル。作れなかったら(壊れたファイルなど)アイコンを出す */

@@ -28,7 +28,7 @@
 cd ~/projects/DevView
 scripts/gen-fixtures.sh
 pnpm -C web build
-cargo build --release --target x86_64-unknown-linux-musl
+cargo zigbuild --release --target x86_64-unknown-linux-musl
 ```
 
 できるもの:

@@ -294,6 +294,40 @@
   pointer-events: none;
 }
 
+.preview-csv {
+  align-self: stretch;
+  justify-self: stretch;
+  overflow: hidden;
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-body-small);
+}
+
+.preview-csv-meta {
+  padding: 0 4px 4px;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-small);
+}
+
+.preview-csv table {
+  border-collapse: collapse;
+}
+
+.preview-csv th,
+.preview-csv td {
+  max-width: 120px;
+  padding: 2px 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  text-align: left;
+}
+
+.preview-csv th {
+  background: var(--md-sys-color-surface-container-high);
+  font: var(--md-sys-typescale-label-small);
+}
+
 .preview-markdown .md-body {
   padding: 0 8px;
 }

@@ -4,9 +4,9 @@ import { defineConfig } from '@playwright/test';
 // Firefox: Zen など Firefox 系への対応を確かめる(playwright install firefox で入れる)
 // 時間に厳しいテストは、ほかと CPU を取り合うと揺らぐので、ほかがすべて終わってから流す(ADR 0011)
 //   perf: 性能の基準(1080p 60fps)。Chrome で1つだけ
-//   timing-*: 同期再生・巻き戻しの位置。perf の後に Chrome と Firefox で
+//   timing-*: 同期再生・巻き戻しの位置、CSV の大規模モードの応答時間。perf の後に Chrome と Firefox で
 const perf = /phase3-perf\.spec\.ts$/;
-const timing = /timing-perf\.spec\.ts$/;
+const timing = /(timing|csv)-perf\.spec\.ts$/;
 const chrome = { browserName: 'chromium', channel: 'chrome' } as const;
 const firefox = { browserName: 'firefox' } as const;
 export default defineConfig({

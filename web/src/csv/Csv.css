@@ -1,0 +1,320 @@
+/* CSV の表(16.3)。色・角丸・影は MD3 のトークンだけで指定する */
+.csv {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  background: var(--md-sys-color-surface);
+}
+
+.csv-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+  font: var(--md-sys-typescale-body-medium);
+  color: var(--md-sys-color-on-surface);
+}
+
+.csv-inner {
+  position: relative;
+  min-width: 100%;
+}
+
+/* 行: 行番号と固定した列は左に貼り付き、残りの列は見えている分だけ並べる */
+.csv-head,
+.csv-tr {
+  display: flex;
+  height: 28px;
+}
+
+.csv-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: 32px;
+  background: var(--md-sys-color-surface-container-high);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.csv-tr {
+  position: absolute;
+  left: 0;
+  border-bottom: 1px solid var(--md-sys-color-surface-container-high);
+}
+
+.csv-corner,
+.csv-rownum {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  flex: none;
+  box-sizing: border-box;
+  background: var(--md-sys-color-surface-container);
+  border-right: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.csv-corner {
+  z-index: 4;
+  background: var(--md-sys-color-surface-container-high);
+}
+
+.csv-rownum {
+  padding: 0 8px;
+  line-height: 28px;
+  text-align: right;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-medium);
+  line-height: 28px;
+}
+
+.csv-th,
+.csv-td {
+  flex: none;
+  box-sizing: border-box;
+  padding: 0 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border-right: 1px solid var(--md-sys-color-surface-container-high);
+}
+
+.csv-th {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font: var(--md-sys-typescale-title-small);
+  background: var(--md-sys-color-surface-container-high);
+  cursor: pointer;
+}
+
+.csv-th.num {
+  justify-content: flex-end;
+}
+
+.csv-th.current {
+  color: var(--md-sys-color-primary);
+}
+
+.csv-th-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.csv-th-sort {
+  flex: none;
+  color: var(--md-sys-color-primary);
+  font: var(--md-sys-typescale-label-medium);
+}
+
+.csv-td {
+  line-height: 28px;
+  background: inherit;
+}
+
+.csv-td.pinned,
+.csv-th.pinned {
+  z-index: 1;
+  background: var(--md-sys-color-surface-container-low);
+  box-shadow: inset -1px 0 var(--md-sys-color-outline-variant);
+}
+
+.csv-th.pinned {
+  background: var(--md-sys-color-surface-container-highest);
+}
+
+.csv-td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.csv-td.null {
+  color: var(--md-sys-color-outline);
+}
+
+.csv-pad {
+  flex: none;
+}
+
+.csv-tr {
+  background: var(--md-sys-color-surface);
+}
+
+.csv-tr.current {
+  background: var(--md-sys-color-surface-container-low);
+}
+
+.csv-tr.marked {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+.csv-tr.rule-primary { background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); }
+.csv-tr.rule-secondary { background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); }
+.csv-tr.rule-tertiary { background: var(--md-sys-color-tertiary-container); color: var(--md-sys-color-on-tertiary-container); }
+.csv-tr.rule-error { background: var(--md-sys-color-error-container); color: var(--md-sys-color-on-error-container); }
+
+.csv-tr.marked .csv-rownum {
+  background: var(--md-sys-color-secondary);
+  color: var(--md-sys-color-on-secondary);
+}
+
+.csv-td.match {
+  background: var(--md-sys-color-tertiary-container);
+  color: var(--md-sys-color-on-tertiary-container);
+}
+
+.csv-td.current-match {
+  background: var(--md-sys-color-tertiary);
+  color: var(--md-sys-color-on-tertiary);
+}
+
+/* 選択中のセルは primary の枠(16.3) */
+.csv-td.selected {
+  box-shadow: inset 0 0 0 2px var(--md-sys-color-primary);
+}
+
+.csv-progress {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 1;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-medium);
+}
+
+.csv-progress progress {
+  width: min(320px, 80%);
+  accent-color: var(--md-sys-color-primary);
+}
+
+.csv-search {
+  z-index: 5;
+}
+
+/* 重ねて出す小さな画面。操作パネル(右から出る)に隠れないよう、左に出す */
+.csv-panel {
+  position: absolute;
+  top: 40px;
+  left: 72px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(320px, calc(100% - 32px));
+  max-height: calc(100% - 80px);
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 12px 16px 16px;
+  border-radius: var(--md-sys-shape-corner-large);
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+  box-shadow: var(--md-sys-elevation-level3);
+  outline: none;
+}
+
+.csv-panel.wide {
+  width: min(560px, calc(100% - 32px));
+}
+
+.csv-panel-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.csv-panel-title h3 {
+  margin: 0;
+  font: var(--md-sys-typescale-title-small);
+}
+
+.csv-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font: var(--md-sys-typescale-label-medium);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.csv-field input,
+.csv-field select,
+.csv-rule input,
+.csv-rule select {
+  box-sizing: border-box;
+  min-width: 0;
+  height: 36px;
+  padding: 0 8px;
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-extra-small);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-body-medium);
+}
+
+.csv-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: var(--md-sys-typescale-body-medium);
+}
+
+.csv-check input {
+  accent-color: var(--md-sys-color-primary);
+}
+
+.csv-panel-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.csv-rule {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.csv-rule .csv-field {
+  flex-direction: row;
+}
+
+.csv-rule .csv-field span {
+  display: none;
+}
+
+.csv-swatch.rule-primary { background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); }
+.csv-swatch.rule-secondary { background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); }
+.csv-swatch.rule-tertiary { background: var(--md-sys-color-tertiary-container); color: var(--md-sys-color-on-tertiary-container); }
+.csv-swatch.rule-error { background: var(--md-sys-color-error-container); color: var(--md-sys-color-on-error-container); }
+
+.csv-inspector {
+  margin: 0;
+  max-height: 50vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font: var(--md-sys-typescale-body-medium);
+  font-family: var(--md-ref-typeface-mono);
+}
+
+.csv-cell-name {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 列の見出しのメニューのボタン: 選択中の列と、マウスを載せた列だけに出す */
+.csv-th-menu {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin-left: auto;
+  opacity: 0;
+}
+
+.csv-th:hover .csv-th-menu,
+.csv-th.current .csv-th-menu,
+.csv-th-menu[data-state='open'] {
+  opacity: 1;
+}

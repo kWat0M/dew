@@ -24,6 +24,8 @@ pub(crate) struct PathQuery {
 /// API の失敗。本文は利用者に見せる日本語の説明
 #[derive(Debug)]
 pub(crate) enum ApiError {
+    /// 要求の中身が正しくない(CSV のフィルターの値など)
+    BadRequest(String),
     Forbidden(String),
     NotFound(String),
     /// 機能に要るツールがない(何を入れればよいかを伝える)
@@ -34,6 +36,7 @@ pub(crate) enum ApiError {
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, msg) = match self {
+            Self::BadRequest(m) => (StatusCode::BAD_REQUEST, m),
             Self::Forbidden(m) => (StatusCode::FORBIDDEN, m),
             Self::NotFound(m) => (StatusCode::NOT_FOUND, m),
             Self::Unavailable(m) => (StatusCode::SERVICE_UNAVAILABLE, m),
@@ -166,6 +169,7 @@ pub(crate) fn media_kind(name: &str) -> MediaKind {
         | "m2ts" | "3gp" | "ogv" => MediaKind::Video,
         "mp3" | "wav" | "flac" | "aac" | "m4a" | "ogg" | "opus" => MediaKind::Audio,
         "md" | "markdown" => MediaKind::Markdown,
+        "csv" | "tsv" => MediaKind::Csv,
         _ => MediaKind::Other,
     }
 }

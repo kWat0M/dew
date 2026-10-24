@@ -1,6 +1,7 @@
 //! HTTP / WebSocket サーバとファイル API。1ポートに HTTPS で載せる
 
 mod auth;
+mod csv;
 mod events;
 mod files;
 mod history;
@@ -12,6 +13,7 @@ mod text;
 mod tls;
 mod web;
 
+pub use csv::CsvConfig;
 pub use persist::rotate_token;
 
 use std::net::{IpAddr, SocketAddr, TcpListener};
@@ -69,6 +71,8 @@ pub struct Config {
     pub public_port: Option<u16>,
     /// 起動し直しても変えない値(トークンなど)の置き場所(~/.local/share/dew)
     pub state_dir: PathBuf,
+    /// CSV の閾値と DuckDB の資源(config.toml)
+    pub csv: CsvConfig,
 }
 
 /// 待ち受けを始めたときに分かる値
@@ -102,6 +106,8 @@ pub(crate) struct App {
     pub store: persist::Store,
     /// activate 中のシェル
     pub shells: shells::Shells,
+    /// CSV の解析結果と大規模モードのデータベース
+    pub csv: csv::Csv,
 }
 
 impl App {
@@ -142,6 +148,7 @@ pub async fn serve(cfg: Config, on_ready: impl FnOnce(&Ready)) -> anyhow::Result
         shutdown: Notify::new(),
         store,
         shells: shells::Shells::default(),
+        csv: csv::Csv::new(cfg.csv.clone()),
     });
 
     let mut warnings = Vec::new();
@@ -243,6 +250,14 @@ fn router(app: Arc<App>) -> Router {
         .route("/image", get(media::image))
         .route("/pixels", get(media::pixels))
         .route("/text", get(text::text))
+        .route("/csv/schema", get(csv::schema))
+        .route("/csv/rows", get(csv::rows))
+        .route("/csv/view", get(csv::view).put(csv::save_view))
+        .route("/csv/preview", get(csv::preview))
+        .route("/csv/query", post(csv::query))
+        .route("/csv/search", post(csv::search))
+        .route("/csv/locate", post(csv::locate))
+        .route("/csv/cancel", post(csv::cancel))
         .route("/open", post(open))
         .route("/shell", post(shell))
         .route("/shells", get(shells))

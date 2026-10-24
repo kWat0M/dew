@@ -485,6 +485,7 @@ fn foreground(args: &ServeArgs) -> anyhow::Result<()> {
             .map(PathBuf::from)
             .unwrap_or_else(|| state::data_dir().join("tls")),
         state_dir: state::data_dir(),
+        csv: config::load().csv(),
         public_host: std::env::var("DEW_PUBLIC_HOST")
             .ok()
             .filter(|s| !s.is_empty()),

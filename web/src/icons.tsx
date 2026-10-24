@@ -42,6 +42,12 @@ import keyboard from '@material-symbols/svg-400/rounded/keyboard.svg?raw';
 import record from '@material-symbols/svg-400/rounded/radio_button_checked.svg?raw';
 import stopRecord from '@material-symbols/svg-400/rounded/stop_circle-fill.svg?raw';
 import article from '@material-symbols/svg-400/rounded/article-fill.svg?raw';
+import table from '@material-symbols/svg-400/rounded/table-fill.svg?raw';
+import filter from '@material-symbols/svg-400/rounded/filter_alt.svg?raw';
+import filterOff from '@material-symbols/svg-400/rounded/filter_alt_off.svg?raw';
+import visibility from '@material-symbols/svg-400/rounded/visibility.svg?raw';
+import palette from '@material-symbols/svg-400/rounded/palette.svg?raw';
+import tune from '@material-symbols/svg-400/rounded/tune.svg?raw';
 import copy from '@material-symbols/svg-400/rounded/content_copy.svg?raw';
 import arrowBack from '@material-symbols/svg-400/rounded/arrow_back.svg?raw';
 import arrowForward from '@material-symbols/svg-400/rounded/arrow_forward.svg?raw';
@@ -56,8 +62,9 @@ const svgs = {
   folder, image, movie, audio, file, lock, home, canvas,
   play, pause, playCircle, pauseCircle, back5, back30, fwd5, fwd30, frameBack, frameNext,
   close, fullscreen, volume, volumeOff, grid, list, minimize, maximize, restore,
-  history, help, menu, power, tile, free, search, sync, compare, zoomIn, zoomOut, keyboard, record, stopRecord, article, copy,
+  history, help, menu, power, tile, free, search, sync, compare, zoomIn, zoomOut, keyboard, record, stopRecord, article, table, copy,
   arrowBack, arrowForward, toc, textDecrease, textIncrease, arrowUp, arrowDown,
+  filter, filterOff, visibility, palette, tune,
 };
 
 export type IconName = keyof typeof svgs;

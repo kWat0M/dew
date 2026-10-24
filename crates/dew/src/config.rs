@@ -3,11 +3,41 @@
 
 use serde::Deserialize;
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(default)]
 pub struct Config {
     /// タブがないとき、URL を OSC 52 で端末のクリップボードにもコピーする(14.4。既定はオフ)
     pub open_fallback_clipboard: bool,
+    /// CSV: この大きさ(バイト)以上か、この行数以上なら大規模モード(16.1)
+    pub csv_small_max_bytes: u64,
+    pub csv_small_max_rows: u64,
+    /// 大規模モードの DuckDB のスレッド数とメモリの上限(16.5)
+    pub duckdb_threads: u32,
+    pub duckdb_memory: String,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        let csv = dew_server::CsvConfig::default();
+        Config {
+            open_fallback_clipboard: false,
+            csv_small_max_bytes: csv.small_max_bytes,
+            csv_small_max_rows: csv.small_max_rows,
+            duckdb_threads: csv.duckdb_threads,
+            duckdb_memory: csv.duckdb_memory,
+        }
+    }
+}
+
+impl Config {
+    pub fn csv(&self) -> dew_server::CsvConfig {
+        dew_server::CsvConfig {
+            small_max_bytes: self.csv_small_max_bytes,
+            small_max_rows: self.csv_small_max_rows,
+            duckdb_threads: self.duckdb_threads.max(1),
+            duckdb_memory: self.duckdb_memory.clone(),
+        }
+    }
 }
 
 pub fn path() -> std::path::PathBuf {
@@ -42,5 +72,9 @@ mod tests {
         assert!(c.open_fallback_clipboard);
         let c: Config = toml::from_str("").unwrap();
         assert!(!c.open_fallback_clipboard);
+        assert_eq!(c.csv_small_max_rows, 200_000);
+        let c: Config = toml::from_str("csv_small_max_rows = 100\n").unwrap();
+        assert_eq!(c.csv().small_max_rows, 100);
+        assert_eq!(c.csv().small_max_bytes, 20 * 1024 * 1024);
     }
 }

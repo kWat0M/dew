@@ -1,6 +1,7 @@
 // 右カラム: 選択中の項目のプレビューとメタ情報
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { api } from '../api/http';
+import type { CsvPreview as CsvHead } from '../protocol/CsvPreview';
 import type { Entry } from '../protocol/Entry';
 import type { Probe } from '../protocol/Probe';
 import type { Tree } from '../protocol/Tree';
@@ -14,6 +15,50 @@ const MarkdownView = lazy(() => import('../doc/MarkdownView'));
 
 /** Markdown のプレビューに描く行数(15.5) */
 const MARKDOWN_LINES = 200;
+
+/** CSV の先頭20行・最大10列を小さな表で出す。文字コードと区切り文字も出す(15.5) */
+function CsvPreview({ path, mtime }: { path: string; mtime: number }) {
+  const [head, setHead] = useState<{ path: string; head: CsvHead } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    api.csvPreview(path).then(
+      (h) => alive && setHead({ path, head: h }),
+      () => {},
+    );
+    return () => {
+      alive = false;
+    };
+  }, [path, mtime]);
+  if (head?.path !== path) return <span className="muted">{ja.loading}</span>;
+  const h = head.head;
+  return (
+    <div className="preview-csv" data-testid="csv-preview">
+      <div className="preview-csv-meta">
+        {ja.encodings[h.encoding]} · {ja.csv.delimiters[h.delimiter] ?? h.delimiter}
+      </div>
+      <table>
+        <thead>
+          <tr>
+            {h.columns.map((c, i) => (
+              <th key={i} role="columnheader">
+                {c}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {h.rows.map((r, i) => (
+            <tr key={i}>
+              {h.columns.map((_, j) => (
+                <td key={j}>{r[j] ?? ''}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 /** Markdown の先頭を描いて出す。リンクなどの操作はしない */
 function MarkdownPreview({ path, root, mtime }: { path: string; root: string; mtime: number }) {
@@ -83,6 +128,8 @@ export function Preview({ dir, root, entry, showHidden, reload }: { dir: string;
           )
         ) : entry.media === 'markdown' ? (
           <MarkdownPreview path={path} root={root} mtime={entry.mtime} />
+        ) : entry.media === 'csv' ? (
+          <CsvPreview path={path} mtime={entry.mtime} />
         ) : entry.media === 'image' ? (
           // サムネイルを作れない(ffmpeg がない)ときは、元の画像をそのまま出す
           <Thumb src={api.thumbUrl(path, entry.mtime)} fallback={<img src={api.mediaUrl(path)} alt="" />} />

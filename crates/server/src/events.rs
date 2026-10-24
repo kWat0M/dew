@@ -93,6 +93,13 @@ impl Hub {
         tab.tx.send(open_event(path)).is_ok()
     }
 
+    /// すべてのタブに送る(CSV の読み込みの進捗など)
+    pub(crate) fn broadcast(&self, ev: ServerEvent) {
+        for tab in self.inner.lock().unwrap().tabs.values() {
+            let _ = tab.tx.send(ev.clone());
+        }
+    }
+
     /// 次につないだタブで開くよう予約する(前の予約は置き換える)
     pub(crate) fn reserve(&self, path: &Path) {
         self.inner.lock().unwrap().reserved = Some((path.to_owned(), Instant::now()));

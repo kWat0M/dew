@@ -62,11 +62,13 @@ pub enum MediaKind {
     Audio,
     /// Markdown(ドキュメントウィンドウで開く。15.1)
     Markdown,
+    /// CSV / TSV(ドキュメントウィンドウで開く。15.1、16章)
+    Csv,
     Other,
 }
 
 /// 文書の文字コード(15.8)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub enum TextEncoding {
@@ -235,6 +237,16 @@ pub enum ServerEvent {
         kind: EntryKind,
         media: MediaKind,
     },
+    /// CSV を大規模モードのデータベースに読み込んでいる(16.5)。終わったら finished、失敗したら error
+    CsvProgress {
+        path: String,
+        #[ts(type = "number")]
+        done: u64,
+        #[ts(type = "number")]
+        total: u64,
+        finished: bool,
+        error: Option<String>,
+    },
 }
 
 /// ライブ描画のウィンドウ1つ(アプリが仮想ディスプレイに開いたトップレベルのウィンドウ)
@@ -344,6 +356,264 @@ pub enum ClientEvent {
     Watch { dirs: Vec<String> },
     /// ユーザーがこのタブを操作した。表示指示は最後に操作したタブに送る(7.7)
     Active,
+}
+
+// ---- CSV(16章) ----
+
+/// 小規模モード(ブラウザで全件を持つ)と大規模モード(サーバの DuckDB に問い合わせる)。16.1
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum CsvMode {
+    Small,
+    Large,
+}
+
+/// 列の型(16.2)。日付は日付と日時の両方(ISO 8601 の文字列のまま比べる)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum CsvType {
+    Integer,
+    Float,
+    Boolean,
+    Date,
+    String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CsvColumn {
+    pub name: String,
+    pub ty: CsvType,
+    /// 数値の列の、小数の桁数の最大(丸めの「そのまま」の桁数)
+    pub decimals: u8,
+}
+
+/// 文字コード・区切り文字・ヘッダーの手動設定(なければ判定した値を使う。16.2)
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CsvOptions {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub encoding: Option<TextEncoding>,
+    /// 1文字(タブは "\t")
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub delimiter: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub header: Option<bool>,
+}
+
+/// `GET /api/csv/schema?path=&encoding=&delimiter=&header=` の応答
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CsvSchema {
+    pub mode: CsvMode,
+    pub columns: Vec<CsvColumn>,
+    pub encoding: TextEncoding,
+    pub detected: TextEncoding,
+    pub delimiter: String,
+    pub header: bool,
+    /// データの行数
+    #[ts(type = "number")]
+    pub rows: u64,
+    /// 列数が不揃いな行の数
+    #[ts(type = "number")]
+    pub ragged: u64,
+    /// 大規模モードで、データベースへの読み込みが済んでいる(済むまでは CsvProgress を送る)
+    pub ready: bool,
+}
+
+/// `GET /api/csv/rows`: 小規模モードの全行。列ごとの値(空のセルは null)
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CsvRows {
+    pub columns: Vec<Vec<Option<String>>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CsvSort {
+    pub col: u32,
+    pub desc: bool,
+}
+
+/// フィルターの条件(16.4)。文字列: contains〜notEmpty、数値・日付: eq〜between と empty / notEmpty、真偽値: true / false / empty
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum CsvFilterOp {
+    Contains,
+    Equals,
+    StartsWith,
+    Empty,
+    NotEmpty,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    Between,
+    True,
+    False,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CsvFilter {
+    pub col: u32,
+    pub op: CsvFilterOp,
+    #[serde(default)]
+    pub value: String,
+    /// between の上限
+    #[serde(default)]
+    pub value2: String,
+}
+
+/// `POST /api/csv/query`: 大規模モードのページ(16.5)。列は番号で指定する(SQL は受け取らない)
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CsvQuery {
+    pub path: String,
+    #[serde(default)]
+    pub options: CsvOptions,
+    #[serde(default)]
+    pub sort: Vec<CsvSort>,
+    #[serde(default)]
+    pub filters: Vec<CsvFilter>,
+    #[ts(type = "number")]
+    pub offset: u64,
+    pub limit: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CsvPage {
+    /// 行ごとの値
+    pub rows: Vec<Vec<Option<String>>>,
+    /// 元の行番号(1 から)
+    #[ts(type = "number[]")]
+    pub row_numbers: Vec<u64>,
+    /// フィルター後の行数
+    #[ts(type = "number")]
+    pub total: u64,
+}
+
+/// `POST /api/csv/search`: 大規模モードの検索。並べ替え・フィルター後の位置と列(16.4)
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CsvSearch {
+    pub path: String,
+    #[serde(default)]
+    pub options: CsvOptions,
+    #[serde(default)]
+    pub sort: Vec<CsvSort>,
+    #[serde(default)]
+    pub filters: Vec<CsvFilter>,
+    pub query: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CsvMatches {
+    /// [位置, 列] の並び(上から、左から)
+    #[ts(type = "[number, number][]")]
+    pub matches: Vec<(u64, u32)>,
+    /// 多すぎるので途中までにした
+    pub truncated: bool,
+}
+
+/// `GET /api/csv/preview?path=`: Home のプレビュー(先頭20行・最大10列。15.5)。ファイルの先頭だけを読む
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CsvPreview {
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<Option<String>>>,
+    pub encoding: TextEncoding,
+    pub delimiter: String,
+}
+
+/// 条件付き強調の色(MD3 の container 系。16.3)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum CsvColor {
+    Primary,
+    Secondary,
+    Tertiary,
+    Error,
+}
+
+/// 条件付き強調のルール。条件はフィルターと同じ
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CsvRule {
+    pub col: u32,
+    pub op: CsvFilterOp,
+    #[serde(default)]
+    pub value: String,
+    #[serde(default)]
+    pub value2: String,
+    pub color: CsvColor,
+}
+
+/// 列ごとの表示だけの設定(元のデータは変えない。16.3)
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+#[ts(export)]
+pub struct CsvColumnView {
+    pub col: u32,
+    /// 表示名
+    #[ts(optional)]
+    pub label: Option<String>,
+    /// 小数の桁数(なければ「そのまま」)
+    #[ts(optional)]
+    pub decimals: Option<u8>,
+    /// 桁区切り
+    pub grouping: bool,
+    pub hidden: bool,
+    /// 左に固定
+    pub pinned: bool,
+    /// 列幅(px)
+    #[ts(optional)]
+    pub width: Option<f64>,
+}
+
+/// `GET / PUT /api/csv/view?path=`: 表示設定(16.6)。サーバのメモリにファイルごとに置き、dew stop で消える
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+#[ts(export)]
+pub struct CsvView {
+    pub options: CsvOptions,
+    pub sort: Vec<CsvSort>,
+    pub filters: Vec<CsvFilter>,
+    pub search: String,
+    /// 既定から変えた列だけ
+    pub columns: Vec<CsvColumnView>,
+    /// マークした行(元の行番号)
+    #[ts(type = "number[]")]
+    pub marks: Vec<u64>,
+    pub rules: Vec<CsvRule>,
+    /// 選択中のセル(並べ替え・フィルター後の位置と、列番号)
+    #[ts(type = "[number, number]")]
+    pub cell: (u64, u32),
+    /// スクロール位置(上、左)
+    pub scroll: (f64, f64),
 }
 
 #[cfg(test)]
