@@ -27,11 +27,10 @@ type Props = FrameProps & {
   onMessage: (m: string) => void;
   /** 巻き戻しに入った・抜けた(キャンバスがヒントの帯を出し分ける) */
   onRewind: (on: boolean) => void;
-  /** 入力モード(キー・マウスをアプリへ送る。L6、5.5) */
+  /** 入力モード(キー・マウスをアプリへ送る。L6、5.5)。キーはキャンバスが受け取って sendKey で送る */
   inputMode: boolean;
   /** タイトルバーの入力モードのボタン */
   onToggleInput: () => void;
-  onExitInput: () => void;
   api: Ref<PlayerApi | null>;
 };
 
@@ -41,11 +40,17 @@ export type LiveApi = PlayerApi & {
   fitApp?: () => void;
   closeApp?: () => void;
   toggleRecord?: () => void;
-  /** 巻き戻し中なら、巻き戻しを終えてライブに戻る(q) */
+  /** 巻き戻し中なら、巻き戻しを終えてライブに戻る(G) */
   goLive?: () => void;
+  /** 入力モードのキーをアプリへ送る(key は KeyboardEvent.key) */
+  sendKey?: (key: string, down: boolean) => void;
+  /** キーを押して離す(複数のウィンドウへ同じキーを送るとき) */
+  tapKey?: (key: string) => void;
+  /** 押したままのキーを離す(入力モードを抜けるとき) */
+  release?: () => void;
 };
 
-export function LiveWindow({ api: apiRef, live, audioMix, audible, onMessage, onRewind, inputMode, onToggleInput, onExitInput, ...p }: Props) {
+export function LiveWindow({ api: apiRef, live, audioMix, audible, onMessage, onRewind, inputMode, onToggleInput, ...p }: Props) {
   const socket = useRef<WebSocket | null>(null);
   const send = (ev: LiveInput) => {
     if (socket.current?.readyState === WebSocket.OPEN) socket.current.send(JSON.stringify(ev));
@@ -236,32 +241,12 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, onMessage, on
     else if (!live.recording) recHere.current = null;
   }, [live.ended, live.recording]);
 
-  // 入力モード: ページのキー入力をすべて受け取り、アプリへ送る。Ctrl+[ で抜ける(5.5。Esc はアプリへ送る)
+  // 入力モード: キーはキャンバスが受け取って sendKey で送る(複数のウィンドウへ同時に送るため)。マウスはこのウィンドウで送る
   useEffect(() => {
     const el = win.current;
     el?.setAttribute('data-input', String(inputMode));
     el?.classList.toggle('input-mode', inputMode);
-    if (!inputMode) return;
-    const onKey = (e: KeyboardEvent) => {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      if (e.ctrlKey && !e.altKey && !e.metaKey && e.key === '[') return e.type === 'keydown' ? onExitInput() : undefined;
-      // 変換中の文字は送らない(日本語は I の送信用の入力欄から)
-      if (e.isComposing || e.key === 'Process') return;
-      send({ type: 'key', key: e.key, down: e.type === 'keydown' });
-    };
-    window.addEventListener('keydown', onKey, { capture: true });
-    window.addEventListener('keyup', onKey, { capture: true });
-    // 全画面なら Keyboard Lock でブラウザ予約キーも送れる(Chrome / Edge のみ)
-    const kb = (navigator as Navigator & { keyboard?: { lock?: () => Promise<void>; unlock?: () => void } }).keyboard;
-    if (document.fullscreenElement) void kb?.lock?.().catch(() => {});
-    return () => {
-      window.removeEventListener('keydown', onKey, { capture: true });
-      window.removeEventListener('keyup', onKey, { capture: true });
-      kb?.unlock?.();
-      send({ type: 'release' });
-    };
-  }, [inputMode, onExitInput]);
+  }, [inputMode]);
 
   /** canvas 上の位置を、アプリのウィンドウの中の画素にする(object-fit: contain の余白を除く) */
   const toApp = (e: React.PointerEvent | React.WheelEvent) => {
@@ -322,6 +307,9 @@ export function LiveWindow({ api: apiRef, live, audioMix, audible, onMessage, on
     toggleMute: () => setMuted((m) => !m),
     toggleZoom: () => setFit((f) => !f),
     goLive: () => rewind.goLive(),
+    sendKey: (key, down) => send({ type: 'key', key, down }),
+    tapKey: (key) => send({ type: 'tap', key }),
+    release: () => send({ type: 'release' }),
     fullscreen: () => {
       if (document.fullscreenElement) void document.exitFullscreen();
       else void win.current?.requestFullscreen();

@@ -1,0 +1,19 @@
+/*
+ * dew 独自の色のトークン: キャンバスのウィンドウの枠(フォーカス・操作モード・入力モード)。
+ * MD3 の色(colors.css)では見分けにくいので、明るい tokyonight の色を使う(ライトは tokyonight day)。ADR 0030
+ */
+:root {
+  --dew-frame-focus: #2e7de9;
+  --dew-frame-op: #587539;
+  --dew-frame-input: #9854f1;
+  --dew-on-frame: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --dew-frame-focus: #7aa2f7;
+    --dew-frame-op: #9ece6a;
+    --dew-frame-input: #bb9af7;
+    --dew-on-frame: #1a1b26;
+  }
+}

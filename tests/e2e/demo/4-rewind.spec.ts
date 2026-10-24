@@ -34,12 +34,12 @@ test('4-rewind', async ({ page, demo }) => {
   await keys(page, ['.', '.', '.', ','], 600);
   await caption(page, 'k で、巻き戻した位置から再生');
   await keys(page, ['k'], 3000);
-  await caption(page, 'q でライブに戻る');
-  await keys(page, ['q'], 2000);
+  await caption(page, 'G でライブに戻る');
+  await keys(page, ['G'], 2000);
   await expect(win).toHaveAttribute('data-rewind', 'live');
 
   await caption(page, '録画したファイルは、Home からそのまま開ける');
-  await keys(page, ['h'], 1000);
+  await keys(page, ['Tab'], 1000);
   await clickOn(page, page.getByRole('option', { name: /^dew-recordings/ }));
   await keys(page, ['l'], 800);
   await keys(page, ['Enter'], 4000);

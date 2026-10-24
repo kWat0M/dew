@@ -6,6 +6,8 @@
 import type { CsvFilter } from '../protocol/CsvFilter';
 import type { CsvFilterOp } from '../protocol/CsvFilterOp';
 import type { CsvType } from '../protocol/CsvType';
+import type { CsvColumn } from '../protocol/CsvColumn';
+import type { CsvView } from '../protocol/CsvView';
 
 /** 並べ替えに使う値。null は undefined(TanStack Table の sortUndefined: 'last' で末尾に置く) */
 export type SortKey = number | string | undefined;
@@ -115,4 +117,20 @@ export function matches(ty: CsvType, raw: string | null, f: CsvFilter): boolean 
 /** 検索に一致するセルか(大文字小文字を区別しない部分一致) */
 export function searchHit(raw: string | null, query: string): boolean {
   return raw !== null && query !== '' && raw.toLowerCase().includes(query.toLowerCase());
+}
+
+/**
+ * 表示設定のうち、この表にない列や、その列の型で使えない条件を指すものを除く。保存した設定や、
+ * 列の少ない(型の違う)別のファイルから渡された設定で、ない列を読みに行かないように(ADR 0030)
+ */
+export function cleanView(v: CsvView, cols: CsvColumn[]): CsvView {
+  if (cols.length === 0) return v;
+  const has = (c: number) => Number.isInteger(c) && c >= 0 && c < cols.length;
+  const usable = (c: number, op: CsvFilterOp) => has(c) && opsFor(cols[c]!.ty).includes(op);
+  const sort = v.sort.filter((s) => has(s.col));
+  const filters = v.filters.filter((f) => usable(f.col, f.op));
+  const rules = v.rules.filter((r) => usable(r.col, r.op));
+  const columns = v.columns.filter((c) => has(c.col));
+  if (sort.length === v.sort.length && filters.length === v.filters.length && rules.length === v.rules.length && columns.length === v.columns.length) return v;
+  return { ...v, sort, filters, rules, columns };
 }

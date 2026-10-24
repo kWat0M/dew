@@ -10,13 +10,13 @@ export type Settings = {
   syncAudio: boolean;
   /** 裏にあるタブに表示指示が届いたら、ブラウザの通知を出す(14.2) */
   notify: boolean;
-  /** ドキュメントを開いた直後は入力モードで始める(15.3 の document_auto_input) */
-  documentAutoInput: boolean;
+  /** ファイルを開いた直後は操作モードで始める(15.3 の document_auto_input をすべてのファイルに広げた。ADR 0030) */
+  openInOpMode: boolean;
   /** Markdown の外部の画像を、クリックを待たずに読み込む(17.2) */
   externalImages: boolean;
 };
 
-const DEFAULTS: Settings = { hints: true, tabbar: 'top', syncAudio: false, notify: false, documentAutoInput: true, externalImages: false };
+const DEFAULTS: Settings = { hints: true, tabbar: 'top', syncAudio: false, notify: false, openInOpMode: true, externalImages: false };
 const KEY = 'dew.settings';
 
 function load(): Settings {

@@ -10,6 +10,8 @@ export type FrameProps = {
   number: number;
   rect: Rect;
   focused: boolean;
+  /** 操作モード(ウィンドウの中をキーで操作する。5.1)。枠の色を変える */
+  opMode: boolean;
   /** 複数選択に入っているか */
   selected: boolean;
   maximized: boolean;
@@ -19,7 +21,10 @@ export type FrameProps = {
   dropTarget: boolean;
   /** 自由配置(タイトルバーで移動、右下の角で大きさを変える) */
   free: boolean;
+  /** タイトルバーを押した: フォーカスだけ移す */
   onFocus: () => void;
+  /** 本体を押した: フォーカスして操作モードに入る */
+  onActivate: () => void;
   onClose: () => void;
   onToggleSelect: () => void;
   onMinimize: () => void;
@@ -68,14 +73,16 @@ export function WindowFrame({ sectionRef, ...p }: Props) {
   return (
     <section
       ref={sectionRef}
-      className={`window${p.focused ? ' focused' : ''}${p.selected ? ' selected' : ''}${p.maximized ? ' maximized' : ''}${p.dropTarget ? ' drop-target' : ''}`}
+      className={`window${p.focused ? ' focused' : ''}${p.opMode ? ' op-mode' : ''}${p.selected ? ' selected' : ''}${p.maximized ? ' maximized' : ''}${p.dropTarget ? ' drop-target' : ''}`}
       style={{ left: p.rect.x, top: p.rect.y, width: p.rect.w, height: p.rect.h }}
       hidden={p.minimized}
       data-testid={p.testId}
       data-focused={p.focused}
+      data-op={p.opMode}
       data-selected={p.selected}
       aria-label={p.name}
-      onPointerDown={p.onFocus}
+      // タイトルバーを押したらフォーカスだけ、本体を押したら操作モードに入る(5.1)
+      onPointerDown={(e) => ((e.target as HTMLElement).closest('.window-title') ? p.onFocus() : p.onActivate())}
     >
       <header className="window-title" data-testid="window-title" onPointerDown={drag('move')} onDoubleClick={p.onToggleMaximize}>
         {/* ボタンを押したときはドラッグを始めない */}

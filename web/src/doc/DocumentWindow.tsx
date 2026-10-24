@@ -1,6 +1,6 @@
 // ドキュメントウィンドウ(15章): Markdown を読み取り専用で表示する。描画は別のチャンク(MarkdownView)で、
 // このファイルはキー操作(17.4)・ファイルの更新(15.4)・文字コード(15.8)を受け持つ
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type Ref } from 'react';
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type Ref } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Popover from '@radix-ui/react-popover';
 import { api, ApiError } from '../api/http';
@@ -10,13 +10,13 @@ import type { CommandDef } from '../commands';
 import { basename } from '../format';
 import { ja } from '../i18n/ja';
 import { Icon, type IconName } from '../icons';
-import { isLeaveKey, KeySequence, leavesInput } from '../keys';
+import { isLeaveKey, KeySequence, leavesInput, type KeyInfo } from '../keys';
 import { nav, useNavState } from '../nav';
 import type { MediaKind } from '../protocol/MediaKind';
 import type { TextDoc } from '../protocol/TextDoc';
 import type { TextEncoding } from '../protocol/TextEncoding';
-import { useKeys } from '../useKeys';
 import { useStable } from '../useStable';
+import type { HintMode, OpContext, OpWindow } from '../canvas/op';
 import { classifyLink, dirname, type Link } from './links';
 import './DocumentWindow.css';
 
@@ -29,7 +29,7 @@ const LINE = 60;
 /** h / l で動かす量 */
 const COLUMN = 80;
 /** リンクヒントに使う文字(ホームポジション。17.4) */
-const HINT_CHARS = 'asdfghjkl';
+export const HINT_CHARS = 'asdfghjkl';
 /** 手で選べる文字コード(15.8) */
 const CHOICES: TextEncoding[] = ['utf8', 'shiftJis', 'eucJp'];
 
@@ -49,10 +49,9 @@ export type DocAction =
   | { do: 'up' }
   | { do: 'copyPath' }
   | { do: 'scale'; dir: 1 | -1 | 0 }
-  | { do: 'encoding' }
-  | { do: 'exit' };
+  | { do: 'encoding' };
 
-/** 入力モードのキー(17.4) */
+/** 操作モードのキー(17.4)。抜けるキー(Esc・Ctrl+[・q)はキャンバスが受け持つ */
 export const docKeys: Record<string, DocAction> = {
   j: { do: 'scroll', lines: 1 },
   k: { do: 'scroll', lines: -1 },
@@ -83,12 +82,12 @@ export const docKeys: Record<string, DocAction> = {
   '-': { do: 'scale', dir: -1 },
   '=': { do: 'scale', dir: 0 },
   e: { do: 'encoding' },
-  q: { do: 'exit' },
-  'C-[': { do: 'exit' },
 };
+/** 複数のウィンドウで操作モードのとき、フォーカス中のウィンドウだけで行う操作(ブラウザの履歴・検索欄・目次・コピーなど) */
+const LEAD_ONLY = new Set<DocAction['do']>(['back', 'forward', 'search', 'toc', 'up', 'copyPath', 'encoding']);
 const docMap = new KeySequence(docKeys);
 
-/** 操作パネルの Markdown の節(4.4)。続けてキーで選ぶもの(f / F / yf、目次)は、押すと入力モードに入る */
+/** 操作パネルの Markdown の節(4.4)。続けてキーで選ぶもの(f / F / yf、目次)は、押すと操作モードに入る */
 const O = ja.docOps;
 export const docCommands: CommandDef<DocAction>[] = [
   { id: docKeys.H!, key: 'H', label: O.back }, { id: docKeys.L!, key: 'L', label: O.forward },
@@ -101,8 +100,6 @@ export const docCommands: CommandDef<DocAction>[] = [
   { id: docKeys['g u']!, key: 'gu', label: O.up }, { id: docKeys['y y']!, key: 'yy', label: O.copyPath },
 ];
 
-/** ヒントで選んだリンクをどうするか: 開く / dew の新しいウィンドウで開く / URL をコピー */
-type HintMode = 'open' | 'window' | 'copy';
 /** ヒントの対象: リンク(href あり)か、コードブロックのコピーボタン */
 type Hint = {
   label: string;
@@ -163,17 +160,20 @@ type Props = FrameProps & {
   /** 閲覧範囲の起点 */
   root: string;
   events: Events;
-  inputMode: boolean;
   externalImages: boolean;
-  onToggleInput: () => void;
-  onExitInput: () => void;
   onNavigate: (path: string) => void;
   /** リンクから別の文書へ移った(index 番目の文書として履歴に積んでもらう) */
   onVisit: (index: number) => void;
-  /** リンクヒントを出しているか(画面下のヒントの帯を切り替える) */
-  onHintsChange: (on: boolean) => void;
   /** 操作パネルから操作を実行する入口を渡す(閉じるときは null) */
   onRegister: (run: ((a: DocAction) => void) | null) => void;
+  /** 操作モードのキーなどを受け取る入口を渡す(閉じるときは null) */
+  onOp: (w: OpWindow | null) => void;
+  /** 操作モードに入る(操作パネルから、続けてキーで選ぶものを押したとき) */
+  onEnterOp: () => void;
+  /** リンクヒントを出す(キャンバスが、操作モードの全ウィンドウのリンクにまとめて文字を割り当てる) */
+  onStartHints: (mode: HintMode) => void;
+  /** 検索の語を、一緒に操作モードに入っているほかのウィンドウにも渡す */
+  onShare: (m: unknown) => void;
   onOpenFiles: (files: { path: string; media: MediaKind }[]) => void;
   onOpenDir: (dir: string) => void;
   onMessage: (m: string) => void;
@@ -185,20 +185,20 @@ export function DocumentWindow({
   index: wanted,
   root,
   events,
-  inputMode,
   externalImages,
-  onToggleInput,
-  onExitInput,
   onNavigate,
   onVisit,
-  onHintsChange,
   onRegister,
+  onOp,
+  onEnterOp,
+  onStartHints,
+  onShare,
   onOpenFiles,
   onOpenDir,
   onMessage,
   ...frame
 }: Props) {
-  const section = useRef<HTMLElement>(null);
+  const opMode = frame.opMode;
   const scroller = useRef<HTMLDivElement>(null);
   const [visits, setVisits] = useState<Visit[]>([{ path: initial }]);
   const index = Math.min(wanted, visits.length - 1);
@@ -239,14 +239,10 @@ export function DocumentWindow({
 
   // 移動したら、キャンバスにも今の文書を知らせる(タブの名前と、同じ文書を開いたときの判定に使う)
   const onNavigateRef = useRef(onNavigate);
-  const onHintsChangeRef = useRef(onHintsChange);
   useLayoutEffect(() => {
     onNavigateRef.current = onNavigate;
-    onHintsChangeRef.current = onHintsChange;
   });
   useEffect(() => onNavigateRef.current(path), [path]);
-  const hinting = hints !== null;
-  useEffect(() => onHintsChangeRef.current(hinting), [hinting]);
 
   const encoding = encodings[path];
   useEffect(() => {
@@ -326,17 +322,11 @@ export function DocumentWindow({
     if (p.hash) scrollToId(p.hash);
   });
 
-  useEffect(() => {
-    const el = section.current;
-    el?.setAttribute('data-input', String(inputMode));
-    el?.classList.toggle('input-mode', inputMode);
-  }, [inputMode]);
-
-  // 入力モードを抜けたら、開いているもの(ヒント・目次・検索欄)を閉じる
-  const [wasInput, setWasInput] = useState(inputMode);
-  if (wasInput !== inputMode) {
-    setWasInput(inputMode);
-    if (!inputMode) {
+  // 操作モードを抜けたら、開いているもの(ヒント・目次・検索欄)を閉じる
+  const [wasOp, setWasOp] = useState(opMode);
+  if (wasOp !== opMode) {
+    setWasOp(opMode);
+    if (!opMode) {
       setHints(null);
       setToc(null);
       if (search?.editing) setSearch(null);
@@ -397,22 +387,27 @@ export function DocumentWindow({
     }
   });
 
-  /** 画面に見えているリンクにヒントを付ける */
-  const showHints = (mode: HintMode) => {
+  /** 画面に見えているリンク(ヒントを付ける対象) */
+  const hintTargets = useRef<HTMLElement[]>([]);
+  const visibleLinks = () => {
     const s = scroller.current;
     const b = body();
-    if (!s || !b) return;
+    if (!s || !b) return [];
     const box = s.getBoundingClientRect();
-    const links = [...b.querySelectorAll<HTMLElement>('a[data-href], [data-hint="copy"]')].filter((a) => {
+    return [...b.querySelectorAll<HTMLElement>('a[data-href], [data-hint="copy"]')].filter((a) => {
       const r = a.getBoundingClientRect();
       return r.width > 0 && r.bottom > box.top && r.top < box.bottom && r.right > box.left && r.left < box.right;
     });
-    if (!links.length) return;
-    const labels = hintLabels(links.length);
+  };
+  /** 数えておいたリンクに、キャンバスが割り当てた文字のヒントを付ける */
+  const showHints = (mode: HintMode, labels: string[]) => {
+    const s = scroller.current;
+    if (!s) return;
+    const box = s.getBoundingClientRect();
     setHints({
       mode,
       typed: '',
-      items: links.map((el, i) => {
+      items: hintTargets.current.slice(0, labels.length).map((el, i) => {
         const r = el.getBoundingClientRect();
         return {
           label: labels[i]!,
@@ -477,6 +472,7 @@ export function DocumentWindow({
   const run = (a: DocAction) => {
     const s = scroller.current;
     if (!s) return;
+    if (a.do === 'hints') return onStartHints(a.mode);
     switch (a.do) {
       case 'scroll':
         return void (s.scrollTop += a.lines * LINE);
@@ -494,8 +490,6 @@ export function DocumentWindow({
           if (r.bottom > box.top && r.top < box.bottom) el.scrollLeft += a.dir * COLUMN;
         }
         return void (s.scrollLeft += a.dir * COLUMN);
-      case 'hints':
-        return showHints(a.mode);
       case 'back':
         return nav.back();
       case 'forward':
@@ -540,17 +534,12 @@ export function DocumentWindow({
         setEncodings((m) => ({ ...m, [path]: next }));
         return onMessage(ja.encodingChanged(ja.encodings[next]));
       }
-      case 'exit':
-        setHints(null);
-        setToc(null);
-        setSearch(null);
-        return onExitInput();
     }
   };
 
-  // 操作パネルから。続けてキーで選ぶものは入力モードに入る
+  // 操作パネルから。続けてキーで選ぶものは操作モードに入る
   const runFromPanel = useStable((a: DocAction) => {
-    if ((a.do === 'hints' || a.do === 'toc') && !inputMode) onToggleInput();
+    if ((a.do === 'hints' || a.do === 'toc') && !opMode) onEnterOp();
     run(a);
   });
   const onRegisterRef = useRef(onRegister);
@@ -562,45 +551,76 @@ export function DocumentWindow({
     return () => onRegisterRef.current(null);
   }, [runFromPanel]);
 
-  useKeys((k, e) => {
-    if (hints) {
-      // ヒントを出している間は、ほかのキーを受け付けない(17.4)。抜けるキーと Backspace で閉じる
-      e.preventDefault();
-      if (k.key === 'Backspace' || isLeaveKey(k.key)) return setHints(null);
-      if (!HINT_CHARS.includes(k.key)) return;
-      const typed = hints.typed + k.key;
-      const left = hints.items.filter((h) => h.label.startsWith(typed));
-      if (left.length === 1 && left[0]!.label === typed) return pickHint(left[0]!, hints.mode);
-      if (left.length === 0) return;
-      return setHints({ ...hints, typed });
-    }
+  /** 操作モードのキー(キャンバスから受け取る)。使ったら true */
+  const onKey = useStable((k: KeyInfo, ctx: OpContext): boolean => {
     if (toc) {
-      e.preventDefault();
-      if (k.key === 'o' || k.key === 'Backspace' || isLeaveKey(k.key)) return setToc(null);
-      if (k.key === 'j' || k.key === 'ArrowDown')
-        return setToc({
-          ...toc,
-          index: Math.min(toc.items.length - 1, toc.index + 1),
-        });
-      if (k.key === 'k' || k.key === 'ArrowUp') return setToc({ ...toc, index: Math.max(0, toc.index - 1) });
-      if (k.key === 'Enter') {
+      if (k.key === 'o' || k.key === 'Backspace' || isLeaveKey(k.key)) setToc(null);
+      else if (k.key === 'j' || k.key === 'ArrowDown') setToc({ ...toc, index: Math.min(toc.items.length - 1, toc.index + 1) });
+      else if (k.key === 'k' || k.key === 'ArrowUp') setToc({ ...toc, index: Math.max(0, toc.index - 1) });
+      else if (k.key === 'Enter') {
         const h = toc.items[toc.index];
         setToc(null);
         if (h) scrollToEl(h);
       }
-      return;
+      return true;
     }
     // 検索欄を出したまま抜けていたら、抜けるキーでまず検索欄を閉じる(1回で1段ずつ戻る)
     if (search?.editing && isLeaveKey(k.key)) {
-      e.preventDefault();
       docMap.reset();
-      return setSearch(null);
+      setSearch(null);
+      return true;
     }
     const a = docMap.push(k.key);
-    if (a === null) return;
-    e.preventDefault();
-    if (a !== 'pending') run(a);
-  }, inputMode);
+    if (a === null) return false;
+    if (a !== 'pending' && (ctx.lead || !LEAD_ONLY.has(a.do))) run(a);
+    return true;
+  });
+  const onShareIn = useStable((m: unknown): boolean => {
+    const x = m as { search?: string };
+    if (typeof x.search === 'string') runSearch(x.search);
+    return true;
+  });
+  const hintsRef = useRef(hints);
+  useLayoutEffect(() => {
+    hintsRef.current = hints;
+  });
+  const visibleLinksRef = useRef(visibleLinks);
+  const showHintsRef = useRef(showHints);
+  const pickHintRef = useRef(pickHint);
+  useLayoutEffect(() => {
+    visibleLinksRef.current = visibleLinks;
+    showHintsRef.current = showHints;
+    pickHintRef.current = pickHint;
+  });
+  const opWindow = useMemo<OpWindow>(
+    () => ({
+      key: (k, ctx) => onKey(k, ctx),
+      share: (m) => onShareIn(m),
+      hints: {
+        targets: () => {
+          hintTargets.current = visibleLinksRef.current();
+          return hintTargets.current.length;
+        },
+        show: (mode, labels) => showHintsRef.current(mode, labels),
+        type: (typed) => setHints((h) => h && { ...h, typed }),
+        pick: (label) => {
+          const h = hintsRef.current;
+          const item = h?.items.find((x) => x.label === label);
+          if (h && item) pickHintRef.current(item, h.mode);
+        },
+        clear: () => setHints(null),
+      },
+    }),
+    [onKey, onShareIn],
+  );
+  const onOpRef = useRef(onOp);
+  useLayoutEffect(() => {
+    onOpRef.current = onOp;
+  });
+  useEffect(() => {
+    onOpRef.current(opWindow);
+    return () => onOpRef.current(null);
+  }, [opWindow]);
 
   const name = basename(path);
   const large = doc?.large ?? false;
@@ -610,19 +630,6 @@ export function DocumentWindow({
       testId="document-window"
       name={name}
       icon={isImage ? 'image' : 'article'}
-      sectionRef={section}
-      titleButtons={
-        <button
-          type="button"
-          className={`icon-button small${inputMode ? ' input-on' : ''}`}
-          title={inputMode ? ja.inputModeExit : ja.inputModeEnter}
-          aria-label={inputMode ? ja.inputModeExit : ja.inputModeEnter}
-          aria-pressed={inputMode}
-          onClick={onToggleInput}
-        >
-          <Icon name="keyboard" size={18} />
-        </button>
-      }
     >
       <Popover.Root open={toc !== null} onOpenChange={(o) => !o && setToc(null)}>
         <Popover.Anchor asChild>
@@ -711,7 +718,10 @@ export function DocumentWindow({
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return;
             // Esc・Ctrl+[ は入力欄から抜けるだけ(検索欄は残し、もう一度押すと閉じる)
-            if (e.key === 'Enter') runSearch(e.currentTarget.value);
+            if (e.key === 'Enter') {
+              runSearch(e.currentTarget.value);
+              onShare({ search: e.currentTarget.value });
+            }
             else if (leavesInput(e.nativeEvent)) e.currentTarget.blur();
             else return;
             e.preventDefault();

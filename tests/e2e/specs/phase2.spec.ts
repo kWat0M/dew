@@ -80,7 +80,7 @@ test('16bit PNG と TIFF を表示し、16bit は元の値を出す', async ({ p
   await start(page, dew);
   await open(page, 'image.tif');
   await expect.poll(() => page.getByTestId('player-window').locator('img').evaluate((i: HTMLImageElement) => i.naturalWidth)).toBe(640);
-  await page.keyboard.press('h');
+  await page.keyboard.press('Tab');
   await open(page, 'image16.png');
   const win = page.getByTestId('player-window').filter({ hasText: 'image16.png' });
   await page.keyboard.press('z');

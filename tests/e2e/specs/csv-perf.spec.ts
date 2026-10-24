@@ -2,7 +2,7 @@
 // 読み込み後のソート・フィルターの結果が1秒以内に表示される(開発用コンテナで測定)。
 // 時間を測るので、playwright.config.ts の timing-* プロジェクトで、ほかのテストの後に流す(ADR 0011)
 import { join } from 'node:path';
-import { csvWindow, goCol, header, rowNumbers, status } from '../lib/csv';
+import { choose, csvWindow, goCol, header, rowNumbers, status } from '../lib/csv';
 import { copyCsv, expect, reloadPage, start, test } from '../lib/dew';
 
 test.describe.configure({ timeout: 120_000 });
@@ -49,7 +49,7 @@ test('100万行は大規模モードで開き、進捗を出し、ソート・�
   // フィルターは、値を入れて Enter を押してから表示が変わるまで
   await page.keyboard.press('f');
   const dialog = page.getByRole('dialog', { name: /フィルター/ });
-  await dialog.getByLabel('条件').selectOption('gt');
+  await choose(page, dialog, '条件', 'gt');
   await dialog.getByLabel('値').fill('500');
   const filtered = await timed(
     () => dialog.getByLabel('値').press('Enter'),

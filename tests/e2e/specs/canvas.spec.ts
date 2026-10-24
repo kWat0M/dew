@@ -32,8 +32,9 @@ test('ウィンドウ操作モードは q で抜けるまで続き、1打鍵ず�
   }
   await page.keyboard.press('q');
   await expect(page.getByTestId('window-mode')).toBeHidden();
-  // 抜けた後の k は再生 / 一時停止
+  // 抜けた後は、i で操作モードに入ってから k で再生 / 一時停止(ノーマルモードの k はフォーカスの移動。ADR 0030)
   await expect.poll(() => paused(page, 'h264_aac.mp4')).toBe(false);
+  await page.keyboard.press('i');
   await page.keyboard.press('k');
   await expect.poll(() => paused(page, 'h264_aac.mp4')).toBe(true);
   expect(await focusedName(page)).toBe('h264_aac.mp4');
@@ -44,6 +45,8 @@ test('選んだ全ウィンドウに再生のキーが効き、X で全部閉じ
   await openFour(page);
   await expect.poll(() => paused(page, 'mp4v.mp4')).toBe(false);
 
+  // 開いた直後の操作モードを抜けてから、w で選ぶ
+  await page.keyboard.press('Escape');
   await page.keyboard.press('w');
   await page.keyboard.press('1');
   await page.keyboard.press(' ');
@@ -52,6 +55,9 @@ test('選んだ全ウィンドウに再生のキーが効き、X で全部閉じ
   await page.keyboard.press('q');
   await expect(page.locator('[data-testid="player-window"][data-selected="true"]')).toHaveCount(2);
 
+  // i で、選んだ同じ種類(動画)のウィンドウがまとめて操作モードに入る
+  await page.keyboard.press('i');
+  await expect(page.locator('[data-testid="player-window"][data-op="true"]')).toHaveCount(2);
   await page.keyboard.press('k');
   await expect.poll(() => paused(page, 'h264_aac.mp4')).toBe(true);
   await expect.poll(() => paused(page, 'mp4v.mp4')).toBe(true);

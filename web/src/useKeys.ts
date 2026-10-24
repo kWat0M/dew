@@ -19,6 +19,8 @@ export function useKeys(handler: (k: KeyInfo, e: KeyboardEvent) => void, enabled
     if (!enabled) return;
     const f = (e: KeyboardEvent) => {
       if (e.defaultPrevented || isTyping(e.target)) return;
+      // 小さな画面(CSV のフィルターなど)の中のボタンや選択欄で押したキーは、その画面が受け持つ
+      if (e.target instanceof Element && e.target.closest('[role="dialog"]')) return;
       const k = readKey(e);
       if (k) ref.current(k, e);
     };

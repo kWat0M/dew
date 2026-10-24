@@ -30,6 +30,8 @@ export type PlayerApi = {
   cycleMode?(): void;
   /** 画像の拡大・縮小(+ / -) */
   zoomBy?(f: number): void;
+  /** 画像の表示位置を動かす(操作モードの hjkl) */
+  panBy?(dx: number, dy: number): void;
 };
 
 type Props = FrameProps & {
@@ -60,8 +62,8 @@ export function PlayerWindow({ api: apiRef, ...p }: Props) {
   const [rate, setRate] = useState(1);
   const [volume, setVolume] = useState(1);
   const [muted, setMuted] = useState(false);
-  /** 本体を押し始めたときにフォーカス中だったか(クリックで再生 / 停止するのはフォーカス中だけ) */
-  const wasFocused = useRef(false);
+  /** 本体を押し始めたときに操作モードだったか(1回目のクリックで操作モードに入り、2回目から再生 / 停止。5.1) */
+  const wasOp = useRef(false);
   const [zoom, setZoom] = useState<'fit' | 'actual'>('fit');
   const [ab, setAb] = useState<{ a: number | null; b: number | null }>({ a: null, b: null });
   const imageApi = useRef<ImageApi | null>(null);
@@ -162,6 +164,7 @@ export function PlayerWindow({ api: apiRef, ...p }: Props) {
     toggleMute: () => setMuted((m) => !m),
     toggleZoom: () => (imageApi.current ? imageApi.current.toggleActual() : setZoom((z) => (z === 'fit' ? 'actual' : 'fit'))),
     zoomBy: (f) => imageApi.current?.zoomBy(f),
+    panBy: (dx, dy) => imageApi.current?.panBy(dx, dy),
     fullscreen: () => {
       if (document.fullscreenElement) void document.exitFullscreen();
       else void win.current?.requestFullscreen();
@@ -184,10 +187,10 @@ export function PlayerWindow({ api: apiRef, ...p }: Props) {
       <div
         className={`window-body ${zoom}`}
         onPointerDown={() => {
-          wasFocused.current = p.focused;
+          wasOp.current = p.opMode;
         }}
         onClick={() => {
-          if (timed && wasFocused.current) togglePlay();
+          if (timed && wasOp.current) togglePlay();
         }}
       >
         {p.media === 'image' ? (

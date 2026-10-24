@@ -441,7 +441,9 @@ impl Live {
                 return;
             };
             match ev {
-                LiveInput::Key { key, down: true } => hub.key(window, &key),
+                LiveInput::Key { key, down: true } | LiveInput::Tap { key } => {
+                    hub.key(window, &key)
+                }
                 LiveInput::Close => hub.close(window),
                 _ => {}
             }
@@ -452,6 +454,9 @@ impl Live {
         let clamp = |v: i32| v.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
         let r = match ev {
             LiveInput::Key { key, down } => inj.key(window, &key, down),
+            LiveInput::Tap { key } => inj
+                .key(window, &key, true)
+                .and_then(|()| inj.key(window, &key, false)),
             LiveInput::Move { x, y } => inj.motion(window, clamp(x), clamp(y)),
             LiveInput::Button { button, down, x, y } => {
                 inj.button(window, button, down, clamp(x), clamp(y))

@@ -66,9 +66,9 @@ export function App() {
   const [startDir, setStartDir] = useState<string | null>(null);
   /** 閲覧範囲の起点(Markdown の範囲外の画像を出さないのに使う) */
   const [root, setRoot] = useState('/');
-  /** ドキュメントを開いた直後に入力モードにするウィンドウ(15.3) */
-  const [inputRequest, setInputRequest] = useState<{ id: number; seq: number } | null>(null);
-  const inputSeq = useRef(0);
+  /** 開いた直後に操作モードにするウィンドウ(15.3、ADR 0030) */
+  const [opRequest, setOpRequest] = useState<{ id: number; seq: number } | null>(null);
+  const opSeq = useRef(0);
   /** Home に表示を求めるディレクトリ。seq を変えると同じ場所でも開き直す */
   const [homeRequest, setHomeRequest] = useState<DirRequest | null>(null);
   const seq = useRef(0);
@@ -139,6 +139,9 @@ export function App() {
   useEffect(() => {
     settingsRef.current = settings;
   }, [settings]);
+  const requestOp = useCallback((id: number) => {
+    if (settingsRef.current.openInOpMode) setOpRequest({ id, seq: opSeq.current++ });
+  }, []);
   // 隠しファイルの表示と最新ファイルへの追従。キーと操作パネルのチェックボックスで共有する
   const [showHidden, setShowHidden] = useState(false);
   const [follow, setFollow] = useState(false);
@@ -190,12 +193,12 @@ export function App() {
       const lastFile = files.at(-1)!;
       const target = existing(lastFile)?.id ?? added.at(-1)!.id;
       setFocused(target);
-      if ((lastFile.media === 'markdown' || lastFile.media === 'csv') && settingsRef.current.documentAutoInput) setInputRequest({ id: target, seq: inputSeq.current++ });
+      requestOp(target);
       // 開いたばかりのウィンドウはまだ windowsRef にないので、文書なら最初の文書として積む
       if (screenRef.current !== 'canvas') pushPlace({ screen: 'canvas', focus: target, ...(lastFile.media === 'markdown' ? { doc: { win: target, index: 0 } } : {}) });
       showCanvas();
     },
-    [pushPlace, showCanvas],
+    [pushPlace, showCanvas, requestOp],
   );
 
   // 比較ウィンドウ(F7)。1つのウィンドウに複数のファイルを入れる
@@ -204,8 +207,9 @@ export function App() {
     api.addHistory(files.map((f) => f.path));
     setWindows((ws) => [...ws, { id, path: files[0]!.path, media: files[0]!.media, members: files }]);
     setFocused(id);
+    requestOp(id);
     goCanvas(id);
-  }, [goCanvas]);
+  }, [goCanvas, requestOp]);
 
   // ライブ描画のウィンドウ(L1、L2)。サーバの一覧に合わせて、増えたら足し、消えたら「終了」にする
   const knownLive = useRef(new Set<number>());
@@ -231,10 +235,11 @@ export function App() {
       setLiveCount(list.length);
       if (newWins.length) {
         setFocused(newWins.at(-1)!.id);
+        requestOp(newWins.at(-1)!.id);
         goCanvas(newWins.at(-1)!.id);
       }
     },
-    [goCanvas],
+    [goCanvas, requestOp],
   );
 
   // CLI からの表示指示(F10)
@@ -336,7 +341,7 @@ export function App() {
   const canNotify = notificationAvailable();
   const toggles = [
     { label: ja.showHints, checked: settings.hints, onChange: (v: boolean) => updateSettings({ hints: v }) },
-    { label: ja.documentAutoInput, checked: settings.documentAutoInput, onChange: (v: boolean) => updateSettings({ documentAutoInput: v }) },
+    { label: ja.openInOpMode, checked: settings.openInOpMode, onChange: (v: boolean) => updateSettings({ openInOpMode: v }) },
     { label: ja.externalImages, checked: settings.externalImages, onChange: (v: boolean) => updateSettings({ externalImages: v }) },
     {
       label: canNotify ? ja.notifyOpen : ja.notifyOpen + ja.notifyUnavailable,
@@ -470,7 +475,7 @@ export function App() {
           events={events}
           root={root}
           externalImages={settings.externalImages}
-          inputRequest={inputRequest}
+          opRequest={opRequest}
           onOpenFiles={open}
           onOpenDir={openDir}
           onPathChange={onPathChange}
@@ -495,6 +500,7 @@ export function App() {
             [
               [ja.secHome, ja.homeKeys],
               [ja.secCanvas, ja.canvasKeys],
+              [ja.secOp, ja.opKeys],
               [ja.windowMode, windowHelp],
             ] as const
           ).map(([title, rows]) => (

@@ -63,7 +63,7 @@ test('プレビュー中のディレクトリにできたファイルが1秒以�
   await expect(preview).toContainText('result.png', { timeout: 1000 });
 });
 
-// キャンバスから h / Tab で戻ると Enter を押したときのまま。H では初期位置(4.1、5.3)
+// キャンバスから Tab で戻ると Enter を押したときのまま。H では初期位置(4.1、5.3)
 test('キャンバスから戻ると Home の状態が残っている', async ({ page, dew }) => {
   await start(page, dew);
   await current(page).getByRole('option', { name: 'sub' }).click();
@@ -71,7 +71,7 @@ test('キャンバスから戻ると Home の状態が残っている', async ({
   await expect(current(page).getByRole('option')).toHaveText(['nested.webp']);
   await open(page, 'nested.webp');
 
-  await page.keyboard.press('h');
+  await page.keyboard.press('Tab');
   await expect(current(page).getByRole('option')).toHaveText(['nested.webp']);
   expect(await selected(page)).toBe('nested.webp');
 
@@ -81,7 +81,7 @@ test('キャンバスから戻ると Home の状態が残っている', async ({
   await page.keyboard.press('Tab');
   await expect(current(page).getByRole('option')).toHaveText(['nested.webp']);
 
-  // H は初期位置へ
+  // H は初期位置へ(画像の操作モードでは H を使わないので、キャンバスのキーとして効く)
   await page.keyboard.press('Tab');
   await page.keyboard.press('H');
   await expect(current(page).getByRole('option', { name: 'sub' })).toBeVisible();

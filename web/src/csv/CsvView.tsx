@@ -20,16 +20,18 @@ import type { Events } from '../api/events';
 import { basename } from '../format';
 import { ja } from '../i18n/ja';
 import { Icon } from '../icons';
-import { isLeaveKey, KeySequence, leavesInput } from '../keys';
-import { csvKeys, type CsvAction } from './keys';
+import { isLeaveKey, KeySequence, leavesInput, type KeyInfo } from '../keys';
+import type { OpContext, OpWindow } from '../canvas/op';
+import { csvKeys, LEAD_ONLY, type CsvAction } from './keys';
 import type { CsvColumn } from '../protocol/CsvColumn';
 import type { CsvColumnView } from '../protocol/CsvColumnView';
 import type { CsvFilter } from '../protocol/CsvFilter';
+import type { CsvOptions } from '../protocol/CsvOptions';
+import type { CsvRule } from '../protocol/CsvRule';
 import type { CsvSchema } from '../protocol/CsvSchema';
 import type { CsvView as View } from '../protocol/CsvView';
-import { useKeys } from '../useKeys';
 import { useStable } from '../useStable';
-import { compareKeys, invalidValue, matches, searchHit, sortKey, type SortKey } from './compare';
+import { cleanView, compareKeys, invalidValue, matches, opsFor, searchHit, sortKey, type SortKey } from './compare';
 import { FilterDialog, InspectorDialog, JumpDialog, RenameDialog, RulesDialog, SettingsDialog } from './CsvDialogs';
 import { columnLetter, count, csvLine, defaultWidth, display, isNumeric, stepDecimals } from './format';
 import { useLargeRows } from './large';
@@ -68,23 +70,38 @@ type Dialog =
   | { kind: 'rules' }
   | { kind: 'settings' };
 
+/**
+ * 複数のウィンドウで操作モードのとき、フォーカス中のウィンドウの小さな画面で決めた内容。
+ * 受け取ったウィンドウは、それぞれの選択中の列に適用する(列の型で使えなければ適用しない)
+ */
+type Shared =
+  | { kind: 'search'; query: string }
+  | { kind: 'filter'; f: Omit<CsvFilter, 'col'> | null }
+  | { kind: 'rename'; label: string }
+  | { kind: 'jump'; row: number }
+  | { kind: 'rules'; rules: CsvRule[] }
+  | { kind: 'options'; options: CsvOptions }
+  | { kind: 'column'; f: (v: CsvColumnView) => CsvColumnView }
+  | { kind: 'reset' };
+
 type Props = {
   id: number;
   path: string;
   events: Events;
-  inputMode: boolean;
-  onExitInput: () => void;
+  opMode: boolean;
   onMessage: (m: string) => void;
-  /** 選んでいるセルなどを入力モードの外から操作するとき(マウス)は、入力モードに入る */
-  onEnterInput: () => void;
   /** 操作パネルから操作を実行する入口を渡す(閉じるときは null) */
   onRegister: (run: ((a: CsvAction) => void) | null) => void;
+  /** 操作モードのキーなどを受け取る入口を渡す(閉じるときは null) */
+  onOp: (w: OpWindow | null) => void;
+  /** 小さな画面で決めた内容を、一緒に操作モードに入っているほかのウィンドウにも渡す */
+  onShare: (m: Shared) => void;
 };
 
 /** 読み込んだもの。小規模モードなら全セル(列ごと) */
 type Loaded = { schema: CsvSchema; cols: (string | null)[][] | null };
 
-export default function CsvView({ id, path, events, inputMode, onExitInput, onMessage, onEnterInput, onRegister }: Props) {
+export default function CsvView({ id, path, events, opMode, onMessage, onRegister, onOp, onShare }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const [view, setViewState] = useState<View | null>(null);
@@ -169,20 +186,19 @@ export default function CsvView({ id, path, events, inputMode, onExitInput, onMe
     };
   }, [events, id, path]);
 
-  /** 表示設定を変える。変えたものはサーバにも置く(タブを読み直しても戻すため。16.6) */
+  const schema = loaded?.schema ?? null;
+  const columns = useMemo(() => schema?.columns ?? [], [schema]);
+  const small = loaded?.cols ?? null;
+  /** 表示設定を変える。変えたものはサーバにも置く(タブを読み直しても戻すため。16.6)。ない列を指す設定は除く */
   const [changed, setChanged] = useState(0);
   const setView = (f: (v: View) => View) => {
-    setViewState((v) => (v ? f(v) : v));
+    setViewState((v) => (v ? f(cleanView(v, columns)) : v));
     setChanged((n) => n + 1);
   };
   useEffect(() => {
     if (changed && view) api.saveCsvView(path, view);
   }, [changed, view, path]);
-
-  const schema = loaded?.schema ?? null;
-  const columns = useMemo(() => schema?.columns ?? [], [schema]);
-  const small = loaded?.cols ?? null;
-  const v = view ?? EMPTY_VIEW;
+  const v = useMemo(() => (view ? cleanView(view, columns) : EMPTY_VIEW), [view, columns]);
   const colView = (c: number): CsvColumnView | undefined => v.columns.find((x) => x.col === c);
   const updateCol = (c: number, f: (x: CsvColumnView) => CsvColumnView) =>
     setView((w) => {
@@ -361,8 +377,8 @@ export default function CsvView({ id, path, events, inputMode, onExitInput, onMe
       () => onMessage(ja.copyFailed),
     );
 
-  /** 操作する。at は対象の列(列の見出しのメニューから。なければ選択中の列) */
-  const run = (a: CsvAction, at: number = col) => {
+  /** 操作する。at は対象の列(列の見出しのメニューから。なければ選択中の列)。ctx は操作モードのキーから */
+  const run = (a: CsvAction, at: number = col, ctx?: OpContext) => {
     const col = at;
     const ci = order.all.indexOf(col);
     switch (a.do) {
@@ -415,7 +431,7 @@ export default function CsvView({ id, path, events, inputMode, onExitInput, onMe
         return setDialog({ kind: 'rename', col });
       case 'decimals': {
         const c = column(col);
-        if (!c || !isNumeric(c)) return onMessage(ja.csv.notNumber);
+        if (!c || !isNumeric(c)) return ctx && !ctx.lead ? ctx.fail() : onMessage(ja.csv.notNumber);
         return updateCol(col, (x) => ({ ...x, decimals: stepDecimals(c, x.decimals, a.dir) }));
       }
       case 'mark': {
@@ -451,13 +467,102 @@ export default function CsvView({ id, path, events, inputMode, onExitInput, onMe
       case 'reset':
         // 読み方の手動設定も含めて、すべて初期状態に(16.6)
         setView(() => EMPTY_VIEW);
-        return onMessage(ja.csv.resetDone);
-      case 'exit':
-        setDialog(null);
-        setSearching(false);
-        return onExitInput();
+        return ctx && !ctx.lead ? undefined : onMessage(ja.csv.resetDone);
     }
   };
+
+  /** フィルターを付ける(null なら外す) */
+  const applyFilter = (c: number, f: Omit<CsvFilter, 'col'> | null) =>
+    setView((w) => ({ ...w, filters: [...w.filters.filter((x) => x.col !== c), ...(f ? [{ ...f, col: c }] : [])], cell: [0, w.cell[1]] }));
+  /** 元の行番号 n の行へ。なければ false */
+  const jumpTo = async (n: number) => {
+    if (smallRows) {
+      const p = smallRows.findIndex((r) => r.original.i === n - 1);
+      if (p < 0) return false;
+      select(p, col);
+      return true;
+    }
+    const p = await largeRows.locate(n);
+    if (p === null) return false;
+    select(p, col);
+    return true;
+  };
+  const search = (query: string) => {
+    setView((w) => ({ ...w, search: query }));
+    setMatchIndex(0);
+    setPendingFirst(true);
+  };
+
+  // 操作モードを抜けたら、小さな画面と検索欄を閉じる
+  const [wasOp, setWasOp] = useState(opMode);
+  if (wasOp !== opMode) {
+    setWasOp(opMode);
+    if (!opMode) {
+      setDialog(null);
+      setSearching(false);
+    }
+  }
+
+  /** 操作モードのキー(キャンバスから受け取る)。使ったら true */
+  const onKey = useStable((k: KeyInfo, ctx: OpContext): boolean => {
+    // 小さな画面や検索欄を出したまま抜けていたら、抜けるキーでまずそれを閉じる(1回で1段ずつ戻る)
+    if ((dialog || searching) && isLeaveKey(k.key)) {
+      keymap.reset();
+      if (dialog) setDialog(null);
+      else setSearching(false);
+      return true;
+    }
+    // 小さな画面のキーは、その画面が受け持つ
+    if (dialog) return true;
+    const a = keymap.push(k.key);
+    if (a === null) return false;
+    if (a !== 'pending' && (ctx.lead || !LEAD_ONLY.has(a.do))) run(a, col, ctx);
+    return true;
+  });
+  /** ほかのウィンドウで決めた内容を、このウィンドウの選択中の列に適用する。適用できなければ false */
+  const onShareIn = useStable((m: unknown): boolean => {
+    const x = m as Shared;
+    const c = columns[col];
+    switch (x.kind) {
+      case 'search':
+        search(x.query);
+        return true;
+      case 'filter':
+        if (!c || (x.f && (!opsFor(c.ty).includes(x.f.op) || invalidValue(c.ty, { ...x.f, col }) !== null))) return false;
+        applyFilter(col, x.f);
+        return true;
+      case 'rename':
+        updateCol(col, (y) => ({ ...y, label: x.label || undefined }));
+        return true;
+      case 'jump':
+        void jumpTo(x.row);
+        return true;
+      case 'rules': {
+        const ok = x.rules.filter((r) => columns[r.col] && opsFor(columns[r.col]!.ty).includes(r.op));
+        setView((w) => ({ ...w, rules: ok }));
+        return ok.length === x.rules.length;
+      }
+      case 'options':
+        setView((w) => ({ ...w, options: x.options }));
+        return true;
+      case 'column':
+        if (!c || !isNumeric(c)) return false;
+        updateCol(col, x.f);
+        return true;
+      case 'reset':
+        setView(() => EMPTY_VIEW);
+        return true;
+    }
+  });
+  const opWindow = useMemo<OpWindow>(() => ({ key: (k, ctx) => onKey(k, ctx), share: (m) => onShareIn(m) }), [onKey, onShareIn]);
+  const onOpRef = useRef(onOp);
+  useLayoutEffect(() => {
+    onOpRef.current = onOp;
+  });
+  useEffect(() => {
+    onOpRef.current(opWindow);
+    return () => onOpRef.current(null);
+  }, [opWindow]);
 
   /** 見えている行の値に合わせた列幅(=) */
   const fitWidth = (c: number) => {
@@ -483,21 +588,6 @@ export default function CsvView({ id, path, events, inputMode, onExitInput, onMe
     return () => onRegisterRef.current(null);
   }, [runFromPanel]);
 
-  useKeys((k, e) => {
-    // 小さな画面や検索欄を出したまま抜けていたら、抜けるキーでまずそれを閉じる(1回で1段ずつ戻る)
-    if ((dialog || searching) && isLeaveKey(k.key)) {
-      e.preventDefault();
-      keymap.reset();
-      if (dialog) return setDialog(null);
-      return setSearching(false);
-    }
-    // 小さな画面のキーは、その画面が受け持つ
-    if (dialog) return;
-    const a = keymap.push(k.key);
-    if (a === null) return;
-    e.preventDefault();
-    if (a !== 'pending') run(a);
-  }, inputMode);
 
   // ---- 描画 ----
   const sortIndex = (c: number) => v.sort.findIndex((s) => s.col === c);
@@ -524,7 +614,6 @@ export default function CsvView({ id, path, events, inputMode, onExitInput, onMe
         style={{ width: width(c), ...style }}
         title={ja.csv.original(col0.name)}
         onClick={(e) => {
-          onEnterInput();
           select(row, c, false);
           if (e.shiftKey) setView((w) => ({ ...w, sort: w.sort.some((s) => s.col === c) ? w.sort : [...w.sort, { col: c, desc: false }] }));
         }}
@@ -559,10 +648,7 @@ export default function CsvView({ id, path, events, inputMode, onExitInput, onMe
         data-match={hit ? 'true' : undefined}
         className={`csv-td${isNumeric(c0) ? ' num' : ''}${raw === null ? ' null' : ''}${selected ? ' selected' : ''}${hit ? ' match' : ''}${current && current[0] === p && current[1] === c ? ' current-match' : ''}${colView(c)?.pinned ? ' pinned' : ''}`}
         style={{ width: width(c), ...style }}
-        onClick={() => {
-          onEnterInput();
-          select(p, c, false);
-        }}
+        onClick={() => select(p, c, false)}
         onDoubleClick={() => setDialog({ kind: 'inspect', text: raw ?? '' })}
       >
         {raw === null ? '—' : display(c0, colView(c), raw)}
@@ -658,9 +744,8 @@ export default function CsvView({ id, path, events, inputMode, onExitInput, onMe
             if (e.key === 'Enter') {
               const query = e.currentTarget.value;
               setSearching(false);
-              setView((w) => ({ ...w, search: query }));
-              setMatchIndex(0);
-              setPendingFirst(true);
+              search(query);
+              onShare({ kind: 'search', query });
             } else if (leavesInput(e.nativeEvent)) e.currentTarget.blur();
             else return;
             e.preventDefault();
@@ -674,8 +759,9 @@ export default function CsvView({ id, path, events, inputMode, onExitInput, onMe
           current={v.filters.find((f) => f.col === dialog.col)}
           onApply={(f) => {
             if (f && invalidValue(columns[dialog.col]!.ty, { ...f, col: dialog.col })) return onMessage(ja.csv.needNumber);
-            setView((w) => ({ ...w, filters: [...w.filters.filter((x) => x.col !== dialog.col), ...(f ? [{ ...f, col: dialog.col }] : [])], cell: [0, w.cell[1]] }));
+            applyFilter(dialog.col, f);
             setDialog(null);
+            onShare({ kind: 'filter', f });
           }}
           onClose={() => setDialog(null)}
         />
@@ -687,6 +773,7 @@ export default function CsvView({ id, path, events, inputMode, onExitInput, onMe
           onApply={(label) => {
             updateCol(dialog.col, (x) => ({ ...x, label: label || undefined }));
             setDialog(null);
+            onShare({ kind: 'rename', label });
           }}
           onClose={() => setDialog(null)}
         />
@@ -695,12 +782,8 @@ export default function CsvView({ id, path, events, inputMode, onExitInput, onMe
         <JumpDialog
           onApply={async (n) => {
             setDialog(null);
-            if (smallRows) {
-              const p = smallRows.findIndex((r) => r.original.i === n - 1);
-              return p < 0 ? onMessage(ja.csv.noRow(n)) : select(p, col);
-            }
-            const p = await largeRows.locate(n);
-            return p === null ? onMessage(ja.csv.noRow(n)) : select(p, col);
+            onShare({ kind: 'jump', row: n });
+            if (!(await jumpTo(n))) onMessage(ja.csv.noRow(n));
           }}
           onClose={() => setDialog(null)}
         />
@@ -711,7 +794,10 @@ export default function CsvView({ id, path, events, inputMode, onExitInput, onMe
           columns={columns}
           rules={v.rules}
           current={col}
-          onChange={(rules) => setView((w) => ({ ...w, rules }))}
+          onChange={(rules) => {
+            setView((w) => ({ ...w, rules }));
+            onShare({ kind: 'rules', rules });
+          }}
           onMessage={onMessage}
           onClose={() => setDialog(null)}
         />
@@ -722,11 +808,18 @@ export default function CsvView({ id, path, events, inputMode, onExitInput, onMe
           options={v.options}
           column={columns[col]}
           view={colView(col)}
-          onOptions={(options) => setView((w) => ({ ...w, options }))}
-          onColumn={(f) => updateCol(col, f)}
+          onOptions={(options) => {
+            setView((w) => ({ ...w, options }));
+            onShare({ kind: 'options', options });
+          }}
+          onColumn={(f) => {
+            updateCol(col, f);
+            onShare({ kind: 'column', f });
+          }}
           onReset={() => {
             run({ do: 'reset' });
             setDialog(null);
+            onShare({ kind: 'reset' });
           }}
           onClose={() => setDialog(null)}
         />

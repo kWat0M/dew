@@ -12,9 +12,9 @@ test('2-compare', async ({ page, demo }) => {
   await caption(page, 'K で全部まとめて一時停止・再生');
   await keys(page, ['K'], 1500);
   await keys(page, ['K'], 1500);
-  await caption(page, 'w X で全部閉じて、h で Home へ');
+  await caption(page, 'w X で全部閉じて、Tab で Home へ');
   await keys(page, ['w', 'X'], 900);
-  await keys(page, ['h'], 1000);
+  await keys(page, ['Tab'], 1000);
 
   await caption(page, '比較: 2つを選んで(マウスなら Ctrl+クリック) c');
   await clickOn(page, page.getByRole('option', { name: 'results', exact: true }));

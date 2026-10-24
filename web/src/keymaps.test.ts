@@ -1,6 +1,6 @@
 // キーマップのキーが、キー一覧(?)とヒントの帯に漏れなく載っているかを確かめる
 import { describe, expect, test } from 'vitest';
-import { normal, windowHelp, windowKeys } from './canvas/Canvas';
+import { compareKeys, imageKeys, liveKeys, normal, playKeys, windowHelp, windowKeys } from './canvas/Canvas';
 import { homeBindings } from './home/Home';
 import { ja } from './i18n/ja';
 
@@ -30,6 +30,10 @@ describe('キー一覧に全キーが載っている', () => {
   test.each([
     ['Home', homeBindings, ja.homeKeys],
     ['キャンバス', normal, ja.canvasKeys],
+    ['操作モード(動画)', playKeys, ja.opKeys],
+    ['操作モード(比較)', compareKeys, ja.opKeys],
+    ['操作モード(画像)', imageKeys, ja.opKeys],
+    ['操作モード(ライブ)', liveKeys, ja.opKeys],
     ['ウィンドウ操作モード', windowKeys, windowHelp],
   ] as const)('%s', (_, bindings, rows) => {
     const listed = keysIn(rows);
@@ -41,8 +45,12 @@ describe('キー一覧に全キーが載っている', () => {
 describe('ヒントの帯に主なキーが載っている', () => {
   test.each([
     ['Home', homeBindings, ja.homeHints],
-    // キャンバスの帯はウィンドウの種類で出し分けるので、全部の組を合わせて調べる
-    ['キャンバス', normal, Object.values(ja.canvasHints).flat()],
+    ['キャンバス', normal, ja.canvasHints.normal],
+    // 操作モードの帯はウィンドウの種類と状態で出し分けるので、全部の組を合わせて調べる
+    ['操作モード(動画)', playKeys, [...ja.canvasHints.video, ...ja.canvasHints.opCommon]],
+    ['操作モード(比較)', compareKeys, [...ja.canvasHints.video, ...ja.canvasHints.compare]],
+    ['操作モード(画像)', imageKeys, ja.canvasHints.image],
+    ['操作モード(ライブ)', liveKeys, [...ja.canvasHints.rewind, ...ja.canvasHints.live]],
     ['ウィンドウ操作モード', windowKeys, ja.windowHints],
   ] as const)('%s', (_, bindings, rows) => {
     const listed = keysIn(rows);
