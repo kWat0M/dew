@@ -216,6 +216,16 @@ pub struct RotateTokenResponse {
     pub token: String,
 }
 
+/// `GET /api/download/size` の応答: 保存する前の合計(18.3)
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct DownloadSize {
+    #[ts(type = "number")]
+    pub bytes: u64,
+    pub files: u32,
+}
+
 /// `WS /ws/events` でサーバから送る通知
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(

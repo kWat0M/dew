@@ -8,6 +8,9 @@ import type { Command, Section } from './commands';
 import type { LiveWindow } from './protocol/LiveWindow';
 import { useSettings } from './settings';
 import { Dialog } from './ui/Dialog';
+import { CONFIRM_BYTES, prepare, start as startDownload, type DownloadItem } from './download';
+import { formatSize } from './format';
+import type { DownloadSize } from './protocol/DownloadSize';
 import { OpsPanel } from './ui/OpsPanel';
 import type { ToolbarActions } from './ui/Toolbar';
 import { HistoryWindow } from './history/HistoryWindow';
@@ -302,6 +305,20 @@ export function App() {
   }, [events]);
 
   const onError = useCallback((m: string) => setMessage(m), []);
+  // 保存(18.3)。zip にまとめるときは先に合計を聞き、大きければ確かめる
+  const [bigDownload, setBigDownload] = useState<{ items: DownloadItem[]; size: DownloadSize } | null>(null);
+  const download = useCallback(
+    async (items: DownloadItem[]) => {
+      try {
+        const size = await prepare(items);
+        if (size && size.bytes > CONFIRM_BYTES) return setBigDownload({ items, size });
+        startDownload(items);
+      } catch (e) {
+        onError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [onError],
+  );
   const stop = () => {
     setConfirmStop(false);
     void fetch('/api/shutdown', { method: 'POST' }).finally(() => {
@@ -427,6 +444,7 @@ export function App() {
           liveCount={liveCount}
           onOpen={open}
           onCompare={openCompare}
+          onDownload={download}
           onCanvas={() => goCanvas()}
           onNavigate={onHomeNavigate}
           onInitial={toInitial}
@@ -458,6 +476,7 @@ export function App() {
           }}
           onReorder={(ids) => setWindows((ws) => ids.map((id) => ws.find((w) => w.id === id)!))}
           onHome={goHome}
+          onDownload={download}
           onHistory={() => setHistoryOpen(true)}
           onHelp={() => setHelpOpen(true)}
           toolbar={toolbar}
@@ -517,6 +536,31 @@ export function App() {
               </dl>
             </section>
           ))}
+        </Dialog>
+      )}
+      {bigDownload && (
+        <Dialog
+          title={ja.downloadBig}
+          onClose={() => setBigDownload(null)}
+          actions={
+            <>
+              <button type="button" className="text-button" onClick={() => setBigDownload(null)}>
+                {ja.cancel}
+              </button>
+              <button
+                type="button"
+                className="filled-button"
+                onClick={() => {
+                  startDownload(bigDownload.items);
+                  setBigDownload(null);
+                }}
+              >
+                {ja.downloadDo}
+              </button>
+            </>
+          }
+        >
+          <p>{ja.downloadBigConfirm(formatSize(bigDownload.size.bytes), bigDownload.size.files)}</p>
         </Dialog>
       )}
       {confirmStop && (

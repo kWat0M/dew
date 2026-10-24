@@ -2,6 +2,7 @@
 
 mod auth;
 mod csv;
+mod download;
 mod events;
 mod files;
 mod history;
@@ -258,6 +259,8 @@ fn router(app: Arc<App>) -> Router {
         .route("/csv/search", post(csv::search))
         .route("/csv/locate", post(csv::locate))
         .route("/csv/cancel", post(csv::cancel))
+        .route("/download", get(download::file).post(download::zip))
+        .route("/download/size", get(download::size))
         .route("/open", post(open))
         .route("/shell", post(shell))
         .route("/shells", get(shells))

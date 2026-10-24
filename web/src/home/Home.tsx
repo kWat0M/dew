@@ -9,6 +9,7 @@ import type { Entry } from '../protocol/Entry';
 import type { MediaKind } from '../protocol/MediaKind';
 import type { Tree } from '../protocol/Tree';
 import { basename, join } from '../format';
+import type { DownloadItem } from '../download';
 import { ja } from '../i18n/ja';
 import { Icon } from '../icons';
 import { KeySequence, leavesInput } from '../keys';
@@ -20,7 +21,7 @@ import './Home.css';
 
 export type HomeAction =
   | 'down' | 'up' | 'parent' | 'enter' | 'open' | 'mark' | 'top' | 'bottom'
-  | 'filter' | 'follow' | 'view' | 'hidden' | 'canvas' | 'initial' | 'history' | 'help' | 'compare' | 'escape';
+  | 'filter' | 'follow' | 'view' | 'hidden' | 'canvas' | 'initial' | 'history' | 'help' | 'compare' | 'download' | 'escape';
 
 type Action = HomeAction;
 
@@ -33,7 +34,7 @@ export const homeCommands: CommandDef<HomeAction>[] = [
   { id: 'filter', key: '/', label: '絞り込み' }, { id: 'follow', key: 'n', label: '最新に追従' },
   { id: 'view', key: 'v', label: 'リスト / グリッド' }, { id: 'hidden', key: '.', label: '隠しファイル' },
   { id: 'initial', key: 'H', label: '初期位置へ' }, { id: 'canvas', key: 'Tab', label: 'キャンバスへ' },
-  { id: 'compare', key: 'c', label: '選択を比較' },
+  { id: 'compare', key: 'c', label: '選択を比較' }, { id: 'download', key: 'D', label: '保存' },
 ];
 
 /** 操作パネルの上に出す、画面にボタンがない操作 */
@@ -44,7 +45,7 @@ export const homeBindings: Record<string, HomeAction> = {
   j: 'down', ArrowDown: 'down', k: 'up', ArrowUp: 'up',
   h: 'parent', ArrowLeft: 'parent', l: 'enter', ArrowRight: 'enter',
   Enter: 'open', ' ': 'mark', 'g g': 'top', G: 'bottom',
-  '/': 'filter', n: 'follow', v: 'view', '.': 'hidden', Tab: 'canvas', H: 'initial', r: 'history', '?': 'help', c: 'compare', Escape: 'escape', 'C-[': 'escape',
+  '/': 'filter', n: 'follow', v: 'view', '.': 'hidden', Tab: 'canvas', H: 'initial', r: 'history', '?': 'help', c: 'compare', D: 'download', Escape: 'escape', 'C-[': 'escape',
 };
 const keymap = new KeySequence<Action>(homeBindings);
 
@@ -61,6 +62,8 @@ type Props = {
   onOpen: (files: { path: string; media: MediaKind }[]) => void;
   /** 選んだファイルを比較ウィンドウで開く(F7) */
   onCompare: (files: { path: string; media: MediaKind }[]) => void;
+  /** 保存する(18.3) */
+  onDownload: (items: DownloadItem[]) => void;
   onCanvas: () => void;
   /** ディレクトリを移った(ブラウザの履歴に積む。4.5) */
   onNavigate: (dir: string) => void;
@@ -321,6 +324,12 @@ export function Home(p: Props) {
         setMarked(new Map());
         return p.onCompare(files);
       }
+      case 'download': {
+        // 選んだものがあれば全部、なければカーソルの位置のもの
+        const list: [string, Entry][] = marked.size ? [...marked] : current && cwd ? [[join(cwd, current.name), current]] : [];
+        if (list.length) p.onDownload(list.map(([path, e]) => ({ path, dir: e.kind === 'dir' })));
+        return;
+      }
       case 'escape':
         setMarked(new Map());
         setFilter('');
@@ -382,6 +391,12 @@ export function Home(p: Props) {
         </nav>
         <div className="home-status">
           {marked.size > 0 && <span className="chip">{ja.selectedCount(marked.size)}</span>}
+          {marked.size > 0 && (
+            <button type="button" className="text-button with-icon" onClick={() => run('download')}>
+              <Icon name="download" size={18} />
+              {ja.download}
+            </button>
+          )}
           {marked.size > 1 && (
             <button type="button" className="text-button with-icon" title={ja.compareKey} onClick={() => run('compare')}>
               <Icon name="compare" size={18} />
