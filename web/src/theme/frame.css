@@ -9,11 +9,19 @@
   --dew-on-frame: #ffffff;
 }
 
+/* ダークは、ブラウザの設定がダークでテーマを固定していないときと、ダークに固定したとき(18.1) */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --dew-frame-focus: #7aa2f7;
     --dew-frame-op: #9ece6a;
     --dew-frame-input: #bb9af7;
     --dew-on-frame: #1a1b26;
   }
+}
+
+:root[data-theme='dark'] {
+  --dew-frame-focus: #7aa2f7;
+  --dew-frame-op: #9ece6a;
+  --dew-frame-input: #bb9af7;
+  --dew-on-frame: #1a1b26;
 }

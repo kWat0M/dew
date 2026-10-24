@@ -57,6 +57,8 @@ import textIncrease from '@material-symbols/svg-400/rounded/text_increase.svg?ra
 import arrowUp from '@material-symbols/svg-400/rounded/keyboard_arrow_up.svg?raw';
 import arrowDown from '@material-symbols/svg-400/rounded/keyboard_arrow_down.svg?raw';
 import dropDown from '@material-symbols/svg-400/rounded/arrow_drop_down.svg?raw';
+import check from '@material-symbols/svg-400/rounded/check.svg?raw';
+import download from '@material-symbols/svg-400/rounded/download.svg?raw';
 import './icons.css';
 
 const svgs = {
@@ -65,7 +67,7 @@ const svgs = {
   close, fullscreen, volume, volumeOff, grid, list, minimize, maximize, restore,
   history, help, menu, power, tile, free, search, sync, compare, zoomIn, zoomOut, keyboard, record, stopRecord, article, table, copy,
   arrowBack, arrowForward, toc, textDecrease, textIncrease, arrowUp, arrowDown, dropDown,
-  filter, filterOff, visibility, palette, tune,
+  filter, filterOff, visibility, palette, tune, check, download,
 };
 
 export type IconName = keyof typeof svgs;

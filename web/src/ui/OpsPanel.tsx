@@ -2,7 +2,7 @@
 import type { Command, Section } from '../commands';
 import { ja } from '../i18n/ja';
 import { Icon } from '../icons';
-import type { Settings } from '../settings';
+import { THEMES, type Settings } from '../settings';
 import './OpsPanel.css';
 
 /** 設定のチェックボックス。キーで変えたときも同じ状態を示す */
@@ -50,6 +50,19 @@ export function OpsPanel(p: Props) {
               {t.label}
             </label>
           ))}
+          {/* MD3 のセグメントボタン(1つだけ選ぶ)。選んだものにチェックを付ける */}
+          <fieldset className="ops-radio">
+            <legend>{ja.theme}</legend>
+            <div className="segmented" data-testid="theme">
+              {THEMES.map((v) => (
+                <label key={v} className={p.settings.theme === v ? 'selected' : ''}>
+                  <input type="radio" name="theme" checked={p.settings.theme === v} onChange={() => p.onSettings({ theme: v })} />
+                  {p.settings.theme === v && <Icon name="check" size={18} />}
+                  {ja.themes[v]}
+                </label>
+              ))}
+            </div>
+          </fieldset>
           <fieldset className="ops-radio">
             <legend>{ja.tabbarStyle}</legend>
             {(['top', 'side'] as const).map((v) => (

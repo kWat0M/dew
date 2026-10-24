@@ -36,16 +36,26 @@ function block(isDark) {
     .join('\n');
 }
 
+// 既定はブラウザの設定に従い、<html data-theme="light|dark"> で固定できる(18.1)
 const css = `/* 生成ファイル: web/scripts/gen-theme.mjs で作る。手で編集しない(シード ${seed}) */
 :root {
   color-scheme: light dark;
 ${block(false)}
 }
 
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
 ${block(true).replace(/^/gm, '  ')}
   }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+${block(true)}
 }
 `;
 writeFileSync(new URL('../src/theme/colors.css', import.meta.url), css);

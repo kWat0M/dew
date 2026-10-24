@@ -145,6 +145,8 @@ export const ja = {
   tabbarStyle: 'タブバーの形',
   tabbarTop: '上部に横並び',
   tabbarSide: '左端に縦並び',
+  theme: 'テーマ',
+  themes: { system: 'ブラウザに合わせる', light: 'ライト', dark: 'ダーク' },
   // ドキュメントウィンドウ(15章・17章)
   loadExternalImage: 'クリックで読み込む',
   outsideRoot: '閲覧範囲外',

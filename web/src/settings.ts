@@ -1,5 +1,9 @@
 // 見た目の設定。ブラウザごとに覚える(localStorage。使えない環境では既定値のまま動く)
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+
+/** テーマ: ブラウザに合わせる / ライト / ダーク(18.1) */
+export type Theme = 'system' | 'light' | 'dark';
+export const THEMES: Theme[] = ['system', 'light', 'dark'];
 
 export type Settings = {
   /** 画面下のヒントの帯 */
@@ -14,9 +18,12 @@ export type Settings = {
   openInOpMode: boolean;
   /** Markdown の外部の画像を、クリックを待たずに読み込む(17.2) */
   externalImages: boolean;
+  /** テーマ。ブラウザごとに覚える(端末ごとに好みが違うため。ADR 0031) */
+  theme: Theme;
 };
 
-const DEFAULTS: Settings = { hints: true, tabbar: 'top', syncAudio: false, notify: false, openInOpMode: true, externalImages: false };
+const DEFAULTS: Settings = { hints: true, tabbar: 'top', syncAudio: false, notify: false, openInOpMode: true, externalImages: false, theme: 'system' };
+// index.html の最初の描画の前のスクリプトも、この名前でテーマを読む
 const KEY = 'dew.settings';
 
 function load(): Settings {
@@ -39,5 +46,13 @@ export function useSettings(): [Settings, (patch: Partial<Settings>) => void] {
       }
       return next;
     });
+  useEffect(() => applyTheme(settings.theme), [settings.theme]);
   return [settings, update];
+}
+
+/** <html> の data-theme を付け替える。ブラウザに合わせるときは外す */
+export function applyTheme(theme: Theme) {
+  const root = document.documentElement;
+  if (theme === 'system') delete root.dataset.theme;
+  else root.dataset.theme = theme;
 }
