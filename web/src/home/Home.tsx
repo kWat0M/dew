@@ -494,7 +494,12 @@ export function Home(p: Props) {
         />
         {!compact && <Preview dir={cwd ?? ''} root={p.root} entry={current} showHidden={showHidden} reload={previewReload} onPick={pick} />}
       </div>
-      {p.hints && !compact && <HintBar items={ja.homeHints} onHide={p.onHideHints} />}
+      {p.hints && !compact && (
+        <HintBar
+          items={ja.homeHints.map(([k, l]) => [k, k === 'n' && p.follow ? ja.hintFollowOff : k === '.' && p.showHidden ? ja.hintHiddenOff : l])}
+          onHide={p.onHideHints}
+        />
+      )}
       <button type="button" className="fab" title={ja.toCanvas} onClick={p.onCanvas}>
         <Icon name="canvas" size={24} />
         {p.liveCount > 0 && (
