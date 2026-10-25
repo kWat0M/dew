@@ -200,6 +200,9 @@ test.describe('幅の狭い画面', () => {
     await touchSized(page, '.canvas-bar');
     await touchSized(page, '.window.focused .window-title');
     await touchSized(page, '.window.focused .doc-status');
+    // 戻る・進むは出さず、下部のバーは1段
+    await expect(win('a.md').locator('.doc-nav')).toBeHidden();
+    expect((await win('a.md').getByTestId('doc-status').boundingBox())!.height).toBeLessThan(60);
 
     // タブで切り替える(フォーカス中のタブを押しても最小化しない)
     const tabs = page.getByTestId('taskbar').getByRole('tab');
