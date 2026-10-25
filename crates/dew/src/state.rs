@@ -17,6 +17,8 @@ pub struct ServerFile {
     pub url: String,
     #[serde(default)]
     pub warnings: Vec<String>,
+    #[serde(default)]
+    pub notes: Vec<String>,
     /// サーバを起動したときの dew の実行ファイルの更新時刻(ナノ秒)。ビルドし直したのに古いサーバが
     /// 動き続けているのを見つけるのに使う
     #[serde(default)]
