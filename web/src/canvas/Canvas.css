@@ -402,6 +402,31 @@
   color: var(--md-sys-color-on-tertiary-container);
 }
 
+/* 上部のバーを隠す設定のとき(18.4): 普段は画面の外。上端にマウスを寄せると上から重なって出る(左端のタブバーと同じ作り) */
+.top-edge {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 8px;
+  z-index: 62;
+}
+
+.canvas-bar.autohide {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  box-shadow: var(--md-sys-elevation-level2);
+  transform: translateY(-100%);
+  transition: transform var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+  z-index: 63;
+}
+
+.canvas-bar.autohide.open {
+  transform: none;
+}
+
 /* 左端の縦のタブバー。普段は隠し、画面の左端にマウスを寄せると出る(Zen・Arc 風) */
 .side-edge {
   position: fixed;

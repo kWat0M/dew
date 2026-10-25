@@ -334,6 +334,10 @@ export function App() {
     onShutdown: () => setConfirmStop(true),
   };
   const hideHints = () => updateSettings({ hints: false });
+  const toggleAutoHideBar = () => {
+    updateSettings({ autoHideBar: !settings.autoHideBar });
+    onError(settings.autoHideBar ? ja.barShown : ja.barHidden);
+  };
 
   const runHome = useCallback((a: HomeAction) => homeRun.current?.(a), []);
   const runNormal = useCallback((a: NormalAction) => canvasRun.current?.normal(a), []);
@@ -374,7 +378,10 @@ export function App() {
           { label: ja.followLatest, checked: follow, onChange: setFollow },
           { label: ja.showHidden, checked: showHidden, onChange: setShowHidden },
         ]
-      : [{ label: ja.syncAudio, checked: settings.syncAudio, onChange: (v: boolean) => updateSettings({ syncAudio: v }) }]),
+      : [
+          { label: ja.autoHideBar, checked: settings.autoHideBar, onChange: (v: boolean) => updateSettings({ autoHideBar: v }) },
+          { label: ja.syncAudio, checked: settings.syncAudio, onChange: (v: boolean) => updateSettings({ syncAudio: v }) },
+        ]),
   ];
   sections.push({
     title: ja.secCommon,
@@ -482,6 +489,8 @@ export function App() {
           hints={settings.hints}
           onHideHints={hideHints}
           tabbar={settings.tabbar}
+          autoHideBar={settings.autoHideBar}
+          onToggleAutoHideBar={toggleAutoHideBar}
           onError={onError}
           syncAudio={settings.syncAudio}
           globalMuted={globalMuted}

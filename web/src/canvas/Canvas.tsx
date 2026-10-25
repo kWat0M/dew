@@ -51,7 +51,7 @@ export type NormalAction =
   | PlayAction
   | { do: 'focusDir'; dir: Dir } | { do: 'operate' }
   | { do: 'maximize' } | { do: 'all' } | { do: 'home' } | { do: 'select' } | { do: 'help' } | { do: 'history' }
-  | { do: 'windowMode' } | { do: 'sync' } | { do: 'compareMode' } | { do: 'globalMute' } | { do: 'input' } | { do: 'sendText' }
+  | { do: 'windowMode' } | { do: 'sync' } | { do: 'autoHideBar' } | { do: 'compareMode' } | { do: 'globalMute' } | { do: 'input' } | { do: 'sendText' }
   | { do: 'record' } | { do: 'live' } | { do: 'escape' };
 
 /** ウィンドウ操作モードのキー */
@@ -69,7 +69,7 @@ export const normal: Record<string, NormalAction> = {
   ArrowLeft: { do: 'focusDir', dir: 'h' }, ArrowDown: { do: 'focusDir', dir: 'j' }, ArrowUp: { do: 'focusDir', dir: 'k' }, ArrowRight: { do: 'focusDir', dir: 'l' },
   i: { do: 'operate' }, Enter: { do: 'operate' }, ' ': { do: 'select' },
   f: { do: 'maximize' }, K: { do: 'all' }, Tab: { do: 'home' }, '?': { do: 'help' },
-  w: { do: 'windowMode' }, r: { do: 'history' }, s: { do: 'sync' }, M: { do: 'globalMute' }, R: { do: 'record' },
+  w: { do: 'windowMode' }, r: { do: 'history' }, s: { do: 'autoHideBar' }, S: { do: 'sync' }, M: { do: 'globalMute' }, R: { do: 'record' },
   Escape: { do: 'escape' }, 'C-[': { do: 'escape' },
 };
 
@@ -150,7 +150,8 @@ export const canvasCommands: CommandDef<NormalAction>[] = [
   { id: { do: 'home' }, key: 'Tab', label: 'Home へ戻る' }, { id: { do: 'select' }, key: 'Space', label: '選択を切替' },
   { id: { do: 'maximize' }, key: 'f', label: 'ウィンドウ最大化' }, { id: { do: 'windowMode' }, key: 'w', label: 'ウィンドウ操作モード' },
   { id: { do: 'all' }, key: 'K', label: '全ウィンドウ再生 / 停止' },
-  { id: { do: 'globalMute' }, key: 'M', label: '全体のミュート' }, { id: { do: 'sync' }, key: 's', label: '同期再生' },
+  { id: { do: 'globalMute' }, key: 'M', label: '全体のミュート' }, { id: { do: 'sync' }, key: 'S', label: '同期再生' },
+  { id: { do: 'autoHideBar' }, key: 's', label: '上部のバーを隠す / 出す' },
   { id: { do: 'input' }, key: 'i', label: '入力モード(ライブ)' }, { id: { do: 'sendText' }, key: 'I', label: '文字列を送る(ライブ)' },
   { id: { do: 'record' }, key: 'R', label: '録画の開始 / 停止(ライブ)' }, { id: { do: 'live' }, key: 'G', label: 'ライブへ戻る(巻き戻し中)' },
 ];
@@ -204,6 +205,9 @@ type Props = {
   hints: boolean;
   onHideHints: () => void;
   tabbar: 'top' | 'side';
+  /** 上部のバーを普段は隠す(18.4) */
+  autoHideBar: boolean;
+  onToggleAutoHideBar: () => void;
   /** 同期再生中は全ウィンドウの音を出す */
   syncAudio: boolean;
   /** 全体のミュート(各ウィンドウの音量・ミュートとは別に、全部の音を止める) */
@@ -244,6 +248,18 @@ export function Canvas(p: Props) {
   const [synced, setSynced] = useState(false);
   /** 左端の縦のタブバーを出しているか */
   const [sideOpen, setSideOpen] = useState(false);
+  /** 上部のバーを隠す設定のとき、上端にマウスを寄せて出しているか。幅の狭い画面ではマウスがないので隠さない */
+  const [barOpen, setBarOpen] = useState(false);
+  const hideBar = p.autoHideBar && !compact;
+  // 出ている間は、バーと上端の外でマウスが動いたら隠す(止まったマウスの上にバーが出ると、離れたことが届かないため)
+  useEffect(() => {
+    if (!hideBar || !barOpen) return;
+    const onMove = (e: PointerEvent) => {
+      if (!(e.target instanceof Element) || !e.target.closest('.canvas-bar, .top-edge')) setBarOpen(false);
+    };
+    window.addEventListener('pointermove', onMove);
+    return () => window.removeEventListener('pointermove', onMove);
+  }, [hideBar, barOpen]);
   /** タイル配置でドラッグ中のウィンドウと、落とす先の番号 */
   const [reorder, setReorder] = useState<{ id: number; target: number | null } | null>(null);
   const apis = useRef(new Map<number, PlayerApi | null>());
@@ -538,6 +554,7 @@ export function Canvas(p: Props) {
       case 'history': return p.onHistory();
       case 'windowMode': return setWindowMode(true);
       case 'sync': return setSynced((s) => !s);
+      case 'autoHideBar': return p.onToggleAutoHideBar();
       case 'globalMute': return p.onToggleGlobalMute();
       case 'input':
         if (!focusedLive) return p.onMessage(ja.inputNeedsLive);
@@ -797,7 +814,11 @@ export function Canvas(p: Props) {
         </>
       )}
       {/* ウィンドウの外(上部のバー・タブバー・何もない所・ヒントの帯)を押したら、操作モードを抜ける */}
-      <header className="canvas-bar" onPointerDown={exitOp}>
+      {hideBar && <div className="top-edge" data-testid="top-edge" onPointerEnter={() => setBarOpen(true)} />}
+      <header
+        className={`canvas-bar${hideBar ? ' autohide' : ''}${hideBar && barOpen ? ' open' : ''}`}
+        onPointerDown={exitOp}
+      >
         <button type="button" className="icon-button" title={ja.toHome} aria-label={ja.toHome} onClick={p.onHome}>
           <Icon name="home" />
         </button>

@@ -20,9 +20,11 @@ export type Settings = {
   externalImages: boolean;
   /** テーマ。ブラウザごとに覚える(端末ごとに好みが違うため。ADR 0031) */
   theme: Theme;
+  /** キャンバスの上部のバーを普段は隠し、画面の上端にマウスを寄せたときだけ出す(18.4) */
+  autoHideBar: boolean;
 };
 
-const DEFAULTS: Settings = { hints: true, tabbar: 'top', syncAudio: false, notify: false, openInOpMode: true, externalImages: false, theme: 'system' };
+const DEFAULTS: Settings = { hints: true, tabbar: 'top', syncAudio: false, notify: false, openInOpMode: true, externalImages: false, theme: 'system', autoHideBar: false };
 // index.html の最初の描画の前のスクリプトも、この名前でテーマを読む
 const KEY = 'dew.settings';
 

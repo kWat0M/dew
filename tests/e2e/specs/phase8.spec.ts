@@ -227,3 +227,52 @@ test.describe('幅の狭い画面', () => {
     await expect(page.locator('.window.focused').getByTestId('doc-body')).toContainText('全要素');
   });
 });
+
+// 18.4: キャンバスの上部のバーを s で隠し、上端にマウスを寄せたときだけ出す。同期再生は S
+test('キャンバスの上部のバーを隠し、上端に寄せると出る', async ({ page, dew }) => {
+  copyMd(dew);
+  await start(page, dew);
+  for (const name of ['all.md', 'a.md']) {
+    dew.run([join(dew.root, 'md', name)]);
+    await expect(page.getByTestId('document-window').and(page.getByLabel(name, { exact: true })).getByTestId('doc-body')).toBeVisible();
+  }
+  await page.keyboard.press('Escape');
+  const bar = page.locator('.canvas-bar');
+  const area = page.getByTestId('canvas-area');
+  const before = (await area.boundingBox())!;
+  const inView = async () => ((await bar.boundingBox())!.y + (await bar.boundingBox())!.height) > 1;
+
+  // s で隠すと、バーは画面の外へ出て、ウィンドウの並ぶ領域が上まで広がる
+  await page.keyboard.press('s');
+  await expect(page.getByText('上部のバーを隠しました', { exact: false })).toBeVisible();
+  await expect.poll(inView).toBe(false);
+  await expect.poll(async () => (await area.boundingBox())!.y).toBeLessThan(before.y);
+  expect((await area.boundingBox())!.height).toBeGreaterThan(before.height);
+
+  // 上端に寄せると出て、離すと隠れる
+  await page.mouse.move(400, 300);
+  await page.mouse.move(400, 2);
+  await expect.poll(inView).toBe(true);
+  await page.mouse.move(400, 400);
+  await expect.poll(inView).toBe(false);
+
+  // 読み直しても隠したまま。操作パネルのスイッチでも戻せる
+  await start(page, dew);
+  await page.keyboard.press('Tab');
+  await expect(page.getByTestId('top-edge')).toBeAttached();
+  await page.mouse.move(400, 300);
+  await page.mouse.move(400, 2);
+  await expect.poll(inView).toBe(true);
+  await bar.getByRole('button', { name: '設定 / 操作パネル', exact: true }).click();
+  const toggle = page.getByRole('checkbox', { name: '上部のバーを隠す(s)' });
+  await expect(toggle).toBeChecked();
+  await toggle.click();
+  await expect(page.getByTestId('top-edge')).toHaveCount(0);
+  await page.mouse.move(400, 400);
+  expect(await inView()).toBe(true);
+  await page.getByRole('button', { name: '設定 / 操作パネル', exact: true }).first().click();
+
+  // 同期再生は S
+  await page.keyboard.press('S');
+  await expect(page.getByTestId('sync-indicator')).toBeVisible();
+});
