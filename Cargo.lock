@@ -754,7 +754,7 @@ checksum = "9e9de72ce2ad1f90dc62fa25f0f430ef85eb4b0d8fa0be4f30373bc40a21d28e"
 
 [[package]]
 name = "dew"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -775,7 +775,7 @@ dependencies = [
 
 [[package]]
 name = "dew-capture"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -788,7 +788,7 @@ dependencies = [
 
 [[package]]
 name = "dew-media"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "dew-protocol",
@@ -800,7 +800,7 @@ dependencies = [
 
 [[package]]
 name = "dew-protocol"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -809,7 +809,7 @@ dependencies = [
 
 [[package]]
 name = "dew-server"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "axum",

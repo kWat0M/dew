@@ -72,7 +72,7 @@ v0.1.0 の `dew update` は `kWat0M/dew-releases` を見るので、消したあ
 
 ### リリースのたび
 
-1. `CHANGELOG.md` にその版の変更点を書き、`Cargo.toml` の `version` を上げて、PR で `main` に入れる
+1. `CHANGELOG.md` にその版の変更点を書き、`Cargo.toml` の `version` を上げて、PR で `main` に入れる(2つ目の数を上げるときは、`crates/*/Cargo.toml` のクレート同士の依存の `version` も同じ版にする)
 2. `main` で `scripts/release.sh` を実行する(1 の手順)
 3. タグを付けて push する(`dew update` はこのタグ名で版を比べる)
 
