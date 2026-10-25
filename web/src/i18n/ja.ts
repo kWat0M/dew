@@ -139,7 +139,7 @@ export const ja = {
   wMaximize: '最大化 / 元に戻す',
   keyHelp: 'キー一覧',
   hints: 'ヒント',
-  opsPanel: '操作パネル',
+  opsPanel: '設定 / 操作パネル',
   settings: '設定',
   showHints: '画面下にヒントを出す',
   showHidden: '隠しファイルを表示',

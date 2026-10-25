@@ -52,7 +52,7 @@ test('1-home', async ({ page, demo }) => {
   await keys(page, ['Escape'], 800);
   // キー一覧が閉じきる前のクリックは閉じる操作になるので、パネルが出るまで押し直す
   await expect(async () => {
-    await clickOn(page, page.getByRole('button', { name: '操作パネル', exact: true }));
+    await clickOn(page, page.getByRole('button', { name: '設定 / 操作パネル', exact: true }));
     await expect(page.getByTestId('ops-panel')).toBeVisible({ timeout: 1000 });
   }).toPass();
   await pause(page, 3000);

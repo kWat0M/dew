@@ -146,7 +146,7 @@ test('Home のバー: キャンバスへは左端、右は 検索・履歴・グ
   const x = async (name: string) => (await page.getByRole('button', { name, exact: true }).first().boundingBox())!.x;
   const crumbs = await page.getByRole('navigation', { name: 'path' }).boundingBox();
   expect(await x('キャンバスへ')).toBeLessThan(crumbs!.x);
-  const order = ['絞り込み', '履歴', 'グリッド表示', 'キー一覧', '操作パネル'];
+  const order = ['絞り込み', '履歴', 'グリッド表示', 'キー一覧', '設定 / 操作パネル'];
   const xs = await Promise.all(order.map(x));
   expect([...xs].sort((a, b) => a - b)).toEqual(xs);
   // テストでは HOME が範囲外なので、初期位置は --root の場所(パンくずの最後)

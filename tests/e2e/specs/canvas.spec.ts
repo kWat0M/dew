@@ -121,7 +121,7 @@ test('キャンバスのバーの並び: 全体ミュート・同期・配置・
   await openFour(page);
   const bar = page.locator('.canvas-bar');
   const x = async (name: string) => (await bar.getByRole('button', { name, exact: true }).boundingBox())!.x;
-  const order = ['ミュートを解除', '同期再生', 'タイル配置', '履歴', 'キー一覧', '操作パネル', 'サーバを停止'];
+  const order = ['ミュートを解除', '同期再生', 'タイル配置', '履歴', 'キー一覧', '設定 / 操作パネル', 'サーバを停止'];
   const xs = await Promise.all(order.map(x));
   expect([...xs].sort((a, b) => a - b)).toEqual(xs);
 });
