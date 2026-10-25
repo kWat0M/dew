@@ -85,7 +85,7 @@
 
 ### 次のリリースの手順(`docs/manual/release.md` の 3)
 
-0.2.0(2026-10-25): `phase-8` で版を 0.2.0 に上げた(CHANGELOG の「未リリース」を 0.2.0 にした)。ユーザーが `phase-8` の PR を main にマージしたら(`canvas-keys` の分も含む)、下の 2 から行う。
+0.2.0 は 2026-10-25 にリリースした(タグ `v0.2.0`、`dew update` での更新も確かめた)。0.2.1 は `fix-0.2.1` で版を上げた。ユーザーが PR を main にマージしたら、下の 2 から行う。作業ツリーに compose の変更があると `scripts/release.sh` が止まるので、そのときは作業用の場所に main を clone して流す(worktree は `.git` がファイルになり、版のコミットが unknown になるので使わない)。
 
 1. 新しいブランチで `CHANGELOG.md` に変更点を書き、`Cargo.toml` の `version` を上げ(2つ目の数を上げるときは `crates/*/Cargo.toml` のクレート同士の依存の `version` も)、PR で `main` に入れてもらう
 2. `main` で `scripts/release.sh`(コミットしていない変更があると止まる)。配布物で E2E を流すなら `DEW_BIN=<dist の dew> pnpm -C tests/e2e exec playwright test`

@@ -309,6 +309,13 @@ export const ja = {
   } satisfies Record<string, [string, string][]>,
   /** 録画中は R の説明を変える */
   hintRecordStop: '録画を止める',
+  /** 状態で変わるキーの説明(ヒントの帯は、今押したら何が起きるかを出す) */
+  hintBarShow: 'バーを出す',
+  hintSyncOff: '同期を解除',
+  hintUnmute: 'ミュート解除',
+  hintRestore: '元に戻す',
+  hintFollowOff: '追従をやめる',
+  hintHiddenOff: '隠しファイルを隠す',
   windowHints: [
     ['h/j/k/l', '移動'], ['H/J/K/L', '入れ替え'], ['1–9', '番号'], ['Space', '選択'], ['a', '全選択'], ['+ -', '拡大 / 縮小'],
     ['=', '均等'], ['t', '配置'], ['m/f', '最小化 / 最大化'], ['o', 'ほかを閉じる'], ['x/X', '閉じる / 全部'], ['r', '大きさ合わせ'], ['q', '抜ける'],

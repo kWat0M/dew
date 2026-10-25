@@ -276,3 +276,42 @@ test('キャンバスの上部のバーを隠し、上端に寄せると出る',
   await page.keyboard.press('S');
   await expect(page.getByTestId('sync-indicator')).toBeVisible();
 });
+
+// ヒントの帯は、状態で変わるキーに、今押したら何が起きるかを出す(0.2.1)
+test('ヒントの帯は状態に合わせて変わる', async ({ page, dew }) => {
+  copyMd(dew);
+  await start(page, dew);
+  const hints = page.getByTestId('hint-bar');
+  const item = (key: string) => hints.locator('.hint').filter({ has: page.locator('kbd').getByText(key, { exact: true }) });
+
+  // Home: 隠しファイル・追従
+  await expect(current(page).getByRole('option', { name: 'md', exact: true })).toBeVisible();
+  await expect(item('.')).toHaveText(/隠しファイル$/);
+  await page.keyboard.press('.');
+  await expect(item('.')).toHaveText(/隠しファイルを隠す/);
+  await page.keyboard.press('.');
+  await expect(item('n')).toHaveText(/追従$/);
+  await page.keyboard.press('n');
+  await expect(item('n')).toHaveText(/追従をやめる/);
+  await page.keyboard.press('n');
+
+  // キャンバス: 入った直後はミュート中
+  dew.run([join(dew.root, 'md', 'a.md')]);
+  await expect(page.getByTestId('document-window').getByTestId('doc-body')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(item('M')).toHaveText(/ミュート解除/);
+  await page.keyboard.press('M');
+  await expect(item('M')).toHaveText(/全体ミュート/);
+  await page.keyboard.press('s');
+  await expect(item('s')).toHaveText(/バーを出す/);
+  await page.keyboard.press('s');
+  await expect(item('s')).toHaveText(/バーを隠す/);
+  await page.keyboard.press('S');
+  await expect(item('S')).toHaveText(/同期を解除/);
+  await page.keyboard.press('S');
+  await expect(item('S')).toHaveText(/同期$/);
+  await page.keyboard.press('f');
+  await expect(item('f')).toHaveText(/元に戻す/);
+  await page.keyboard.press('f');
+  await expect(item('f')).toHaveText(/最大化/);
+});

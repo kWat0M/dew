@@ -86,6 +86,8 @@ pub struct Ready {
     pub url: String,
     /// 利用者に知らせる警告
     pub warnings: Vec<String>,
+    /// 利用者に知らせる注意(問題ではないが、知っておくとよいこと)
+    pub notes: Vec<String>,
 }
 
 pub(crate) struct App {
@@ -153,13 +155,16 @@ pub async fn serve(cfg: Config, on_ready: impl FnOnce(&Ready)) -> anyhow::Result
     });
 
     let mut warnings = Vec::new();
+    let mut notes = Vec::new();
+    // 未設定なら localhost(手元の PC や WSL2 ではそのまま開ける。リモートのサーバでは設定してもらう。ADR 0032)
     let host = match &cfg.public_host {
         Some(h) => h.clone(),
         None => {
-            warnings.push(
-                "DEW_PUBLIC_HOST が未設定のため、URL にはこのマシンのホスト名を使います".to_owned(),
+            notes.push(
+                "URL には localhost を使います(ほかの名前にするには DEW_PUBLIC_HOST を設定)"
+                    .to_owned(),
             );
-            hostname()
+            "localhost".to_owned()
         }
     };
     let public_port = match cfg.public_port {
@@ -178,6 +183,7 @@ pub async fn serve(cfg: Config, on_ready: impl FnOnce(&Ready)) -> anyhow::Result
         token: app.token(),
         instance_id: app.instance_id.clone(),
         warnings,
+        notes,
     };
 
     let router = router(app.clone());

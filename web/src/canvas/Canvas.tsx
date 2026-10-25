@@ -312,7 +312,18 @@ export function Canvas(p: Props) {
   /** ヒントの帯: ノーマルモードは共通のキー、操作モードはフォーカス中のウィンドウの種類と状態で効くキー(4.4) */
   const canvasHints = (): [string, string][] => {
     const H = ja.canvasHints;
-    if (!lead) return H.normal;
+    if (!lead) {
+      // 状態で変わるキーは、今押したら何が起きるかを出す
+      const focusedWin = ws.find((w) => w.id === p.focused);
+      const now: Record<string, string> = {
+        ...(hideBar && { s: ja.hintBarShow }),
+        ...(synced && { S: ja.hintSyncOff }),
+        ...(p.globalMuted && { M: ja.hintUnmute }),
+        ...(p.focused !== null && maximized === p.focused && { f: ja.hintRestore }),
+        ...(focusedWin?.live?.recording && { R: ja.hintRecordStop }),
+      };
+      return H.normal.map(([k, l]) => [k, now[k] ?? l]);
+    }
     if (docHints) return H.docHinting;
     if (liveInput) return H.input;
     let own: [string, string][];

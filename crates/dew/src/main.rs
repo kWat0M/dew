@@ -225,6 +225,9 @@ fn start(args: &ServeArgs, path: Option<&Path>) -> anyhow::Result<()> {
             for w in &s.warnings {
                 eprintln!("dew: 警告: {w}");
             }
+            for n in &s.notes {
+                eprintln!("dew: 注意: {n}");
+            }
             s
         }
     };
@@ -279,6 +282,9 @@ fn ensure_server(args: &ServeArgs) -> anyhow::Result<ServerFile> {
     let s = spawn(args)?;
     for w in &s.warnings {
         eprintln!("dew: 警告: {w}");
+    }
+    for n in &s.notes {
+        eprintln!("dew: 注意: {n}");
     }
     eprintln!("dew: サーバを起動しました。ブラウザで次の URL を開いてください");
     eprintln!("\x1b]8;;{0}\x1b\\{0}\x1b]8;;\x1b\\", s.url);
@@ -511,6 +517,7 @@ fn foreground(args: &ServeArgs) -> anyhow::Result<()> {
             local_host,
             url: r.url.clone(),
             warnings: r.warnings.clone(),
+            notes: r.notes.clone(),
             exe_mtime,
             root: root_text,
         };
