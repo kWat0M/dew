@@ -412,12 +412,6 @@ export function Home(p: Props) {
         </nav>
         <div className="home-status">
           {marked.size > 0 && <span className="chip">{ja.selectedCount(marked.size)}</span>}
-          {!compact && (
-            <button type="button" className="text-button with-icon" title={ja.downloadKey} onClick={() => run('download')}>
-              <Icon name="download" size={18} />
-              {ja.download}
-            </button>
-          )}
           {marked.size > 1 && !compact && (
             <button type="button" className="text-button with-icon" title={ja.compareKey} onClick={() => run('compare')}>
               <Icon name="compare" size={18} />
@@ -429,9 +423,16 @@ export function Home(p: Props) {
           <Toolbar
             {...p.toolbar}
             lead={
-              <button type="button" className="icon-button" title={ja.filter} aria-label={ja.filter} onClick={() => setFiltering(true)}>
-                <Icon name="search" />
-              </button>
+              <>
+                {!compact && (
+                  <button type="button" className="icon-button" title={ja.downloadKey} aria-label={ja.download} onClick={() => run('download')}>
+                    <Icon name="download" />
+                  </button>
+                )}
+                <button type="button" className="icon-button" title={ja.filter} aria-label={ja.filter} onClick={() => setFiltering(true)}>
+                  <Icon name="search" />
+                </button>
+              </>
             }
             middle={
               !compact && (
