@@ -1,10 +1,10 @@
-# 引き継ぎ(2026-10-24 時点、フェーズ8の後)
+# 引き継ぎ(2026-10-25 時点、フェーズ8の後)
 
 次のセッションが、この文書だけで続きを始められるようにまとめる。仕様は `docs/spec.md`、判断の記録は `docs/decisions/`(ADR 0001〜0031)が正。迷ったら spec → ADR の順に見る。
 
 ## 1. 今どこにいるか
 
-- **フェーズ8(テーマ・スマホの画面・ダウンロード、spec 18章)を作った**(2026-10-24、ブランチ `phase-8`。`canvas-keys` の上に切った。ADR 0031)。テーマはブラウザごとに覚え、`<html data-theme>` でトークンを切り替える。幅 600px 未満では Home を1カラム、キャンバスを1つずつ全画面にする(`web/src/useCompact.ts`)。スマホへのつなぎ方は変えない(ユーザーは ssh で入ったサーバからトークン付きの URL を開く)。保存は `crates/server/src/download.rs`(zip クレートを追加。ユーザー承認済み)で、zip はまとめながら送る。受け入れ基準7項目は `tests/e2e/specs/phase8.spec.ts` で確かめた。見た目・操作感の確認は `docs/manual/phase8-check.md`
+- **フェーズ8(テーマ・スマホの画面・ダウンロード、spec 18章)を作った**(2026-10-24、ブランチ `phase-8`。`canvas-keys` の上に切った。ADR 0031)。テーマはブラウザごとに覚え、`<html data-theme>` でトークンを切り替える。幅 600px 未満では Home を1カラム、キャンバスを1つずつ全画面にする(`web/src/useCompact.ts`)。スマホへのつなぎ方は変えない(ユーザーは ssh で入ったサーバからトークン付きの URL を開く)。保存は `crates/server/src/download.rs`(zip クレートを追加。ユーザー承認済み)で、zip はまとめながら送る。2026-10-25 の手直しで、保存は Home だけにし(キャンバスの保存のボタンと `D` を外した)、キャンバスの上部のバーを隠す設定(`s`。同期再生は `S`。spec 18.4)を足した。受け入れ基準9項目は `tests/e2e/specs/phase8.spec.ts` で確かめた。見た目・操作感の確認は `docs/manual/phase8-check.md`
 - **キャンバスのキー操作を見直した**(2026-10-24、ブランチ `canvas-keys`、ADR 0030、spec 5章と 11章「キー操作の見直し」)。ノーマルモードの hjkl でウィンドウを選び、`i` / Enter / クリックで操作モード(以前の文書の「入力モード」)に入る。入力モードはライブだけで、操作モードの `i` でさらに入る。抜けるキーは Esc・`Ctrl+[`・`q`(`Ctrl+]` は廃止)。選択中の同じ種類のウィンドウにまとめて操作モードで入れる。CSV の小さな画面は hjkl・Enter で操作でき、Home の右カラムの項目は押して開ける。受け入れ基準は `tests/e2e/specs/keys.spec.ts` で確かめた。見た目・操作感の確認は `docs/manual/keys-check.md`。フェーズ7は PR #17 で main に入った
 - **フェーズ7(CSV、spec 16章)を作った**(2026-10-23、PR #17 で main に入った。ADR 0029)。受け入れ基準12項目は自動テストで確かめた(E2E 全体が通る)。見た目・操作感の確認は `docs/manual/phase7-check.md`。DuckDB は zig + `cargo zigbuild` で musl に静的リンクでき、配布用ビルドは `scripts/release.sh`(`cargo zigbuild`)。開発用コンテナは作り直し済み(zig と cargo-zigbuild が入った。作り直すと Playwright の Firefox が消えるので `pnpm -C tests/e2e exec playwright install firefox` で入れ直す)。フェーズ1〜7はすべて終わり。続きは 3 章の候補から
 - **ブラウザの履歴に画面の移り変わりを積んだ**(2026-10-23、PR #16 で main に入った。ADR 0028)。戻る・進む・マウスのサイドボタンで Home のディレクトリ・Home とキャンバス・文書のリンクを辿れる
