@@ -5,7 +5,6 @@ import { HintBar } from '../ui/HintBar';
 import { Toolbar, type ToolbarActions } from '../ui/Toolbar';
 import type { MediaKind } from '../protocol/MediaKind';
 import { basename } from '../format';
-import type { DownloadItem } from '../download';
 import { ja } from '../i18n/ja';
 import { Icon } from '../icons';
 import { isLeaveKey, KeySequence } from '../keys';
@@ -51,7 +50,7 @@ export type CanvasRun = {
 export type NormalAction =
   | PlayAction
   | { do: 'focusDir'; dir: Dir } | { do: 'operate' }
-  | { do: 'maximize' } | { do: 'all' } | { do: 'home' } | { do: 'select' } | { do: 'download' } | { do: 'help' } | { do: 'history' }
+  | { do: 'maximize' } | { do: 'all' } | { do: 'home' } | { do: 'select' } | { do: 'help' } | { do: 'history' }
   | { do: 'windowMode' } | { do: 'sync' } | { do: 'compareMode' } | { do: 'globalMute' } | { do: 'input' } | { do: 'sendText' }
   | { do: 'record' } | { do: 'live' } | { do: 'escape' };
 
@@ -69,7 +68,7 @@ export const normal: Record<string, NormalAction> = {
   h: { do: 'focusDir', dir: 'h' }, j: { do: 'focusDir', dir: 'j' }, k: { do: 'focusDir', dir: 'k' }, l: { do: 'focusDir', dir: 'l' },
   ArrowLeft: { do: 'focusDir', dir: 'h' }, ArrowDown: { do: 'focusDir', dir: 'j' }, ArrowUp: { do: 'focusDir', dir: 'k' }, ArrowRight: { do: 'focusDir', dir: 'l' },
   i: { do: 'operate' }, Enter: { do: 'operate' }, ' ': { do: 'select' },
-  f: { do: 'maximize' }, K: { do: 'all' }, D: { do: 'download' }, Tab: { do: 'home' }, '?': { do: 'help' },
+  f: { do: 'maximize' }, K: { do: 'all' }, Tab: { do: 'home' }, '?': { do: 'help' },
   w: { do: 'windowMode' }, r: { do: 'history' }, s: { do: 'sync' }, M: { do: 'globalMute' }, R: { do: 'record' },
   Escape: { do: 'escape' }, 'C-[': { do: 'escape' },
 };
@@ -114,12 +113,6 @@ const opMaps = { video: new KeySequence(playKeys), compare: new KeySequence(comp
 
 /** ウィンドウの種類。操作モードのキーと、複数選択から一緒に操作モードに入れるもの(同じ種類だけ)を決める */
 export type WinKind = 'live' | 'doc' | 'csv' | 'compare' | 'image' | 'video';
-/** ウィンドウで見ているファイル(比較ウィンドウは全部。ライブウィンドウにはない) */
-function filesOf(w: Win): DownloadItem[] {
-  if (w.live) return [];
-  return (w.members ?? [w]).map((m) => ({ path: m.path, dir: false }));
-}
-
 export function kindOf(w: Win): WinKind {
   if (w.live) return 'live';
   if (w.members) return 'compare';
@@ -155,7 +148,6 @@ export const playCommands: CommandDef<NormalAction>[] = [
 export const canvasCommands: CommandDef<NormalAction>[] = [
   { id: { do: 'operate' }, key: 'i', label: '操作モード' }, { id: { do: 'escape' }, key: 'Esc', label: '操作モードを抜ける' },
   { id: { do: 'home' }, key: 'Tab', label: 'Home へ戻る' }, { id: { do: 'select' }, key: 'Space', label: '選択を切替' },
-  { id: { do: 'download' }, key: 'D', label: 'ファイルを保存' },
   { id: { do: 'maximize' }, key: 'f', label: 'ウィンドウ最大化' }, { id: { do: 'windowMode' }, key: 'w', label: 'ウィンドウ操作モード' },
   { id: { do: 'all' }, key: 'K', label: '全ウィンドウ再生 / 停止' },
   { id: { do: 'globalMute' }, key: 'M', label: '全体のミュート' }, { id: { do: 'sync' }, key: 's', label: '同期再生' },
@@ -202,8 +194,6 @@ type Props = {
   onClose: (ids: number[]) => void;
   onReorder: (ids: number[]) => void;
   onHome: () => void;
-  /** ファイルを保存する(18.3) */
-  onDownload: (items: DownloadItem[]) => void;
   onHistory: () => void;
   onHelp: () => void;
   onError: (m: string) => void;
@@ -544,12 +534,6 @@ export function Canvas(p: Props) {
       }
       case 'home': return p.onHome();
       case 'select': return runWindow(a);
-      case 'download': {
-        // 選択中のウィンドウ(なければフォーカス中)のファイル。ライブウィンドウは保存しない
-        const ids = selected.size ? [...selected] : p.focused !== null ? [p.focused] : [];
-        const items = ws.filter((w) => ids.includes(w.id)).flatMap(filesOf);
-        return items.length ? p.onDownload(items) : p.onMessage(ja.downloadNothing);
-      }
       case 'help': return p.onHelp();
       case 'history': return p.onHistory();
       case 'windowMode': return setWindowMode(true);
@@ -884,7 +868,6 @@ export function Canvas(p: Props) {
             onFocus: () => focusOnly(w.id),
             onActivate: () => activate(w.id),
             onClose: () => closeIds([w.id]),
-            onDownload: w.live ? undefined : () => p.onDownload(filesOf(w)),
             onToggleSelect: () => toggleSelect(w.id),
             onMinimize: () => minimize(w.id),
             onToggleMaximize: () => toggleMaximize(w.id),

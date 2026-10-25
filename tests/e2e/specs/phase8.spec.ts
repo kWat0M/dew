@@ -105,14 +105,23 @@ test('ファイル・ディレクトリ・選んだ複数を保存できる', as
     expect((await page.request.get(new URL(url, page.url()).href)).status(), url).toBe(403);
   }
 
-  // キャンバス: タイトルバーのボタンと、ノーマルモードの D
+  // Home の保存ボタンは選んでいなくても出ていて、カーソルの位置のものを保存する
+  await md.click();
+  const save = page.locator('.home-status').getByRole('button', { name: '保存', exact: true });
+  const [d] = await Promise.all([page.waitForEvent('download'), save.click()]);
+  expect(d.suggestedFilename()).toBe('日本語 メモ.md');
+
+  // 保存は Home だけ: キャンバスには保存のボタンがなく、D でも保存しない
   await md.dblclick();
   const win = page.getByTestId('document-window');
   await expect(win.getByTestId('doc-body')).toBeVisible();
-  const [d] = await Promise.all([page.waitForEvent('download'), win.getByRole('button', { name: '保存', exact: true }).click()]);
-  expect(d.suggestedFilename()).toBe('日本語 メモ.md');
+  await expect(win.getByRole('button', { name: '保存', exact: true })).toHaveCount(0);
   await page.keyboard.press('Escape');
-  expect((await press(page, 'D')).name).toBe('日本語 メモ.md');
+  let downloaded = false;
+  page.on('download', () => (downloaded = true));
+  await page.keyboard.press('D');
+  await page.waitForTimeout(500);
+  expect(downloaded).toBe(false);
 });
 
 // 18.3: 合計が 1 GB を超えるときは、保存する前に確かめる(合計の応答を差し替えて確かめる)

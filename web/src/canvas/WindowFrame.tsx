@@ -27,8 +27,6 @@ export type FrameProps = {
   /** 本体を押した: フォーカスして操作モードに入る */
   onActivate: () => void;
   onClose: () => void;
-  /** ファイルを保存する(ライブウィンドウにはない。18.3) */
-  onDownload?: () => void;
   onToggleSelect: () => void;
   onMinimize: () => void;
   onToggleMaximize: () => void;
@@ -101,11 +99,6 @@ export function WindowFrame({ sectionRef, ...p }: Props) {
         <span className="window-name">{p.name}</span>
         <span className="title-controls" onPointerDown={stop} onDoubleClick={stop}>
           {p.titleButtons}
-          {p.onDownload && (
-            <button type="button" className="icon-button small" title={ja.download} aria-label={ja.download} onClick={p.onDownload}>
-              <Icon name="download" size={18} />
-            </button>
-          )}
           {!compact && (
             <>
               <button type="button" className="icon-button small" title={ja.minimize} aria-label={ja.minimize} onClick={p.onMinimize}>

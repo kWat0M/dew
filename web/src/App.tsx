@@ -476,7 +476,6 @@ export function App() {
           }}
           onReorder={(ids) => setWindows((ws) => ids.map((id) => ws.find((w) => w.id === id)!))}
           onHome={goHome}
-          onDownload={download}
           onHistory={() => setHistoryOpen(true)}
           onHelp={() => setHelpOpen(true)}
           toolbar={toolbar}

@@ -412,8 +412,8 @@ export function Home(p: Props) {
         </nav>
         <div className="home-status">
           {marked.size > 0 && <span className="chip">{ja.selectedCount(marked.size)}</span>}
-          {marked.size > 0 && !compact && (
-            <button type="button" className="text-button with-icon" onClick={() => run('download')}>
+          {!compact && (
+            <button type="button" className="text-button with-icon" title={ja.downloadKey} onClick={() => run('download')}>
               <Icon name="download" size={18} />
               {ja.download}
             </button>
