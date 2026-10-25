@@ -8,6 +8,7 @@ import type { CsvRows } from '../protocol/CsvRows';
 import type { CsvSchema } from '../protocol/CsvSchema';
 import type { CsvSearch } from '../protocol/CsvSearch';
 import type { CsvView } from '../protocol/CsvView';
+import type { DownloadSize } from '../protocol/DownloadSize';
 import type { History } from '../protocol/History';
 import type { Info } from '../protocol/Info';
 import type { Probe } from '../protocol/Probe';
@@ -48,6 +49,8 @@ const csvq = (path: string, o: CsvOptions) =>
 
 export const api = {
   info: () => getJson<Info>('/api/info'),
+  /** 保存する前の合計(18.3) */
+  downloadSize: (paths: string[]) => getJson<DownloadSize>(`/api/download/size?${paths.map(q).join('&')}`),
   tree: (path: string) => getJson<Tree>(`/api/tree?${q(path)}`),
   probe: (path: string) => getJson<Probe>(`/api/probe?${q(path)}`),
   history: () => getJson<History>('/api/history'),

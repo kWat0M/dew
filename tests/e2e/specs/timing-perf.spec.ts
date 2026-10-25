@@ -29,7 +29,7 @@ test('キャンバスの s で2本を同期再生する', async ({ page, dew }) 
   await expect(page.getByTestId('player-window')).toHaveCount(2);
   // わざと位置をずらしてから同期する
   await page.keyboard.press('3');
-  await page.keyboard.press('s');
+  await page.keyboard.press('S');
   await expect(page.getByTestId('sync-indicator')).toBeVisible();
   await page.keyboard.press('0');
   await playTenSeconds(page);

@@ -7,7 +7,7 @@ import { ja } from '../i18n/ja';
 import { Icon } from '../icons';
 
 /** キャンバスのキーから呼ぶ操作 */
-export type ImageApi = { toggleActual(): void; zoomBy(f: number): void };
+export type ImageApi = { toggleActual(): void; zoomBy(f: number): void; panBy(dx: number, dy: number): void };
 
 const MIN_SCALE = 1 / 32;
 const MAX_SCALE = 64;
@@ -73,7 +73,15 @@ export function ImageView({ path, api: apiRef, onError, onReady }: { path: strin
   // 等倍は Windows の表示倍率を打ち消して、ディスプレイの1画素に合わせる(7.9)
   const actual = 1 / (window.devicePixelRatio || 1);
   const toggleActual = useCallback(() => setView(view.scale === actual ? FIT : { scale: actual, centered: true, x: 0, y: 0 }), [view.scale, actual]);
-  useImperativeHandle(apiRef, () => ({ toggleActual, zoomBy }), [toggleActual, zoomBy]);
+  /** 表示位置を動かす(操作モードの hjkl)。フィットのままなら動かさない */
+  const panBy = useCallback(
+    (dx: number, dy: number) => {
+      if (view.scale === null) return;
+      setView({ scale: view.scale, centered: false, x: x + dx, y: y + dy });
+    },
+    [view.scale, x, y],
+  );
+  useImperativeHandle(apiRef, () => ({ toggleActual, zoomBy, panBy }), [toggleActual, zoomBy, panBy]);
 
   // ホイールで拡大・縮小(ページのスクロールを止めるため passive にしない)
   useEffect(() => {

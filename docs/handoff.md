@@ -1,10 +1,12 @@
-# 引き継ぎ(2026-10-23 時点、フェーズ7の後)
+# 引き継ぎ(2026-10-25 時点、フェーズ8の後)
 
-次のセッションが、この文書だけで続きを始められるようにまとめる。仕様は `docs/spec.md`、判断の記録は `docs/decisions/`(ADR 0001〜0027)が正。迷ったら spec → ADR の順に見る。
+次のセッションが、この文書だけで続きを始められるようにまとめる。仕様は `docs/spec.md`、判断の記録は `docs/decisions/`(ADR 0001〜0031)が正。迷ったら spec → ADR の順に見る。
 
 ## 1. 今どこにいるか
 
-- **フェーズ7(CSV、spec 16章)を作った**(2026-10-23、ブランチ `phase-7`、ADR 0029)。受け入れ基準12項目は自動テストで確かめた(E2E 全体が通る)。見た目・操作感の確認は `docs/manual/phase7-check.md`。DuckDB は zig + `cargo zigbuild` で musl に静的リンクでき、配布用ビルドは `scripts/release.sh`(`cargo zigbuild`)。**開発用コンテナの作り直しが要る**(Dockerfile に zig と cargo-zigbuild を足した。それまでは手元の `~/.local/opt/zig-*` と `~/.cargo/bin/cargo-zigbuild` を PATH に足して使う)。フェーズ1〜7はすべて終わり。続きは 3 章の候補から
+- **フェーズ8(テーマ・スマホの画面・ダウンロード、spec 18章)を作った**(2026-10-24、ブランチ `phase-8`。`canvas-keys` の上に切った。ADR 0031)。テーマはブラウザごとに覚え、`<html data-theme>` でトークンを切り替える。幅 600px 未満では Home を1カラム、キャンバスを1つずつ全画面にする(`web/src/useCompact.ts`)。スマホへのつなぎ方は変えない(ユーザーは ssh で入ったサーバからトークン付きの URL を開く)。保存は `crates/server/src/download.rs`(zip クレートを追加。ユーザー承認済み)で、zip はまとめながら送る。2026-10-25 の手直しで、保存は Home だけにし(キャンバスの保存のボタンと `D` を外した)、キャンバスの上部のバーを隠す設定(`s`。同期再生は `S`。spec 18.4)を足した。受け入れ基準9項目は `tests/e2e/specs/phase8.spec.ts` で確かめた。見た目・操作感の確認は `docs/manual/phase8-check.md`
+- **キャンバスのキー操作を見直した**(2026-10-24、ブランチ `canvas-keys`、ADR 0030、spec 5章と 11章「キー操作の見直し」)。ノーマルモードの hjkl でウィンドウを選び、`i` / Enter / クリックで操作モード(以前の文書の「入力モード」)に入る。入力モードはライブだけで、操作モードの `i` でさらに入る。抜けるキーは Esc・`Ctrl+[`・`q`(`Ctrl+]` は廃止)。選択中の同じ種類のウィンドウにまとめて操作モードで入れる。CSV の小さな画面は hjkl・Enter で操作でき、Home の右カラムの項目は押して開ける。受け入れ基準は `tests/e2e/specs/keys.spec.ts` で確かめた。見た目・操作感の確認は `docs/manual/keys-check.md`。フェーズ7は PR #17 で main に入った
+- **フェーズ7(CSV、spec 16章)を作った**(2026-10-23、PR #17 で main に入った。ADR 0029)。受け入れ基準12項目は自動テストで確かめた(E2E 全体が通る)。見た目・操作感の確認は `docs/manual/phase7-check.md`。DuckDB は zig + `cargo zigbuild` で musl に静的リンクでき、配布用ビルドは `scripts/release.sh`(`cargo zigbuild`)。開発用コンテナは作り直し済み(zig と cargo-zigbuild が入った。作り直すと Playwright の Firefox が消えるので `pnpm -C tests/e2e exec playwright install firefox` で入れ直す)。フェーズ1〜7はすべて終わり。続きは 3 章の候補から
 - **ブラウザの履歴に画面の移り変わりを積んだ**(2026-10-23、PR #16 で main に入った。ADR 0028)。戻る・進む・マウスのサイドボタンで Home のディレクトリ・Home とキャンバス・文書のリンクを辿れる
 - **開発用コンテナを dotfiles の新しい見本に合わせた**(2026-10-22、ブランチ `dev-container`(`phase-6` の上)、ADR 0027、spec 10章)。WSLg に依存しないので、WSL2 でも Linux サーバのコンテナでも同じ `./dev.sh` で入れる。設定は `compose/.env`(`compose/.env.example` から作る)。E2E の Firefox の音は、テスト中だけ立てるブラウザ用の pulseaudio に出す(`tests/e2e/lib/browser-audio.ts`)。新しいコンテナで Rust 114件・web 単体 33件が通り、E2E は perf を単独で流すと通る(全体で流したときはホストの負荷で perf が落ち、後の timing は流れなかった)。**続きは、開発する場所を共用の Linux サーバのコンテナへ移すこと**(4.1)
 - **フェーズ6(ドキュメントウィンドウ・Markdown、spec 15・17章)を作った**(2026-10-21、ブランチ `phase-6`、ADR 0024。確認を受けた修正は ADR 0025・0026)。受け入れ基準は自動テストで確かめた。見た目・操作感の確認は `docs/manual/phase6-check.md`。続きはフェーズ7(CSV。DuckDB を zig + cargo-zigbuild で musl に組み込むところから)
@@ -27,6 +29,8 @@
 | ブランチ | 状態 |
 |---|---|
 | `main` | 最新(`466cdcf`、PR #13 でフェーズ5まで。v0.1.2 も入っている)。直接コミットしない |
+| `canvas-keys` | キー操作の見直し(ADR 0030)。push 済み。PR・マージはユーザー |
+| `phase-8` | `canvas-keys` の上に、フェーズ8(ADR 0031)。`canvas-keys` を先にマージしてから PR にする |
 | `phase-6` | フェーズ6とその修正(ADR 0024〜0026)。push 済み。PR・マージはユーザー |
 | `dev-container` | `phase-6` の上に、開発用コンテナの書き換え(ADR 0027)。push 済み。PR・マージはユーザー |
 | `handoff-0.1.0` | 手元だけ(push していない)。**サーバの IP とホームのパスが入っているので push しない**。中身はこの文書に取り込んだので消してよい |
@@ -53,7 +57,7 @@
 | `tests/apps/` | テスト用の GUI アプリ(counter・popup・exact_sample など) |
 | `scripts/release.sh` | 配布物を作る(`dist/`) |
 | `scripts/demo/` | README の紹介動画を撮る: `record.sh`(素材を作って Playwright で録画し、`docs/demo/` に MP4 と GIF)、`make-media.sh`(ffmpeg で素材)、`apps/`(映すアプリ)。録画の操作は `tests/e2e/demo/`(設定は `tests/e2e/demo.config.ts`。ふつうの E2E には入らない) |
-| `docs/manual/` | 人が行う手順: `release.md`(リリース)、`remote-test.md`(リモートサーバでの確認)、`phase3-check.md`・`phase4-check.md`(見た目・操作感の確認) |
+| `docs/manual/` | 人が行う手順: `release.md`(リリース)、`remote-test.md`(リモートサーバでの確認)、`phase3-check.md`〜`phase7-check.md`・`keys-check.md`(見た目・操作感の確認) |
 | `README.md`・`LICENSE`・`CHANGELOG.md` | 利用者向けの説明・利用条件・変更履歴。配布物にも入れる |
 
 ## 3. 次にやること(候補。上から優先)
@@ -81,7 +85,9 @@
 
 ### 次のリリースの手順(`docs/manual/release.md` の 3)
 
-1. 新しいブランチで `CHANGELOG.md` に変更点を書き、`Cargo.toml` の `version` を上げ、PR で `main` に入れてもらう
+0.2.0(2026-10-25): `phase-8` で版を 0.2.0 に上げた(CHANGELOG の「未リリース」を 0.2.0 にした)。ユーザーが `phase-8` の PR を main にマージしたら(`canvas-keys` の分も含む)、下の 2 から行う。
+
+1. 新しいブランチで `CHANGELOG.md` に変更点を書き、`Cargo.toml` の `version` を上げ(2つ目の数を上げるときは `crates/*/Cargo.toml` のクレート同士の依存の `version` も)、PR で `main` に入れてもらう
 2. `main` で `scripts/release.sh`(コミットしていない変更があると止まる)。配布物で E2E を流すなら `DEW_BIN=<dist の dew> pnpm -C tests/e2e exec playwright test`
 3. タグ `v<版>` を付けて push(許可を得る。`dew update` はこのタグ名で版を比べる)
 4. ユーザーが Web で `kWat0M/dew` の Release を作り、tar.gz を載せる

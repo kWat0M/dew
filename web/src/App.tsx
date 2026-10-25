@@ -8,6 +8,9 @@ import type { Command, Section } from './commands';
 import type { LiveWindow } from './protocol/LiveWindow';
 import { useSettings } from './settings';
 import { Dialog } from './ui/Dialog';
+import { CONFIRM_BYTES, prepare, start as startDownload, type DownloadItem } from './download';
+import { formatSize } from './format';
+import type { DownloadSize } from './protocol/DownloadSize';
 import { OpsPanel } from './ui/OpsPanel';
 import type { ToolbarActions } from './ui/Toolbar';
 import { HistoryWindow } from './history/HistoryWindow';
@@ -66,9 +69,9 @@ export function App() {
   const [startDir, setStartDir] = useState<string | null>(null);
   /** 閲覧範囲の起点(Markdown の範囲外の画像を出さないのに使う) */
   const [root, setRoot] = useState('/');
-  /** ドキュメントを開いた直後に入力モードにするウィンドウ(15.3) */
-  const [inputRequest, setInputRequest] = useState<{ id: number; seq: number } | null>(null);
-  const inputSeq = useRef(0);
+  /** 開いた直後に操作モードにするウィンドウ(15.3、ADR 0030) */
+  const [opRequest, setOpRequest] = useState<{ id: number; seq: number } | null>(null);
+  const opSeq = useRef(0);
   /** Home に表示を求めるディレクトリ。seq を変えると同じ場所でも開き直す */
   const [homeRequest, setHomeRequest] = useState<DirRequest | null>(null);
   const seq = useRef(0);
@@ -139,6 +142,9 @@ export function App() {
   useEffect(() => {
     settingsRef.current = settings;
   }, [settings]);
+  const requestOp = useCallback((id: number) => {
+    if (settingsRef.current.openInOpMode) setOpRequest({ id, seq: opSeq.current++ });
+  }, []);
   // 隠しファイルの表示と最新ファイルへの追従。キーと操作パネルのチェックボックスで共有する
   const [showHidden, setShowHidden] = useState(false);
   const [follow, setFollow] = useState(false);
@@ -190,12 +196,12 @@ export function App() {
       const lastFile = files.at(-1)!;
       const target = existing(lastFile)?.id ?? added.at(-1)!.id;
       setFocused(target);
-      if ((lastFile.media === 'markdown' || lastFile.media === 'csv') && settingsRef.current.documentAutoInput) setInputRequest({ id: target, seq: inputSeq.current++ });
+      requestOp(target);
       // 開いたばかりのウィンドウはまだ windowsRef にないので、文書なら最初の文書として積む
       if (screenRef.current !== 'canvas') pushPlace({ screen: 'canvas', focus: target, ...(lastFile.media === 'markdown' ? { doc: { win: target, index: 0 } } : {}) });
       showCanvas();
     },
-    [pushPlace, showCanvas],
+    [pushPlace, showCanvas, requestOp],
   );
 
   // 比較ウィンドウ(F7)。1つのウィンドウに複数のファイルを入れる
@@ -204,8 +210,9 @@ export function App() {
     api.addHistory(files.map((f) => f.path));
     setWindows((ws) => [...ws, { id, path: files[0]!.path, media: files[0]!.media, members: files }]);
     setFocused(id);
+    requestOp(id);
     goCanvas(id);
-  }, [goCanvas]);
+  }, [goCanvas, requestOp]);
 
   // ライブ描画のウィンドウ(L1、L2)。サーバの一覧に合わせて、増えたら足し、消えたら「終了」にする
   const knownLive = useRef(new Set<number>());
@@ -231,10 +238,11 @@ export function App() {
       setLiveCount(list.length);
       if (newWins.length) {
         setFocused(newWins.at(-1)!.id);
+        requestOp(newWins.at(-1)!.id);
         goCanvas(newWins.at(-1)!.id);
       }
     },
-    [goCanvas],
+    [goCanvas, requestOp],
   );
 
   // CLI からの表示指示(F10)
@@ -276,10 +284,11 @@ export function App() {
         events.active();
       }
     };
-    // マウスで押したボタンやチェックボックスにフォーカスを残さない(Space や Enter で押し直されないように)
+    // マウスで押したボタンやチェックボックスにフォーカスを残さない(Space や Enter で押し直されないように)。
+    // 選択欄(data-keep-focus)は、開いた一覧を続けてキーで選べるように残す。キー(Enter)で押したとき(detail が 0)も残す
     const onClick = (e: MouseEvent) => {
       const t = e.target;
-      if (t instanceof HTMLElement && !isTyping(t) && t.closest('button, input')) {
+      if (e.detail > 0 && t instanceof HTMLElement && !isTyping(t) && t.closest('button, input') && !t.closest('[data-keep-focus]')) {
         (document.activeElement as HTMLElement | null)?.blur();
       }
     };
@@ -296,6 +305,20 @@ export function App() {
   }, [events]);
 
   const onError = useCallback((m: string) => setMessage(m), []);
+  // 保存(18.3)。zip にまとめるときは先に合計を聞き、大きければ確かめる
+  const [bigDownload, setBigDownload] = useState<{ items: DownloadItem[]; size: DownloadSize } | null>(null);
+  const download = useCallback(
+    async (items: DownloadItem[]) => {
+      try {
+        const size = await prepare(items);
+        if (size && size.bytes > CONFIRM_BYTES) return setBigDownload({ items, size });
+        startDownload(items);
+      } catch (e) {
+        onError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [onError],
+  );
   const stop = () => {
     setConfirmStop(false);
     void fetch('/api/shutdown', { method: 'POST' }).finally(() => {
@@ -311,6 +334,10 @@ export function App() {
     onShutdown: () => setConfirmStop(true),
   };
   const hideHints = () => updateSettings({ hints: false });
+  const toggleAutoHideBar = () => {
+    updateSettings({ autoHideBar: !settings.autoHideBar });
+    onError(settings.autoHideBar ? ja.barShown : ja.barHidden);
+  };
 
   const runHome = useCallback((a: HomeAction) => homeRun.current?.(a), []);
   const runNormal = useCallback((a: NormalAction) => canvasRun.current?.normal(a), []);
@@ -335,7 +362,7 @@ export function App() {
   const canNotify = notificationAvailable();
   const toggles = [
     { label: ja.showHints, checked: settings.hints, onChange: (v: boolean) => updateSettings({ hints: v }) },
-    { label: ja.documentAutoInput, checked: settings.documentAutoInput, onChange: (v: boolean) => updateSettings({ documentAutoInput: v }) },
+    { label: ja.openInOpMode, checked: settings.openInOpMode, onChange: (v: boolean) => updateSettings({ openInOpMode: v }) },
     { label: ja.externalImages, checked: settings.externalImages, onChange: (v: boolean) => updateSettings({ externalImages: v }) },
     {
       label: canNotify ? ja.notifyOpen : ja.notifyOpen + ja.notifyUnavailable,
@@ -351,7 +378,10 @@ export function App() {
           { label: ja.followLatest, checked: follow, onChange: setFollow },
           { label: ja.showHidden, checked: showHidden, onChange: setShowHidden },
         ]
-      : [{ label: ja.syncAudio, checked: settings.syncAudio, onChange: (v: boolean) => updateSettings({ syncAudio: v }) }]),
+      : [
+          { label: ja.autoHideBar, checked: settings.autoHideBar, onChange: (v: boolean) => updateSettings({ autoHideBar: v }) },
+          { label: ja.syncAudio, checked: settings.syncAudio, onChange: (v: boolean) => updateSettings({ syncAudio: v }) },
+        ]),
   ];
   sections.push({
     title: ja.secCommon,
@@ -421,6 +451,7 @@ export function App() {
           liveCount={liveCount}
           onOpen={open}
           onCompare={openCompare}
+          onDownload={download}
           onCanvas={() => goCanvas()}
           onNavigate={onHomeNavigate}
           onInitial={toInitial}
@@ -458,6 +489,8 @@ export function App() {
           hints={settings.hints}
           onHideHints={hideHints}
           tabbar={settings.tabbar}
+          autoHideBar={settings.autoHideBar}
+          onToggleAutoHideBar={toggleAutoHideBar}
           onError={onError}
           syncAudio={settings.syncAudio}
           globalMuted={globalMuted}
@@ -465,11 +498,10 @@ export function App() {
           onToggleGlobalMute={() => setGlobalMuted((m) => !m)}
           onMessage={onError}
           runRef={canvasRun}
-          onHomeInitial={toInitial}
           events={events}
           root={root}
           externalImages={settings.externalImages}
-          inputRequest={inputRequest}
+          opRequest={opRequest}
           onOpenFiles={open}
           onOpenDir={openDir}
           onPathChange={onPathChange}
@@ -494,6 +526,7 @@ export function App() {
             [
               [ja.secHome, ja.homeKeys],
               [ja.secCanvas, ja.canvasKeys],
+              [ja.secOp, ja.opKeys],
               [ja.windowMode, windowHelp],
             ] as const
           ).map(([title, rows]) => (
@@ -511,6 +544,31 @@ export function App() {
               </dl>
             </section>
           ))}
+        </Dialog>
+      )}
+      {bigDownload && (
+        <Dialog
+          title={ja.downloadBig}
+          onClose={() => setBigDownload(null)}
+          actions={
+            <>
+              <button type="button" className="text-button" onClick={() => setBigDownload(null)}>
+                {ja.cancel}
+              </button>
+              <button
+                type="button"
+                className="filled-button"
+                onClick={() => {
+                  startDownload(bigDownload.items);
+                  setBigDownload(null);
+                }}
+              >
+                {ja.downloadDo}
+              </button>
+            </>
+          }
+        >
+          <p>{ja.downloadBigConfirm(formatSize(bigDownload.size.bytes), bigDownload.size.files)}</p>
         </Dialog>
       )}
       {confirmStop && (

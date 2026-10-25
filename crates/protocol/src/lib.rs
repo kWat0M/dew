@@ -216,6 +216,16 @@ pub struct RotateTokenResponse {
     pub token: String,
 }
 
+/// `GET /api/download/size` の応答: 保存する前の合計(18.3)
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct DownloadSize {
+    #[ts(type = "number")]
+    pub bytes: u64,
+    pub files: u32,
+}
+
 /// `WS /ws/events` でサーバから送る通知
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(
@@ -320,6 +330,11 @@ pub enum LiveInput {
     Key {
         key: String,
         down: bool,
+    },
+    /// キーを押して離す。キーの行き先の切り替えから離すまでを1回で行う(複数のウィンドウへ同じキーを送るとき、
+    /// ウィンドウごとの送信が混ざって別のウィンドウに届かないように。ADR 0030)
+    Tap {
+        key: String,
     },
     Move {
         x: i32,

@@ -21,7 +21,7 @@ test('4-rewind', async ({ page, demo }) => {
     await clickOn(page, canvas, fx, fy);
     await pause(page, 500);
   }
-  await keys(page, ['Control+BracketRight'], 500);
+  await keys(page, ['Control+BracketLeft'], 500);
   await caption(page, 'もう一度 R で止めると、dew-recordings/ に MP4 で保存');
   await keys(page, ['R'], 2500);
   await expect(win).toHaveAttribute('data-recording', 'false');
@@ -34,12 +34,12 @@ test('4-rewind', async ({ page, demo }) => {
   await keys(page, ['.', '.', '.', ','], 600);
   await caption(page, 'k で、巻き戻した位置から再生');
   await keys(page, ['k'], 3000);
-  await caption(page, 'q でライブに戻る');
-  await keys(page, ['q'], 2000);
+  await caption(page, 'G でライブに戻る');
+  await keys(page, ['G'], 2000);
   await expect(win).toHaveAttribute('data-rewind', 'live');
 
   await caption(page, '録画したファイルは、Home からそのまま開ける');
-  await keys(page, ['h'], 1000);
+  await keys(page, ['Tab'], 1000);
   await clickOn(page, page.getByRole('option', { name: /^dew-recordings/ }));
   await keys(page, ['l'], 800);
   await keys(page, ['Enter'], 4000);

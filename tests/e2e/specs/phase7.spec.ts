@@ -3,7 +3,7 @@
 import { appendFileSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { Locator, Page } from '@playwright/test';
-import { cell, filter, goCol, header, openCsv, rowNumbers, status } from '../lib/csv';
+import { cell, choose, filter, goCol, header, openCsv, rowNumbers, status } from '../lib/csv';
 import { copyCsv, expect, reloadPage, start, test, writeConfig } from '../lib/dew';
 
 test.describe.configure({ timeout: 60_000 });
@@ -293,7 +293,7 @@ test('列の見出しのメニューと操作パネルで、マウスだけで�
   await expect(csv.locator('h3')).toHaveText(/^CSV/);
   await csv.getByRole('button', { name: /^フィルター f/ }).click();
   const dialog = page.getByRole('dialog', { name: /フィルター/ });
-  await dialog.getByLabel('条件').selectOption('notEmpty');
+  await choose(page, dialog, '条件', 'notEmpty');
   await dialog.getByRole('button', { name: '適用' }).click();
   await expect(win.getByTestId('csv-rows')).not.toHaveText('10,000 / 10,000 行');
 });

@@ -118,7 +118,7 @@ test('全体のミュートは各ウィンドウの音量を変えず、Home へ
   await page.getByTestId('global-mute').click();
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(false);
 
-  await page.keyboard.press('h');
+  await page.keyboard.press('Tab');
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
   await page.keyboard.press('Tab');
   await expect(page.getByTestId('global-mute')).toHaveAttribute('aria-pressed', 'true');

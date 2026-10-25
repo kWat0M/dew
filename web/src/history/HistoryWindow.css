@@ -47,3 +47,17 @@
   padding: 0 8px 8px;
   min-height: 0;
 }
+
+/* 幅の狭い画面(18.2): 画面いっぱいに一覧だけを出す */
+@media (max-width: 599.98px) {
+  .history {
+    width: 100vw;
+    height: 100%;
+    border-radius: 0;
+  }
+
+  .history-columns {
+    grid-template-columns: 1fr;
+    padding: 0;
+  }
+}

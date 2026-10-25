@@ -10,9 +10,9 @@ export type CsvAction =
   | { do: 'jump' } | { do: 'inspect' } | { do: 'search' } | { do: 'match'; dir: 1 | -1 }
   | { do: 'sort'; add: boolean } | { do: 'filter' } | { do: 'clearFilters' } | { do: 'rename' }
   | { do: 'decimals'; dir: 1 | -1 } | { do: 'mark' } | { do: 'rules' } | { do: 'hide' } | { do: 'showAll' }
-  | { do: 'pin' } | { do: 'width'; f: number } | { do: 'fit' } | { do: 'copy'; row: boolean } | { do: 'settings' } | { do: 'reset' } | { do: 'exit' };
+  | { do: 'pin' } | { do: 'width'; f: number } | { do: 'fit' } | { do: 'copy'; row: boolean } | { do: 'settings' } | { do: 'reset' };
 
-/** 入力モードのキー(16.7) */
+/** 操作モードのキー(16.7)。抜けるキー(Esc・Ctrl+[・q)はキャンバスが受け持つ */
 export const csvKeys: Record<string, CsvAction> = {
   h: { do: 'move', dr: 0, dc: -1 }, l: { do: 'move', dr: 0, dc: 1 }, j: { do: 'move', dr: 1, dc: 0 }, k: { do: 'move', dr: -1, dc: 0 },
   ArrowLeft: { do: 'move', dr: 0, dc: -1 }, ArrowRight: { do: 'move', dr: 0, dc: 1 }, ArrowDown: { do: 'move', dr: 1, dc: 0 }, ArrowUp: { do: 'move', dr: -1, dc: 0 },
@@ -23,8 +23,14 @@ export const csvKeys: Record<string, CsvAction> = {
   s: { do: 'sort', add: false }, S: { do: 'sort', add: true }, f: { do: 'filter' }, F: { do: 'clearFilters' }, r: { do: 'rename' },
   '+': { do: 'decimals', dir: 1 }, '-': { do: 'decimals', dir: -1 }, m: { do: 'mark' }, M: { do: 'rules' },
   x: { do: 'hide' }, X: { do: 'showAll' }, p: { do: 'pin' }, '<': { do: 'width', f: 1 / 1.2 }, '>': { do: 'width', f: 1.2 }, '=': { do: 'fit' },
-  y: { do: 'copy', row: false }, Y: { do: 'copy', row: true }, o: { do: 'settings' }, R: { do: 'reset' }, q: { do: 'exit' }, 'C-]': { do: 'exit' },
+  y: { do: 'copy', row: false }, Y: { do: 'copy', row: true }, o: { do: 'settings' }, R: { do: 'reset' },
 };
+
+/**
+ * 複数のウィンドウで操作モードのとき、フォーカス中のウィンドウだけで行う操作(小さな画面・検索欄・全文・コピー)。
+ * 小さな画面で決めた内容は、ほかのウィンドウにも渡して、それぞれの選択中の列に適用する
+ */
+export const LEAD_ONLY = new Set<CsvAction['do']>(['jump', 'inspect', 'search', 'filter', 'rename', 'rules', 'settings', 'copy']);
 
 const O = ja.csvOps;
 /** 操作パネルの CSV の節(4.4)。マウスだけでも全部の操作ができるように */

@@ -239,10 +239,7 @@
   color: var(--md-sys-color-on-surface-variant);
 }
 
-.csv-field input,
-.csv-field select,
-.csv-rule input,
-.csv-rule select {
+.csv-field input {
   box-sizing: border-box;
   min-width: 0;
   height: 36px;
@@ -277,12 +274,30 @@
   gap: 4px;
 }
 
-.csv-rule .csv-field {
-  flex-direction: row;
+.csv-rule > * {
+  flex: 1 1 0;
 }
 
-.csv-rule .csv-field span {
+.csv-rule > .icon-button {
+  flex: none;
+}
+
+.csv-field.inline span {
   display: none;
+}
+
+/* キーで選んでいる欄(MD3 のフォーカスの印) */
+.csv-panel [data-nav]:focus {
+  outline: 2px solid var(--md-sys-color-secondary);
+  outline-offset: 2px;
+  border-radius: var(--md-sys-shape-corner-extra-small);
+}
+
+/* 文字の欄に入って打っている間は、欄の枠を primary にする */
+.csv-field input:focus {
+  outline: none;
+  border-color: var(--md-sys-color-primary);
+  box-shadow: inset 0 0 0 1px var(--md-sys-color-primary);
 }
 
 .csv-swatch.rule-primary { background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); }
@@ -317,4 +332,13 @@
 .csv-th.current .csv-th-menu,
 .csv-th-menu[data-state='open'] {
   opacity: 1;
+}
+
+/* 幅の狭い画面(18.2): 小さな画面は幅いっぱい */
+@media (max-width: 599.98px) {
+  .csv-panel,
+  .csv-panel.wide {
+    left: 8px;
+    width: calc(100% - 16px);
+  }
 }

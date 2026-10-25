@@ -19,11 +19,15 @@ describe('readKey', () => {
     expect(readKey(ev('Process', 'Period'))).toBeNull();
   });
 
-  test('変換中・修飾キー・Ctrl 系は無視する。Ctrl+] だけは使う', () => {
+  test('変換中・修飾キー・Ctrl 系は無視する。Ctrl+[ だけは使う(物理キーの位置では判定しない)', () => {
     expect(readKey(ev('j', 'KeyJ', { isComposing: true }))).toBeNull();
     expect(readKey(ev('Shift', 'ShiftLeft'))).toBeNull();
     expect(readKey(ev('w', 'KeyW', { ctrlKey: true }))).toBeNull();
-    expect(readKey(ev(']', 'Backslash', { ctrlKey: true }))?.key).toBe('C-]');
+    expect(readKey(ev('[', 'BracketRight', { ctrlKey: true }))?.key).toBe('C-[');
+    expect(readKey(ev('[', 'BracketLeft', { ctrlKey: true }))?.key).toBe('C-[');
+    // JIS 配列の ] は US のバックスラッシュの位置、US の ] の位置は JIS では [ なので、位置では判定しない
+    expect(readKey(ev(']', 'Backslash', { ctrlKey: true }))).toBeNull();
+    expect(readKey(ev('@', 'BracketLeft', { ctrlKey: true }))).toBeNull();
   });
 });
 

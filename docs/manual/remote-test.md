@@ -155,7 +155,7 @@ docker compose exec b dew
 | 1 | `docker compose exec -d a dew run python3 apps/counter.py --seconds 300` | キャンバスに「counter」のウィンドウが出て、中央の数字が滑らかに増える。右上のミュートボタンで全体のミュートを解除すると 440 Hz の音が鳴る |
 | 2 | タブ B を見る | B には何も出ない(ライブ描画もコンテナごとに分かれている) |
 | 3 | `docker compose exec -d a dew run python3 apps/counter.py --tone 660 --title high --seconds 300` | ウィンドウが2つになる。クリックしたウィンドウの音(440 Hz か 660 Hz)だけが鳴る。下のバーの右端のミュートボタンで、そのウィンドウだけ消せる |
-| 4 | `docker compose exec -d a dew run python3 apps/mpl_sample.py` | matplotlib のグラフが出る。タイトルバーのキーボードのボタン(または `i`)で入力モードに入り、ツールバーの移動・拡大がマウスで使える。入力モードの表示は下のバーに出る。`Ctrl+]` かもう一度ボタンで抜ける |
+| 4 | `docker compose exec -d a dew run python3 apps/mpl_sample.py` | matplotlib のグラフが出る。タイトルバーのキーボードのボタン(または操作モードで `i`)で入力モードに入り、ツールバーの移動・拡大がマウスで使える。入力モードの表示は下のバーに出る。`Ctrl+[` かもう一度ボタンで抜ける |
 | 5 | `docker compose exec -d a dew run python3 apps/counter.py --resizable --title big --seconds 300` | `w f` で最大化してから `w r` を押すと、アプリの画面が表示領域いっぱいの大きさになり、ぼやけない |
 | 6 | `docker compose exec -d a dew run python3 apps/popup.py --outside` | 灰色のウィンドウの左上に赤い四角が重なって映る(右下の緑は、灰色に重なる部分だけ映る) |
 | 7 | `docker compose exec -d a dew run python3 apps/cv2_sample.py` | OpenCV の窓に、大きさの変わる円が出る(60 秒で終わり、「終了」と出る) |

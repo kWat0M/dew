@@ -27,7 +27,7 @@ test.describe('ffmpeg も ffprobe もない', () => {
     await open(page, 'image.png').catch(() => {});
     const img = page.getByTestId('player-window').filter({ hasText: 'image.png' }).locator('img');
     await expect.poll(() => img.evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth && i.getBoundingClientRect().width)).toBeGreaterThan(0);
-    await page.keyboard.press('h');
+    await page.keyboard.press('Tab');
     // mp4v はブラウザで再生できない。変換には ffmpeg が要ると出す
     await current(page).getByRole('option', { name: 'mp4v.mp4' }).click();
     await page.keyboard.press('Enter');

@@ -7,7 +7,8 @@ import type { MediaKind } from '../protocol/MediaKind';
 import { basename } from '../format';
 import { ja } from '../i18n/ja';
 import { Icon } from '../icons';
-import { KeySequence } from '../keys';
+import { isLeaveKey, KeySequence } from '../keys';
+import { useCompact } from '../useCompact';
 import { useKeys } from '../useKeys';
 import { cascade, neighbor, tile, type Dir, type Rect } from './layout';
 import { CompareWindow, type Member } from './CompareWindow';
@@ -15,11 +16,12 @@ import { LiveAudioMix, useLiveSound } from './liveAudio';
 import { LiveWindow, type LiveApi, type LiveInfo } from './LiveWindow';
 import { Dialog } from '../ui/Dialog';
 import { PlayerWindow, type PlayerApi } from './PlayerWindow';
-import { DocumentWindow, type DocAction } from '../doc/DocumentWindow';
+import { DocumentWindow, HINT_CHARS, hintLabels, type DocAction } from '../doc/DocumentWindow';
 import { CsvWindow } from '../csv/CsvWindow';
 import type { CsvAction } from '../csv/keys';
 import type { Events } from '../api/events';
 import { SyncGroup } from './sync';
+import type { HintMode, OpWindow } from './op';
 import './Canvas.css';
 
 /**
@@ -28,10 +30,10 @@ import './Canvas.css';
  */
 export type Win = { id: number; path: string; media: MediaKind; members?: Member[]; live?: LiveInfo; doc?: number };
 
-/** 再生のキー(選択中のウィンドウ、なければフォーカス中のウィンドウに効く) */
+/** 再生のキー(操作モードのウィンドウ、なければ選択中かフォーカス中のウィンドウに効く) */
 type PlayAction =
   | { do: 'toggle' } | { do: 'seek'; sec: number } | { do: 'step'; dir: 1 | -1 } | { do: 'percent'; n: number }
-  | { do: 'speed'; dir: 1 | -1 } | { do: 'ab' } | { do: 'mute' } | { do: 'zoom' } | { do: 'zoomBy'; f: number };
+  | { do: 'speed'; dir: 1 | -1 } | { do: 'ab' } | { do: 'mute' } | { do: 'zoom' } | { do: 'zoomBy'; f: number } | { do: 'pan'; dx: number; dy: number };
 
 /** 操作パネルから操作を実行するための入口 */
 export type CanvasRun = {
@@ -47,8 +49,9 @@ export type CanvasRun = {
 
 export type NormalAction =
   | PlayAction
-  | { do: 'maximize' } | { do: 'all' } | { do: 'home' } | { do: 'homeInitial' } | { do: 'help' } | { do: 'history' }
-  | { do: 'windowMode' } | { do: 'sync' } | { do: 'compareMode' } | { do: 'globalMute' } | { do: 'input' } | { do: 'sendText' }
+  | { do: 'focusDir'; dir: Dir } | { do: 'operate' }
+  | { do: 'maximize' } | { do: 'all' } | { do: 'home' } | { do: 'select' } | { do: 'help' } | { do: 'history' }
+  | { do: 'windowMode' } | { do: 'sync' } | { do: 'autoHideBar' } | { do: 'compareMode' } | { do: 'globalMute' } | { do: 'input' } | { do: 'sendText' }
   | { do: 'record' } | { do: 'live' } | { do: 'escape' };
 
 /** ウィンドウ操作モードのキー */
@@ -57,18 +60,43 @@ export type WindowAction =
   | { do: 'select' } | { do: 'selectAll' } | { do: 'grow'; f: number } | { do: 'equalize' } | { do: 'layout' }
   | { do: 'minimize' } | { do: 'maximize' } | { do: 'only' } | { do: 'close' } | { do: 'closeAll' } | { do: 'fitApp' } | { do: 'exit' };
 
-/** キャンバスのキーマップ(キー一覧・ヒントとの突き合わせのテストにも使う) */
+/**
+ * キャンバスのノーマルモードのキー(5.3)。hjkl でウィンドウを選び、i / Enter で操作モードに入る。
+ * ウィンドウの中の操作(再生・スクロールなど)は操作モードで行う(ADR 0030)。キー一覧・ヒントとの突き合わせのテストにも使う
+ */
 export const normal: Record<string, NormalAction> = {
+  h: { do: 'focusDir', dir: 'h' }, j: { do: 'focusDir', dir: 'j' }, k: { do: 'focusDir', dir: 'k' }, l: { do: 'focusDir', dir: 'l' },
+  ArrowLeft: { do: 'focusDir', dir: 'h' }, ArrowDown: { do: 'focusDir', dir: 'j' }, ArrowUp: { do: 'focusDir', dir: 'k' }, ArrowRight: { do: 'focusDir', dir: 'l' },
+  i: { do: 'operate' }, Enter: { do: 'operate' }, ' ': { do: 'select' },
+  f: { do: 'maximize' }, K: { do: 'all' }, Tab: { do: 'home' }, '?': { do: 'help' },
+  w: { do: 'windowMode' }, r: { do: 'history' }, s: { do: 'autoHideBar' }, S: { do: 'sync' }, M: { do: 'globalMute' }, R: { do: 'record' },
+  Escape: { do: 'escape' }, 'C-[': { do: 'escape' },
+};
+
+/** 操作モードのキー: 動画・音声(5.3) */
+export const playKeys: Record<string, NormalAction> = {
   k: { do: 'toggle' }, ' ': { do: 'toggle' },
   j: { do: 'seek', sec: -5 }, l: { do: 'seek', sec: 5 }, ArrowLeft: { do: 'seek', sec: -5 }, ArrowRight: { do: 'seek', sec: 5 },
   J: { do: 'seek', sec: -30 }, L: { do: 'seek', sec: 30 },
   ',': { do: 'step', dir: -1 }, '.': { do: 'step', dir: 1 },
   '[': { do: 'speed', dir: -1 }, ']': { do: 'speed', dir: 1 },
-  b: { do: 'ab' }, m: { do: 'mute' }, z: { do: 'zoom' }, '+': { do: 'zoomBy', f: 1.25 }, '-': { do: 'zoomBy', f: 0.8 }, f: { do: 'maximize' }, K: { do: 'all' },
-  h: { do: 'home' }, H: { do: 'homeInitial' }, Tab: { do: 'home' }, '?': { do: 'help' },
-  w: { do: 'windowMode' }, r: { do: 'history' }, s: { do: 'sync' }, c: { do: 'compareMode' }, M: { do: 'globalMute' }, i: { do: 'input' }, I: { do: 'sendText' }, R: { do: 'record' }, q: { do: 'live' }, Escape: { do: 'escape' },
+  b: { do: 'ab' }, m: { do: 'mute' }, z: { do: 'zoom' },
 };
-for (let n = 0; n <= 9; n++) normal[String(n)] = { do: 'percent', n };
+for (let n = 0; n <= 9; n++) playKeys[String(n)] = { do: 'percent', n };
+/** 操作モードのキー: 比較ウィンドウ(動画のキーに、表示の切り替えと画像の拡大・縮小) */
+export const compareKeys: Record<string, NormalAction> = { ...playKeys, c: { do: 'compareMode' }, '+': { do: 'zoomBy', f: 1.25 }, '-': { do: 'zoomBy', f: 0.8 } };
+/** 操作モードのキー: 画像(hjkl で表示位置を動かす) */
+const PAN = 80;
+export const imageKeys: Record<string, NormalAction> = {
+  h: { do: 'pan', dx: PAN, dy: 0 }, l: { do: 'pan', dx: -PAN, dy: 0 }, k: { do: 'pan', dx: 0, dy: PAN }, j: { do: 'pan', dx: 0, dy: -PAN },
+  ArrowLeft: { do: 'pan', dx: PAN, dy: 0 }, ArrowRight: { do: 'pan', dx: -PAN, dy: 0 }, ArrowUp: { do: 'pan', dx: 0, dy: PAN }, ArrowDown: { do: 'pan', dx: 0, dy: -PAN },
+  z: { do: 'zoom' }, '+': { do: 'zoomBy', f: 1.25 }, '-': { do: 'zoomBy', f: 0.8 },
+};
+/** 操作モードのキー: ライブ(再生のキーは直近 30 秒の一時停止・巻き戻しに効く。i / Enter でさらに入力モードへ) */
+export const liveKeys: Record<string, NormalAction> = {
+  ...Object.fromEntries(Object.entries(playKeys).filter(([k]) => !['[', ']', 'b'].includes(k))),
+  i: { do: 'input' }, Enter: { do: 'input' }, I: { do: 'sendText' }, G: { do: 'live' }, R: { do: 'record' },
+};
 
 export const windowKeys: Record<string, WindowAction> = {
   h: { do: 'focusDir', dir: 'h' }, j: { do: 'focusDir', dir: 'j' }, k: { do: 'focusDir', dir: 'k' }, l: { do: 'focusDir', dir: 'l' },
@@ -76,11 +104,23 @@ export const windowKeys: Record<string, WindowAction> = {
   ' ': { do: 'select' }, a: { do: 'selectAll' },
   '+': { do: 'grow', f: 1.1 }, '-': { do: 'grow', f: 1 / 1.1 }, '=': { do: 'equalize' }, t: { do: 'layout' },
   m: { do: 'minimize' }, f: { do: 'maximize' }, o: { do: 'only' }, x: { do: 'close' }, X: { do: 'closeAll' }, r: { do: 'fitApp' },
-  q: { do: 'exit' }, Escape: { do: 'exit' },
+  q: { do: 'exit' }, Escape: { do: 'exit' }, 'C-[': { do: 'exit' },
 };
 for (let n = 1; n <= 9; n++) windowKeys[String(n)] = { do: 'focusN', n };
 
 const normalMap = new KeySequence(normal);
+const opMaps = { video: new KeySequence(playKeys), compare: new KeySequence(compareKeys), image: new KeySequence(imageKeys), live: new KeySequence(liveKeys) };
+
+/** ウィンドウの種類。操作モードのキーと、複数選択から一緒に操作モードに入れるもの(同じ種類だけ)を決める */
+export type WinKind = 'live' | 'doc' | 'csv' | 'compare' | 'image' | 'video';
+export function kindOf(w: Win): WinKind {
+  if (w.live) return 'live';
+  if (w.members) return 'compare';
+  if (w.media === 'markdown') return 'doc';
+  if (w.media === 'csv') return 'csv';
+  if (w.media === 'image') return 'image';
+  return 'video';
+}
 
 /** ドキュメントウィンドウ(Markdown)か(15.1) */
 export function isDocument(w: Win): boolean {
@@ -92,7 +132,7 @@ export function isCsv(w: Win): boolean {
   return !w.live && !w.members && w.media === 'csv';
 }
 
-/** 操作パネルに出すキャンバスの操作(4.4) */
+/** 操作パネルに出すキャンバスの操作(4.4)。再生の操作は、操作モードのウィンドウ(なければ選択中かフォーカス中)に効く */
 export const playCommands: CommandDef<NormalAction>[] = [
   { id: { do: 'toggle' }, key: 'k', label: '再生 / 一時停止' },
   { id: { do: 'seek', sec: -5 }, key: 'j', label: '5秒戻る' }, { id: { do: 'seek', sec: 5 }, key: 'l', label: '5秒進む' },
@@ -102,13 +142,18 @@ export const playCommands: CommandDef<NormalAction>[] = [
   { id: { do: 'speed', dir: -1 }, key: '[', label: '遅く' }, { id: { do: 'speed', dir: 1 }, key: ']', label: '速く' },
   { id: { do: 'ab' }, key: 'b', label: 'A-B ループ' }, { id: { do: 'mute' }, key: 'm', label: 'ミュート' },
   { id: { do: 'zoom' }, key: 'z', label: '等倍 / フィット' },
-  { id: { do: 'zoomBy', f: 1.25 }, key: '+', label: '画像を拡大' }, { id: { do: 'zoomBy', f: 0.8 }, key: '-', label: '画像を縮小' }, { id: { do: 'all' }, key: 'K', label: '全ウィンドウ再生 / 停止' },
+  { id: { do: 'zoomBy', f: 1.25 }, key: '+', label: '画像を拡大' }, { id: { do: 'zoomBy', f: 0.8 }, key: '-', label: '画像を縮小' },
+  { id: { do: 'compareMode' }, key: 'c', label: '比較の表示を切替' },
 ];
 export const canvasCommands: CommandDef<NormalAction>[] = [
-  { id: { do: 'home' }, key: 'h', label: 'Home へ戻る' }, { id: { do: 'homeInitial' }, key: 'H', label: 'Home の初期位置へ' },
+  { id: { do: 'operate' }, key: 'i', label: '操作モード' }, { id: { do: 'escape' }, key: 'Esc', label: '操作モードを抜ける' },
+  { id: { do: 'home' }, key: 'Tab', label: 'Home へ戻る' }, { id: { do: 'select' }, key: 'Space', label: '選択を切替' },
   { id: { do: 'maximize' }, key: 'f', label: 'ウィンドウ最大化' }, { id: { do: 'windowMode' }, key: 'w', label: 'ウィンドウ操作モード' },
-  { id: { do: 'globalMute' }, key: 'M', label: '全体のミュート' }, { id: { do: 'sync' }, key: 's', label: '同期再生' },
-  { id: { do: 'input' }, key: 'i', label: '入力モード(ライブ)' }, { id: { do: 'sendText' }, key: 'I', label: '文字列を送る(ライブ)' }, { id: { do: 'record' }, key: 'R', label: '録画の開始 / 停止(ライブ)' }, { id: { do: 'live' }, key: 'q', label: 'ライブへ戻る(巻き戻し中)' }, { id: { do: 'compareMode' }, key: 'c', label: '比較の表示を切替' },
+  { id: { do: 'all' }, key: 'K', label: '全ウィンドウ再生 / 停止' },
+  { id: { do: 'globalMute' }, key: 'M', label: '全体のミュート' }, { id: { do: 'sync' }, key: 'S', label: '同期再生' },
+  { id: { do: 'autoHideBar' }, key: 's', label: '上部のバーを隠す / 出す' },
+  { id: { do: 'input' }, key: 'i', label: '入力モード(ライブ)' }, { id: { do: 'sendText' }, key: 'I', label: '文字列を送る(ライブ)' },
+  { id: { do: 'record' }, key: 'R', label: '録画の開始 / 停止(ライブ)' }, { id: { do: 'live' }, key: 'G', label: 'ライブへ戻る(巻き戻し中)' },
 ];
 export const windowCommands: CommandDef<WindowAction>[] = [
   { id: { do: 'focusDir', dir: 'h' }, key: 'w h', label: '左のウィンドウへ' }, { id: { do: 'focusDir', dir: 'l' }, key: 'w l', label: '右のウィンドウへ' },
@@ -150,7 +195,6 @@ type Props = {
   onClose: (ids: number[]) => void;
   onReorder: (ids: number[]) => void;
   onHome: () => void;
-  onHomeInitial: () => void;
   onHistory: () => void;
   onHelp: () => void;
   onError: (m: string) => void;
@@ -161,6 +205,9 @@ type Props = {
   hints: boolean;
   onHideHints: () => void;
   tabbar: 'top' | 'side';
+  /** 上部のバーを普段は隠す(18.4) */
+  autoHideBar: boolean;
+  onToggleAutoHideBar: () => void;
   /** 同期再生中は全ウィンドウの音を出す */
   syncAudio: boolean;
   /** 全体のミュート(各ウィンドウの音量・ミュートとは別に、全部の音を止める) */
@@ -174,8 +221,8 @@ type Props = {
   events: Events;
   root: string;
   externalImages: boolean;
-  /** このウィンドウを入力モードにする(ドキュメントを開いた直後。seq を変えると同じウィンドウでもやり直す) */
-  inputRequest: { id: number; seq: number } | null;
+  /** このウィンドウを操作モードにする(開いた直後。seq を変えると同じウィンドウでも入り直す) */
+  opRequest: { id: number; seq: number } | null;
   /** ドキュメントのリンクから開く */
   onOpenFiles: (files: { path: string; media: MediaKind }[]) => void;
   onOpenDir: (dir: string) => void;
@@ -191,6 +238,9 @@ export function Canvas(p: Props) {
   const [mode, setMode] = useState<'tile' | 'free'>('tile');
   const [free, setFree] = useState(new Map<number, Rect>());
   const [maximized, setMaximized] = useState<number | null>(null);
+  // 幅の狭い画面では、ウィンドウを1つずつ全画面で出し、タブで切り替える(18.2)
+  const compact = useCompact();
+  const tabbar = compact ? 'top' : p.tabbar;
   const [minimized, setMinimized] = useState<Set<number>>(new Set());
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [windowMode, setWindowMode] = useState(false);
@@ -198,6 +248,18 @@ export function Canvas(p: Props) {
   const [synced, setSynced] = useState(false);
   /** 左端の縦のタブバーを出しているか */
   const [sideOpen, setSideOpen] = useState(false);
+  /** 上部のバーを隠す設定のとき、上端にマウスを寄せて出しているか。幅の狭い画面ではマウスがないので隠さない */
+  const [barOpen, setBarOpen] = useState(false);
+  const hideBar = p.autoHideBar && !compact;
+  // 出ている間は、バーと上端の外でマウスが動いたら隠す(止まったマウスの上にバーが出ると、離れたことが届かないため)
+  useEffect(() => {
+    if (!hideBar || !barOpen) return;
+    const onMove = (e: PointerEvent) => {
+      if (!(e.target instanceof Element) || !e.target.closest('.canvas-bar, .top-edge')) setBarOpen(false);
+    };
+    window.addEventListener('pointermove', onMove);
+    return () => window.removeEventListener('pointermove', onMove);
+  }, [hideBar, barOpen]);
   /** タイル配置でドラッグ中のウィンドウと、落とす先の番号 */
   const [reorder, setReorder] = useState<{ id: number; target: number | null } | null>(null);
   const apis = useRef(new Map<number, PlayerApi | null>());
@@ -217,20 +279,25 @@ export function Canvas(p: Props) {
   }, []);
 
   const ws = p.windows;
-  /** 入力モード中のライブウィンドウ(L6)。その間はキャンバスのキーを止め、キーをアプリへ送る */
-  const [inputWindow, setInputWindow] = useState<number | null>(null);
+  /**
+   * 操作モード(5.1)のウィンドウ。空ならノーマルモード。先頭はフォーカス中のウィンドウで、選択中の同じ種類の
+   * ウィンドウがあれば続けて並ぶ(まとめて操作する。ADR 0030)
+   */
+  const [opIds, setOpIds] = useState<number[]>([]);
+  /** ライブの入力モード(操作モードのライブウィンドウに、キーとマウスを送る。L6、5.5) */
+  const [liveInput, setLiveInput] = useState(false);
+  /** 操作モードのキーを受け取るウィンドウ(ドキュメントと CSV) */
+  const opWins = useRef(new Map<number, OpWindow>());
   /** I の送信用の入力欄 */
   const [textBox, setTextBox] = useState<string | null>(null);
-  const focusedLive = ws.find((w) => w.id === p.focused && w.live && !w.live.ended);
-  const focusedDoc = ws.find((w) => w.id === p.focused && (isDocument(w) || isCsv(w)));
-  /** 入力モードにできるのは、動いているライブウィンドウとドキュメントウィンドウ */
-  const inputTarget = focusedLive ?? focusedDoc;
-  /** ノーマルモードの文書で再生のキーを押したときの案内は1回だけ(15.3) */
-  const docHintShown = useRef(false);
+  const focusedWin = ws.find((w) => w.id === p.focused);
+  const focusedLive = focusedWin?.live && !focusedWin.live.ended ? focusedWin : undefined;
+  const lead = opIds.length ? ws.find((w) => w.id === opIds[0]) : undefined;
+  const leadKind = lead ? kindOf(lead) : null;
+  /** リンクヒント(ドキュメント。操作モードの全ウィンドウのリンクにまとめて文字を割り当てる。17.4) */
+  const [docHints, setDocHints] = useState<{ mode: HintMode; typed: string; owner: Map<string, number> } | null>(null);
   /** 巻き戻し中のライブウィンドウ(ヒントの帯の出し分けに使う) */
   const [rewinding, setRewinding] = useState<Set<number>>(new Set());
-  /** リンクヒントを出しているドキュメントウィンドウ(ヒントの帯に抜け方を出す) */
-  const [hintingDoc, setHintingDoc] = useState<number | null>(null);
   const onRewind = useCallback(
     (id: number, on: boolean) =>
       setRewinding((s) => {
@@ -242,35 +309,41 @@ export function Canvas(p: Props) {
       }),
     [],
   );
-  /** ヒントの帯: フォーカス中のウィンドウの種類と状態で効くキー、続けてキャンバス共通のキー(4.4) */
+  /** ヒントの帯: ノーマルモードは共通のキー、操作モードはフォーカス中のウィンドウの種類と状態で効くキー(4.4) */
   const canvasHints = (): [string, string][] => {
     const H = ja.canvasHints;
-    const w = ws.find((x) => x.id === p.focused);
-    let own: [string, string][] = [];
-    if (w && isDocument(w)) {
-      if (inputWindow === w.id) return hintingDoc === w.id ? H.docHinting : H.docInput;
-      own = H.doc;
-    } else if (w && isCsv(w)) {
-      if (inputWindow === w.id) return H.csvInput;
-      own = H.doc;
-    } else if (w?.live) {
-      if (inputWindow === w.id) return H.input;
-      own = w.live.exact ? H.exact : rewinding.has(w.id) ? H.rewind : H.live;
-      if (w.live.recording) own = own.map(([k, l]) => [k, k === 'R' ? ja.hintRecordStop : l]);
-    } else if (w?.members) own = [...H.video, ...H.compare];
-    else if (w?.media === 'image') own = H.image;
-    else if (w) own = H.video;
-    return [...own, ...H.common];
+    if (!lead) return H.normal;
+    if (docHints) return H.docHinting;
+    if (liveInput) return H.input;
+    let own: [string, string][];
+    switch (kindOf(lead)) {
+      case 'doc': own = H.doc; break;
+      case 'csv': own = H.csv; break;
+      case 'compare': own = [...H.video, ...H.compare]; break;
+      case 'image': own = H.image; break;
+      case 'video': own = H.video; break;
+      case 'live':
+        own = lead.live!.exact ? H.exact : rewinding.has(lead.id) ? H.rewind : H.live;
+        if (lead.live!.recording) own = own.map(([k, l]) => [k, k === 'R' ? ja.hintRecordStop : l]);
+        break;
+    }
+    return [...own, ...H.opCommon];
   };
-  // フォーカスが移ったり、ウィンドウが終わったりしたら入力モードを抜ける
-  if (inputWindow !== null && inputTarget?.id !== inputWindow) setInputWindow(null);
-  // ドキュメントを開いた直後は入力モードで始める(15.3)。フォーカスが移ったのを見てから入る
-  const [handledRequest, setHandledRequest] = useState<number | null>(null);
-  if (p.inputRequest && p.inputRequest.seq !== handledRequest && p.focused === p.inputRequest.id) {
-    setHandledRequest(p.inputRequest.seq);
-    setInputWindow(p.inputRequest.id);
+  // 操作モードのウィンドウが閉じたら外す。フォーカスが操作モードの外へ移ったら抜ける。ライブが終わったら入力モードを抜ける
+  const opAlive = opIds.filter((id) => ws.some((w) => w.id === id));
+  if (opAlive.length !== opIds.length || (opIds.length > 0 && opIds[0] !== p.focused)) {
+    setOpIds(opAlive.length && opAlive[0] === p.focused ? opAlive : []);
+    setLiveInput(false);
   }
-  const exitInput = useCallback(() => setInputWindow(null), []);
+  if (liveInput && !(lead?.live && !lead.live.ended)) setLiveInput(false);
+  if (docHints && leadKind !== 'doc') setDocHints(null);
+  // 開いた直後は操作モードで始める(15.3、ADR 0030)。フォーカスが移ったのを見てから入る
+  const [handledRequest, setHandledRequest] = useState<number | null>(null);
+  if (p.opRequest && p.opRequest.seq !== handledRequest && p.focused === p.opRequest.id) {
+    setHandledRequest(p.opRequest.seq);
+    setOpIds([p.opRequest.id]);
+    setLiveInput(false);
+  }
   /** 音声のある動画のウィンドウ(全体のミュートボタンに「ミュートを解除」と出すかに使う) */
   const [withAudio, setWithAudio] = useState<Set<number>>(new Set());
   // ライブ描画の音。動いているライブウィンドウがある間だけ受け取る。どのウィンドウにも結びつかない音(セッション音声)は
@@ -316,10 +389,90 @@ export function Canvas(p: Props) {
 
   const focusedApi = () => (p.focused === null ? null : (apis.current.get(p.focused) ?? null));
 
-  /** 再生のキーの対象: 選択中があればそれら、なければフォーカス中 */
+  /** 再生のキーの対象: 操作モードのウィンドウ、なければ選択中、それもなければフォーカス中 */
   const targets = (): PlayerApi[] => {
-    const idsToUse = selected.size ? [...selected] : p.focused !== null ? [p.focused] : [];
+    const idsToUse = opIds.length ? opIds : selected.size ? [...selected] : p.focused !== null ? [p.focused] : [];
     return idsToUse.map((id) => apis.current.get(id)).filter((x): x is PlayerApi => !!x);
+  };
+
+  /** 操作モードに入る。選択中のウィンドウなら、選択中の同じ種類のウィンドウもまとめて */
+  const enterOp = (id = p.focused) => {
+    const w = ws.find((x) => x.id === id);
+    if (!w) return;
+    const group = selected.has(w.id) ? ws.filter((x) => x.id !== w.id && selected.has(x.id) && !minimized.has(x.id) && kindOf(x) === kindOf(w)).map((x) => x.id) : [];
+    if (id !== p.focused) p.onFocus(w.id);
+    setOpIds([w.id, ...group]);
+    setLiveInput(false);
+  };
+  const exitOp = () => {
+    setOpIds([]);
+    setLiveInput(false);
+    clearHints();
+  };
+  /**
+   * 本体を押した: そのウィンドウで操作モードに入る。すでに操作モードのウィンドウなら、まとめて操作しているものはそのままで、
+   * 押したウィンドウを先頭(フォーカス)にする(先頭のウィンドウの小さな画面などを押しても、まとまりを崩さない)
+   */
+  const activate = (id: number) => {
+    if (opIds.includes(id)) {
+      if (opIds[0] === id) return;
+      p.onFocus(id);
+      return setOpIds([id, ...opIds.filter((x) => x !== id)]);
+    }
+    p.onFocus(id);
+    setOpIds([id]);
+    setLiveInput(false);
+  };
+  /** タイトルバーなどを押した: フォーカスだけ移す(ほかのウィンドウの操作モードは抜ける) */
+  const focusOnly = (id: number) => {
+    if (!opIds.includes(id)) exitOp();
+    p.onFocus(id);
+  };
+
+  /** リンクヒントを出す。ids のドキュメントウィンドウのリンクにまとめて文字を割り当てる(17.4) */
+  const startHints = (mode: HintMode, ids: number[]) => {
+    const counts = ids.map((id) => [id, opWins.current.get(id)?.hints?.targets() ?? 0] as const);
+    const total = counts.reduce((a, [, n]) => a + n, 0);
+    if (!total) return;
+    const labels = hintLabels(total);
+    const owner = new Map<string, number>();
+    let i = 0;
+    for (const [id, n] of counts) {
+      const mine = labels.slice(i, i + n);
+      i += n;
+      for (const l of mine) owner.set(l, id);
+      opWins.current.get(id)?.hints?.show(mode, mine);
+    }
+    setDocHints({ mode, typed: '', owner });
+  };
+  function clearHints() {
+    for (const id of new Set(docHints?.owner.values() ?? [])) opWins.current.get(id)?.hints?.clear();
+    setDocHints(null);
+  }
+  /** ヒントを出している間のキー。ほかのキーは受け付けない */
+  const typeHint = (key: string) => {
+    if (!docHints) return;
+    if (key === 'Backspace' || isLeaveKey(key)) return clearHints();
+    if (!HINT_CHARS.includes(key)) return;
+    const typed = docHints.typed + key;
+    const left = [...docHints.owner.keys()].filter((l) => l.startsWith(typed));
+    if (!left.length) return;
+    const ids = new Set(docHints.owner.values());
+    if (left.length === 1 && left[0] === typed) {
+      const owner = docHints.owner.get(typed)!;
+      for (const id of ids) if (id !== owner) opWins.current.get(id)?.hints?.clear();
+      opWins.current.get(owner)?.hints?.pick(typed);
+      return setDocHints(null);
+    }
+    for (const id of ids) opWins.current.get(id)?.hints?.type(typed);
+    setDocHints({ ...docHints, typed });
+  };
+  /** 先頭のウィンドウで決めた操作を、一緒に操作モードに入っているほかのウィンドウにも渡す */
+  const share = (from: number, m: unknown) => {
+    if (!opIds.includes(from) || opIds.length < 2) return;
+    let failed = 0;
+    for (const id of opIds) if (id !== from && opWins.current.get(id)?.share?.(m) === false) failed++;
+    if (failed) p.onMessage(ja.skippedWindows(failed));
   };
 
   const focus = (id: number) => {
@@ -379,12 +532,15 @@ export function Canvas(p: Props) {
         case 'mute': t.toggleMute(); break;
         case 'zoom': t.toggleZoom(); break;
         case 'zoomBy': t.zoomBy?.(a.f); break;
+        case 'pan': t.panBy?.(a.dx, a.dy); break;
       }
     }
   };
 
   const runNormal = (a: NormalAction) => {
     switch (a.do) {
+      case 'focusDir': return runWindow(a);
+      case 'operate': return enterOp();
       case 'maximize': return p.focused !== null && toggleMaximize(p.focused);
       case 'all': {
         // 1つでも止まっていれば全部再生、全部再生中なら全部止める(比較用)
@@ -393,15 +549,18 @@ export function Canvas(p: Props) {
         return list.forEach((x) => x.setPlaying(anyPaused));
       }
       case 'home': return p.onHome();
-      case 'homeInitial': return p.onHomeInitial();
+      case 'select': return runWindow(a);
       case 'help': return p.onHelp();
       case 'history': return p.onHistory();
       case 'windowMode': return setWindowMode(true);
       case 'sync': return setSynced((s) => !s);
+      case 'autoHideBar': return p.onToggleAutoHideBar();
       case 'globalMute': return p.onToggleGlobalMute();
       case 'input':
-        if (!inputTarget) return p.onMessage(ja.inputNeedsLive);
-        return setInputWindow(inputTarget.id);
+        if (!focusedLive) return p.onMessage(ja.inputNeedsLive);
+        // 操作モードのライブウィンドウ(なければフォーカス中のもの)で、入力モードに入る
+        if (!opIds.includes(focusedLive.id)) setOpIds([focusedLive.id]);
+        return setLiveInput(true);
       case 'sendText':
         if (!focusedLive) return p.onMessage(ja.inputNeedsLive);
         return setTextBox('');
@@ -410,14 +569,8 @@ export function Canvas(p: Props) {
         return (apis.current.get(focusedLive.id) as LiveApi | null | undefined)?.toggleRecord?.();
       case 'live': return targets().forEach((t) => (t as LiveApi).goLive?.());
       case 'compareMode': return focusedApi()?.cycleMode?.();
-      case 'escape': return;
+      case 'escape': return exitOp();
       default:
-        // ドキュメントには再生のキーが効かない。i で操作できることを1回だけ知らせる(15.3)
-        if (focusedDoc && !selected.size) {
-          if (!docHintShown.current) p.onMessage(ja.docInputHint);
-          docHintShown.current = true;
-          return;
-        }
         return runPlay(a);
     }
   };
@@ -529,11 +682,81 @@ export function Canvas(p: Props) {
       e.preventDefault();
       return runWindow(a);
     }
+    // リンクヒントを出している間は、ほかのキーを受け付けない(17.4)
+    if (docHints) {
+      e.preventDefault();
+      return typeHint(k.key);
+    }
+    if (lead && leadKind) {
+      // 操作モード: キーはフォーカス中のウィンドウの種類で決まる。ドキュメントと CSV はウィンドウが受け持つ
+      let used = false;
+      let failed = 0;
+      if (leadKind === 'doc' || leadKind === 'csv') {
+        for (const id of opIds) {
+          const ctx = { lead: id === lead.id, fail: () => void failed++ };
+          used = (opWins.current.get(id)?.key(k, ctx) ?? false) || used;
+        }
+      } else {
+        const a = opMaps[leadKind].push(k.key);
+        if (a !== null) {
+          used = true;
+          if (a !== 'pending') runNormal(a);
+        }
+      }
+      if (failed) p.onMessage(ja.skippedWindows(failed));
+      if (used) return e.preventDefault();
+      // ウィンドウが使わなかった抜けるキーで、操作モードを抜ける
+      if (isLeaveKey(k.key)) {
+        e.preventDefault();
+        return exitOp();
+      }
+      // ウィンドウが使わなかったキーは、キャンバス全体のキー(Tab・w・r・f・? など)として効かせる。
+      // ウィンドウを選ぶ hjkl・Space と、操作モードに入る i / Enter は除く
+      const g = normal[k.key];
+      if (g && g.do !== 'focusDir' && g.do !== 'operate' && g.do !== 'select') {
+        e.preventDefault();
+        return runNormal(g);
+      }
+      return;
+    }
     const a = normalMap.push(k.key);
     if (a === null) return;
     e.preventDefault();
     if (a !== 'pending') runNormal(a);
-  }, p.active && inputWindow === null && textBox === null);
+  }, p.active && !liveInput && textBox === null);
+
+  // ライブの入力モード: ページのキーをすべて受け取り、操作モードのライブウィンドウへ送る。Ctrl+[ で抜ける(5.5。Esc はアプリへ)。
+  // 複数のウィンドウへ送るときは、キーの行き先が1つしかないので、ウィンドウごとに「押して離す」を送る(押しっぱなしは送れない)
+  const liveTargets = opIds.filter((id) => ws.find((w) => w.id === id)?.live && !ws.find((w) => w.id === id)!.live!.ended).join(',');
+  useEffect(() => {
+    if (!liveInput || !p.active) return;
+    const ids = liveTargets.split(',').filter(Boolean).map(Number);
+    const apiOf = (id: number) => apis.current.get(id) as LiveApi | null | undefined;
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (e.ctrlKey && !e.altKey && !e.metaKey && e.key === '[') {
+        if (e.type === 'keydown') setLiveInput(false);
+        return;
+      }
+      // 変換中の文字は送らない(日本語は I の送信用の入力欄から)
+      if (e.isComposing || e.key === 'Process') return;
+      if (ids.length === 1) return apiOf(ids[0]!)?.sendKey?.(e.key, e.type === 'keydown');
+      if (e.type !== 'keydown') return;
+      for (const id of ids) apiOf(id)?.tapKey?.(e.key);
+    };
+    window.addEventListener('keydown', onKey, { capture: true });
+    window.addEventListener('keyup', onKey, { capture: true });
+    // 全画面なら Keyboard Lock でブラウザ予約キーも送れる(Chrome / Edge のみ)
+    const kb = (navigator as Navigator & { keyboard?: { lock?: () => Promise<void>; unlock?: () => void } }).keyboard;
+    if (document.fullscreenElement) void kb?.lock?.().catch(() => {});
+    return () => {
+      window.removeEventListener('keydown', onKey, { capture: true });
+      window.removeEventListener('keyup', onKey, { capture: true });
+      kb?.unlock?.();
+      for (const id of ids) apiOf(id)?.release?.();
+    };
+  }, [liveInput, p.active, liveTargets]);
 
   // 同期再生: フォーカス中のウィンドウを基準に、ほかの動画を合わせる。ウィンドウや基準が変わったら組み直す
   useEffect(() => {
@@ -556,7 +779,7 @@ export function Canvas(p: Props) {
 
   // タブバー(4.2)。上部に横並び、または左端に縦並びで普段は隠す
   const taskbar = (
-        <div className={`chips ${p.tabbar}`} role="tablist" aria-label={ja.taskbar} data-testid="taskbar">
+        <div className={`chips ${tabbar}`} role="tablist" aria-label={ja.taskbar} data-testid="taskbar">
           {ws.map((w, i) => (
             <button
               key={w.id}
@@ -565,8 +788,10 @@ export function Canvas(p: Props) {
               aria-selected={w.id === p.focused}
               className={`chip assist${w.id === p.focused ? ' selected' : ''}${minimized.has(w.id) ? ' minimized' : ''}`}
               onClick={() => {
-                // Windows のタスクバーと同じ: 最小化中なら戻し、フォーカス中なら最小化する
-                if (minimized.has(w.id)) focus(w.id);
+                // Windows のタスクバーと同じ: 最小化中なら戻し、フォーカス中なら最小化する。操作モードには入らない
+                exitOp();
+                if (compact) focus(w.id);
+                else if (minimized.has(w.id)) focus(w.id);
                 else if (w.id === p.focused) minimize(w.id);
                 else focus(w.id);
               }}
@@ -579,20 +804,25 @@ export function Canvas(p: Props) {
   );
 
   return (
-    <div className={`canvas${windowMode ? ' window-mode' : ''}`}>
-      {p.tabbar === 'side' && (
+    <div className={`canvas${windowMode ? ' window-mode' : ''}${opIds.length ? ' op-mode' : ''}${compact ? ' compact' : ''}`}>
+      {tabbar === 'side' && (
         <>
           <div className="side-edge" onPointerEnter={() => setSideOpen(true)} />
-          <nav className={`side-tabs${sideOpen ? ' open' : ''}`} onPointerLeave={() => setSideOpen(false)}>
+          <nav className={`side-tabs${sideOpen ? ' open' : ''}`} onPointerLeave={() => setSideOpen(false)} onPointerDown={exitOp}>
             {taskbar}
           </nav>
         </>
       )}
-      <header className="canvas-bar">
+      {/* ウィンドウの外(上部のバー・タブバー・何もない所・ヒントの帯)を押したら、操作モードを抜ける */}
+      {hideBar && <div className="top-edge" data-testid="top-edge" onPointerEnter={() => setBarOpen(true)} />}
+      <header
+        className={`canvas-bar${hideBar ? ' autohide' : ''}${hideBar && barOpen ? ' open' : ''}`}
+        onPointerDown={exitOp}
+      >
         <button type="button" className="icon-button" title={ja.toHome} aria-label={ja.toHome} onClick={p.onHome}>
           <Icon name="home" />
         </button>
-        {p.tabbar === 'top' ? taskbar : <div className="chips" />}
+        {tabbar === 'top' ? taskbar : <div className="chips" />}
         {synced && (
           <span className="chip sync-chip" data-testid="sync-indicator">
             {ja.syncing}
@@ -612,7 +842,7 @@ export function Canvas(p: Props) {
           <Icon name={p.globalMuted ? 'volumeOff' : 'volume'} />
           {p.globalMuted && p.muteLabel && hasAudio && <span>{ja.globalUnmute}</span>}
         </button>
-        {ws.length > 1 && (
+        {ws.length > 1 && !compact && (
           <button
             type="button"
             className={`icon-button${synced ? ' toggled' : ''}`}
@@ -624,7 +854,7 @@ export function Canvas(p: Props) {
             <Icon name="sync" />
           </button>
         )}
-        {ws.length > 1 && (
+        {ws.length > 1 && !compact && (
           <button
             type="button"
             className="text-button with-icon"
@@ -637,20 +867,27 @@ export function Canvas(p: Props) {
         )}
         <Toolbar {...p.toolbar} />
       </header>
-      <div ref={area} className={`canvas-area${mode === 'free' ? ' free' : ''}`} data-testid="canvas-area">
+      <div
+        ref={area}
+        className={`canvas-area${mode === 'free' ? ' free' : ''}`}
+        data-testid="canvas-area"
+        onPointerDown={(e) => e.target === e.currentTarget && exitOp()}
+      >
         {ws.length === 0 && <div className="canvas-empty">{ja.canvasEmpty}</div>}
         {ws.map((w, i) => {
           // 枠と配置は1ファイルのウィンドウと比較ウィンドウで共通
           const frame = {
             number: i + 1,
-            rect: rectOf.get(w.id) ?? full,
+            rect: compact ? full : (rectOf.get(w.id) ?? full),
             focused: w.id === p.focused,
+            opMode: opIds.includes(w.id) && p.active,
             selected: selected.has(w.id),
-            maximized: maximized === w.id,
-            minimized: minimized.has(w.id),
-            free: mode === 'free' && shown.length > 1 && maximized !== w.id,
+            maximized: compact ? w.id === p.focused : maximized === w.id,
+            minimized: compact ? w.id !== p.focused : minimized.has(w.id),
+            free: !compact && mode === 'free' && shown.length > 1 && maximized !== w.id,
             dropTarget: reorder?.target === w.id,
-            onFocus: () => p.onFocus(w.id),
+            onFocus: () => focusOnly(w.id),
+            onActivate: () => activate(w.id),
             onClose: () => closeIds([w.id]),
             onToggleSelect: () => toggleSelect(w.id),
             onMinimize: () => minimize(w.id),
@@ -660,11 +897,14 @@ export function Canvas(p: Props) {
             onResize: (dw: number, dh: number) => updateFree(w.id, (r) => ({ ...r, w: Math.max(240, r.w + dw), h: Math.max(180, r.h + dh) })),
           };
           const audible =
-            p.visible && !p.globalMuted && !minimized.has(w.id) && (shown.length === 1 || w.id === p.focused || (synced && p.syncAudio));
+            p.visible &&
+            !p.globalMuted &&
+            (compact ? w.id === p.focused : !minimized.has(w.id) && (shown.length === 1 || w.id === p.focused || (synced && p.syncAudio)));
           const register = (x: PlayerApi | null) => {
             apis.current.set(w.id, x);
           };
-          // 入力モードはキャンバスが表に出ている間だけ効かせる(Home や履歴へ移ったとき、キーを横取りしないように)
+          const registerOp = (x: OpWindow | null) => (x ? opWins.current.set(w.id, x) : opWins.current.delete(w.id));
+          // 操作モード・入力モードはキャンバスが表に出ている間だけ効かせる(Home や履歴へ移ったとき、キーを横取りしないように)
           if (w.live)
             return (
               <LiveWindow
@@ -675,13 +915,14 @@ export function Canvas(p: Props) {
                 audible={audible}
                 onMessage={p.onMessage}
                 onRewind={(on) => onRewind(w.id, on)}
-                inputMode={inputWindow === w.id && p.active}
+                inputMode={liveInput && opIds.includes(w.id) && p.active}
                 onToggleInput={() => {
-                  // タイトルバーのボタンはフォーカスの操作を止めるので、ここでフォーカスする
+                  // タイトルバーのボタンはフォーカスの操作を止めるので、ここでフォーカスする。入力モードは操作モードの中に入る
+                  if (liveInput && opIds.includes(w.id)) return setLiveInput(false);
                   p.onFocus(w.id);
-                  setInputWindow((cur) => (cur === w.id ? null : w.id));
+                  if (!opIds.includes(w.id)) setOpIds([w.id]);
+                  setLiveInput(true);
                 }}
-                onExitInput={exitInput}
                 api={register}
               />
             );
@@ -693,18 +934,10 @@ export function Canvas(p: Props) {
                 id={w.id}
                 path={w.path}
                 events={p.events}
-                inputMode={inputWindow === w.id && p.active}
-                onToggleInput={() => {
-                  p.onFocus(w.id);
-                  setInputWindow((cur) => (cur === w.id ? null : w.id));
-                }}
-                onEnterInput={() => {
-                  p.onFocus(w.id);
-                  setInputWindow(w.id);
-                }}
-                onExitInput={exitInput}
                 onMessage={p.onMessage}
                 onRegister={(run) => (run ? csvRuns.current.set(w.id, run) : csvRuns.current.delete(w.id))}
+                onOp={registerOp}
+                onShare={(m) => share(w.id, m)}
               />
             );
           if (isDocument(w))
@@ -717,17 +950,14 @@ export function Canvas(p: Props) {
                 index={w.doc ?? 0}
                 root={p.root}
                 events={p.events}
-                inputMode={inputWindow === w.id && p.active}
                 externalImages={p.externalImages}
-                onToggleInput={() => {
-                  p.onFocus(w.id);
-                  setInputWindow((cur) => (cur === w.id ? null : w.id));
-                }}
-                onExitInput={exitInput}
                 onNavigate={(path) => p.onPathChange(w.id, path)}
                 onVisit={(index) => p.onVisit(w.id, index)}
-                onHintsChange={(on) => setHintingDoc((cur) => (on ? w.id : cur === w.id ? null : cur))}
                 onRegister={(run) => (run ? docRuns.current.set(w.id, run) : docRuns.current.delete(w.id))}
+                onOp={registerOp}
+                onEnterOp={() => activate(w.id)}
+                onStartHints={(mode) => startHints(mode, opIds.includes(w.id) ? opIds : [w.id])}
+                onShare={(m) => share(w.id, m)}
                 onOpenFiles={p.onOpenFiles}
                 onOpenDir={p.onOpenDir}
                 onMessage={p.onMessage}
@@ -774,7 +1004,11 @@ export function Canvas(p: Props) {
           />
         </Dialog>
       )}
-      {p.hints && <HintBar items={windowMode ? ja.windowHints : canvasHints()} onHide={p.onHideHints} />}
+      {p.hints && !compact && (
+        <div className="canvas-hints" onPointerDown={exitOp}>
+          <HintBar items={windowMode ? ja.windowHints : canvasHints()} onHide={p.onHideHints} />
+        </div>
+      )}
     </div>
   );
 }

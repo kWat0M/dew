@@ -9,9 +9,11 @@ import type { Entry } from '../protocol/Entry';
 import type { MediaKind } from '../protocol/MediaKind';
 import type { Tree } from '../protocol/Tree';
 import { basename, join } from '../format';
+import type { DownloadItem } from '../download';
 import { ja } from '../i18n/ja';
 import { Icon } from '../icons';
-import { KeySequence } from '../keys';
+import { KeySequence, leavesInput } from '../keys';
+import { useCompact } from '../useCompact';
 import { urlOf } from '../nav';
 import { useKeys } from '../useKeys';
 import { EntryList, type View } from './EntryList';
@@ -20,7 +22,7 @@ import './Home.css';
 
 export type HomeAction =
   | 'down' | 'up' | 'parent' | 'enter' | 'open' | 'mark' | 'top' | 'bottom'
-  | 'filter' | 'follow' | 'view' | 'hidden' | 'canvas' | 'initial' | 'history' | 'help' | 'compare' | 'escape';
+  | 'filter' | 'follow' | 'view' | 'hidden' | 'canvas' | 'initial' | 'history' | 'help' | 'compare' | 'download' | 'escape';
 
 type Action = HomeAction;
 
@@ -33,7 +35,7 @@ export const homeCommands: CommandDef<HomeAction>[] = [
   { id: 'filter', key: '/', label: '絞り込み' }, { id: 'follow', key: 'n', label: '最新に追従' },
   { id: 'view', key: 'v', label: 'リスト / グリッド' }, { id: 'hidden', key: '.', label: '隠しファイル' },
   { id: 'initial', key: 'H', label: '初期位置へ' }, { id: 'canvas', key: 'Tab', label: 'キャンバスへ' },
-  { id: 'compare', key: 'c', label: '選択を比較' },
+  { id: 'compare', key: 'c', label: '選択を比較' }, { id: 'download', key: 'D', label: '保存' },
 ];
 
 /** 操作パネルの上に出す、画面にボタンがない操作 */
@@ -44,7 +46,7 @@ export const homeBindings: Record<string, HomeAction> = {
   j: 'down', ArrowDown: 'down', k: 'up', ArrowUp: 'up',
   h: 'parent', ArrowLeft: 'parent', l: 'enter', ArrowRight: 'enter',
   Enter: 'open', ' ': 'mark', 'g g': 'top', G: 'bottom',
-  '/': 'filter', n: 'follow', v: 'view', '.': 'hidden', Tab: 'canvas', H: 'initial', r: 'history', '?': 'help', c: 'compare', Escape: 'escape',
+  '/': 'filter', n: 'follow', v: 'view', '.': 'hidden', Tab: 'canvas', H: 'initial', r: 'history', '?': 'help', c: 'compare', D: 'download', Escape: 'escape', 'C-[': 'escape',
 };
 const keymap = new KeySequence<Action>(homeBindings);
 
@@ -61,6 +63,8 @@ type Props = {
   onOpen: (files: { path: string; media: MediaKind }[]) => void;
   /** 選んだファイルを比較ウィンドウで開く(F7) */
   onCompare: (files: { path: string; media: MediaKind }[]) => void;
+  /** 保存する(18.3) */
+  onDownload: (items: DownloadItem[]) => void;
   onCanvas: () => void;
   /** ディレクトリを移った(ブラウザの履歴に積む。4.5) */
   onNavigate: (dir: string) => void;
@@ -105,6 +109,7 @@ export function Home(p: Props) {
 
   /** Space・Ctrl+クリックなどで選んだファイル(フルパス → 項目)。別のディレクトリへ移っても残す */
   const [marked, setMarked] = useState<Map<string, Entry>>(new Map());
+  const compact = useCompact();
   const [changed, setChanged] = useState<Set<string>>(new Set());
   /** ディレクトリごとに最後に選んでいた名前(戻ったとき・ブラウザの履歴で戻ったときに同じ位置にする) */
   const [remembered] = useState(() => new Map<string, string>());
@@ -124,7 +129,7 @@ export function Home(p: Props) {
 
   // 先に一覧を読めるか確かめ、読めたときだけ移る(閲覧範囲の外などは、メッセージだけ出して今の場所に留まる)
   const go = useCallback(
-    (dir: string, select?: string) => {
+    (dir: string, select?: string, then?: () => void) => {
       api.tree(dir).then(
         () => {
           if (select !== undefined) remembered.set(dir, select);
@@ -133,6 +138,7 @@ export function Home(p: Props) {
           setFilter('');
           setChanged(new Set());
           if (dir !== cwd) onNavigate(dir);
+          then?.();
         },
         (err: unknown) => onError(err instanceof ApiError ? err.message : String(err)),
       );
@@ -235,6 +241,11 @@ export function Home(p: Props) {
 
   /** クリック: Shift で今の位置からの範囲を、Ctrl で1つずつ複数選択に加える */
   const clickEntry = (i: number, e: React.MouseEvent) => {
+    // 幅の狭い画面: タップでディレクトリの中へ、ファイルは開く(18.2)
+    if (compact && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      select(i);
+      return enter(entries[i]);
+    }
     if (e.shiftKey && selected >= 0) {
       const [a, b] = selected < i ? [selected, i] : [i, selected];
       setMarked((m) => {
@@ -267,6 +278,20 @@ export function Home(p: Props) {
     } else {
       openEntries([[pathOf(e), e]]);
     }
+  };
+
+  /**
+   * 右カラムのディレクトリの中身を押した: ディレクトリならその中へ(押したものが左のカラムで選ばれる)、
+   * ファイルなら選んでいたディレクトリへ移り、そのファイルを選んでキャンバスで開く
+   */
+  const pick = (child: Entry) => {
+    if (!previewDir || !cwd || !current) return;
+    remembered.set(cwd, current.name);
+    if (child.kind === 'dir') {
+      remembered.set(previewDir, child.name);
+      return go(join(previewDir, child.name));
+    }
+    go(previewDir, child.name, () => openEntries([[join(previewDir, child.name), child]]));
   };
 
   const run = (a: Action) => {
@@ -306,6 +331,12 @@ export function Home(p: Props) {
         setMarked(new Map());
         return p.onCompare(files);
       }
+      case 'download': {
+        // 選んだものがあれば全部、なければカーソルの位置のもの
+        const list: [string, Entry][] = marked.size ? [...marked] : current && cwd ? [[join(cwd, current.name), current]] : [];
+        if (list.length) p.onDownload(list.map(([path, e]) => ({ path, dir: e.kind === 'dir' })));
+        return;
+      }
       case 'escape':
         setMarked(new Map());
         setFilter('');
@@ -322,6 +353,13 @@ export function Home(p: Props) {
     if (a !== 'pending') run(a);
   }, p.active && !filtering);
 
+  // 幅の狭い画面では、パンくずの末尾(今のディレクトリ)が見えるように右端まで送る
+  const crumbsRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = crumbsRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [cwd, compact]);
+
   const crumbs = useMemo(() => {
     if (!cwd) return [];
     const parts = cwd.split('/').filter(Boolean);
@@ -329,13 +367,20 @@ export function Home(p: Props) {
   }, [cwd]);
 
   return (
-    <div className="home">
+    <div className={`home${compact ? ' compact' : ''}`}>
       <header className="home-bar">
-        {/* キャンバスの Home ボタンと同じ位置に置く */}
-        <button type="button" className="icon-button" title={ja.toCanvas} aria-label={ja.canvasButton} onClick={p.onCanvas}>
-          <Icon name="canvas" />
-        </button>
-        <nav className="crumbs" aria-label="path">
+        {compact ? (
+          // 幅の狭い画面: 親へ戻るボタン(キャンバスへは右下のボタン)
+          <button type="button" className="icon-button" title={ja.toParent} aria-label={ja.toParent} disabled={!parentPath} onClick={() => run('parent')}>
+            <Icon name="arrowBack" />
+          </button>
+        ) : (
+          // キャンバスの Home ボタンと同じ位置に置く
+          <button type="button" className="icon-button" title={ja.toCanvas} aria-label={ja.canvasButton} onClick={p.onCanvas}>
+            <Icon name="canvas" />
+          </button>
+        )}
+        <nav className="crumbs" aria-label="path" ref={crumbsRef}>
           {crumbs.map((c, i) => {
             const initial = c.path === p.initialDir;
             return (
@@ -367,7 +412,7 @@ export function Home(p: Props) {
         </nav>
         <div className="home-status">
           {marked.size > 0 && <span className="chip">{ja.selectedCount(marked.size)}</span>}
-          {marked.size > 1 && (
+          {marked.size > 1 && !compact && (
             <button type="button" className="text-button with-icon" title={ja.compareKey} onClick={() => run('compare')}>
               <Icon name="compare" size={18} />
               {ja.compare}
@@ -378,22 +423,33 @@ export function Home(p: Props) {
           <Toolbar
             {...p.toolbar}
             lead={
-              <button type="button" className="icon-button" title={ja.filter} aria-label={ja.filter} onClick={() => setFiltering(true)}>
-                <Icon name="search" />
-              </button>
+              <>
+                {!compact && (
+                  <button type="button" className="icon-button" title={ja.downloadKey} aria-label={ja.download} onClick={() => run('download')}>
+                    <Icon name="download" />
+                  </button>
+                )}
+                <button type="button" className="icon-button" title={ja.filter} aria-label={ja.filter} onClick={() => setFiltering(true)}>
+                  <Icon name="search" />
+                </button>
+              </>
             }
             middle={
-              <button type="button" className="icon-button" title={view === 'list' ? ja.viewGrid : ja.viewList} aria-label={view === 'list' ? ja.viewGrid : ja.viewList} onClick={() => run('view')}>
-                <Icon name={view === 'list' ? 'grid' : 'list'} />
-              </button>
+              !compact && (
+                <button type="button" className="icon-button" title={view === 'list' ? ja.viewGrid : ja.viewList} aria-label={view === 'list' ? ja.viewGrid : ja.viewList} onClick={() => run('view')}>
+                  <Icon name={view === 'list' ? 'grid' : 'list'} />
+                </button>
+              )
             }
           />
         </div>
       </header>
-      {filtering && (
+      {/* 抜けたあとも、絞り込んでいる間は欄を出しておく(Esc でもう一度押すと解除) */}
+      {(filtering || filter !== '') && (
         <input
           className="filter"
-          autoFocus
+          autoFocus={filtering}
+          onFocus={() => setFiltering(true)}
           placeholder={`${ja.filter}(${ja.filterHint})`}
           value={filter}
           onChange={(e) => {
@@ -401,31 +457,34 @@ export function Home(p: Props) {
             setSelectedName(null);
           }}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === 'Escape') {
+            // Enter・Esc・Ctrl+[ で欄から抜ける(絞り込みは残す)
+            if ((e.key === 'Enter' && !e.nativeEvent.isComposing) || leavesInput(e.nativeEvent)) {
               e.preventDefault();
-              if (e.key === 'Escape') setFilter('');
+              e.currentTarget.blur();
               setFiltering(false);
             }
           }}
         />
       )}
       <div className="columns">
-        <EntryList
-          testId="col-parent"
-          label="parent"
-          dir={parentPath ?? ''}
-          entries={parentEntries}
-          selected={cwd ? parentEntries.findIndex((e) => e.name === basename(cwd)) : -1}
-          view="list"
-          onClick={(i) => parentPath && go(join(parentPath, parentEntries[i]!.name))}
-        />
+        {!compact && (
+          <EntryList
+            testId="col-parent"
+            label="parent"
+            dir={parentPath ?? ''}
+            entries={parentEntries}
+            selected={cwd ? parentEntries.findIndex((e) => e.name === basename(cwd)) : -1}
+            view="list"
+            onClick={(i) => parentPath && go(join(parentPath, parentEntries[i]!.name))}
+          />
+        )}
         <EntryList
           testId="col-current"
           label="current"
           dir={cwd ?? ''}
           entries={entries}
           selected={selected}
-          view={view}
+          view={compact ? 'list' : view}
           changed={changed}
           marked={markedHere}
           thumbs
@@ -433,9 +492,9 @@ export function Home(p: Props) {
           onDoubleClick={(i) => enter(entries[i])}
           empty={tree ? ja.emptyDir : ja.loading}
         />
-        <Preview dir={cwd ?? ''} root={p.root} entry={current} showHidden={showHidden} reload={previewReload} />
+        {!compact && <Preview dir={cwd ?? ''} root={p.root} entry={current} showHidden={showHidden} reload={previewReload} onPick={pick} />}
       </div>
-      {p.hints && <HintBar items={ja.homeHints} onHide={p.onHideHints} />}
+      {p.hints && !compact && <HintBar items={ja.homeHints} onHide={p.onHideHints} />}
       <button type="button" className="fab" title={ja.toCanvas} onClick={p.onCanvas}>
         <Icon name="canvas" size={24} />
         {p.liveCount > 0 && (

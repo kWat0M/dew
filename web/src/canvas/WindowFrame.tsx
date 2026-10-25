@@ -3,6 +3,7 @@
 import type { ReactNode, Ref } from 'react';
 import { ja } from '../i18n/ja';
 import { Icon, type IconName } from '../icons';
+import { useCompact } from '../useCompact';
 import type { Rect } from './layout';
 
 /** キャンバスが渡す、配置と枠の操作 */
@@ -10,6 +11,8 @@ export type FrameProps = {
   number: number;
   rect: Rect;
   focused: boolean;
+  /** 操作モード(ウィンドウの中をキーで操作する。5.1)。枠の色を変える */
+  opMode: boolean;
   /** 複数選択に入っているか */
   selected: boolean;
   maximized: boolean;
@@ -19,7 +22,10 @@ export type FrameProps = {
   dropTarget: boolean;
   /** 自由配置(タイトルバーで移動、右下の角で大きさを変える) */
   free: boolean;
+  /** タイトルバーを押した: フォーカスだけ移す */
   onFocus: () => void;
+  /** 本体を押した: フォーカスして操作モードに入る */
+  onActivate: () => void;
   onClose: () => void;
   onToggleSelect: () => void;
   onMinimize: () => void;
@@ -64,41 +70,51 @@ export function WindowFrame({ sectionRef, ...p }: Props) {
     window.addEventListener('pointerup', up);
   };
   const stop = (e: React.SyntheticEvent) => e.stopPropagation();
+  const compact = useCompact();
 
   return (
     <section
       ref={sectionRef}
-      className={`window${p.focused ? ' focused' : ''}${p.selected ? ' selected' : ''}${p.maximized ? ' maximized' : ''}${p.dropTarget ? ' drop-target' : ''}`}
+      className={`window${p.focused ? ' focused' : ''}${p.opMode ? ' op-mode' : ''}${p.selected ? ' selected' : ''}${p.maximized ? ' maximized' : ''}${p.dropTarget ? ' drop-target' : ''}`}
       style={{ left: p.rect.x, top: p.rect.y, width: p.rect.w, height: p.rect.h }}
       hidden={p.minimized}
       data-testid={p.testId}
       data-focused={p.focused}
+      data-op={p.opMode}
       data-selected={p.selected}
       aria-label={p.name}
-      onPointerDown={p.onFocus}
+      // タイトルバーを押したらフォーカスだけ、本体を押したら操作モードに入る(5.1)
+      onPointerDown={(e) => ((e.target as HTMLElement).closest('.window-title') ? p.onFocus() : p.onActivate())}
     >
       <header className="window-title" data-testid="window-title" onPointerDown={drag('move')} onDoubleClick={p.onToggleMaximize}>
         {/* ボタンを押したときはドラッグを始めない */}
-        <span className="title-controls" onPointerDown={stop} onDoubleClick={stop}>
-          <input type="checkbox" className="checkbox" checked={p.selected} aria-label={ja.select} onChange={p.onToggleSelect} />
-        </span>
+        {/* 幅の狭い画面では、選択・最小化・最大化は出さない(1つずつ全画面で出す。18.2) */}
+        {!compact && (
+          <span className="title-controls" onPointerDown={stop} onDoubleClick={stop}>
+            <input type="checkbox" className="checkbox" checked={p.selected} aria-label={ja.select} onChange={p.onToggleSelect} />
+          </span>
+        )}
         <span className="window-number">{p.number}</span>
         <Icon name={p.icon} size={18} />
         <span className="window-name">{p.name}</span>
         <span className="title-controls" onPointerDown={stop} onDoubleClick={stop}>
           {p.titleButtons}
-          <button type="button" className="icon-button small" title={ja.minimize} aria-label={ja.minimize} onClick={p.onMinimize}>
-            <Icon name="minimize" size={18} />
-          </button>
-          <button
-            type="button"
-            className="icon-button small"
-            title={p.maximized ? ja.restore : ja.maximize}
-            aria-label={p.maximized ? ja.restore : ja.maximize}
-            onClick={p.onToggleMaximize}
-          >
-            <Icon name={p.maximized ? 'restore' : 'maximize'} size={18} />
-          </button>
+          {!compact && (
+            <>
+              <button type="button" className="icon-button small" title={ja.minimize} aria-label={ja.minimize} onClick={p.onMinimize}>
+                <Icon name="minimize" size={18} />
+              </button>
+              <button
+                type="button"
+                className="icon-button small"
+                title={p.maximized ? ja.restore : ja.maximize}
+                aria-label={p.maximized ? ja.restore : ja.maximize}
+                onClick={p.onToggleMaximize}
+              >
+                <Icon name={p.maximized ? 'restore' : 'maximize'} size={18} />
+              </button>
+            </>
+          )}
           <button type="button" className="icon-button small" title={ja.close} aria-label={ja.close} onClick={p.onClose}>
             <Icon name="close" size={18} />
           </button>

@@ -3,4 +3,4 @@
 /**
  * 入力モード(L6、5.5)で `WS /ws/live/{id}` にブラウザから送る入力。座標はアプリのウィンドウの中の画素
  */
-export type LiveInput = { "type": "key", key: string, down: boolean, } | { "type": "move", x: number, y: number, } | { "type": "button", button: number, down: boolean, x: number, y: number, } | { "type": "release" } | { "type": "close" } | { "type": "resize", width: number, height: number, };
+export type LiveInput = { "type": "key", key: string, down: boolean, } | { "type": "tap", key: string, } | { "type": "move", x: number, y: number, } | { "type": "button", button: number, down: boolean, x: number, y: number, } | { "type": "release" } | { "type": "close" } | { "type": "resize", width: number, height: number, };

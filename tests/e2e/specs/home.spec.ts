@@ -63,7 +63,7 @@ test('プレビュー中のディレクトリにできたファイルが1秒以�
   await expect(preview).toContainText('result.png', { timeout: 1000 });
 });
 
-// キャンバスから h / Tab で戻ると Enter を押したときのまま。H では初期位置(4.1、5.3)
+// キャンバスから Tab で戻ると Enter を押したときのまま。H では初期位置(4.1、5.3)
 test('キャンバスから戻ると Home の状態が残っている', async ({ page, dew }) => {
   await start(page, dew);
   await current(page).getByRole('option', { name: 'sub' }).click();
@@ -71,7 +71,7 @@ test('キャンバスから戻ると Home の状態が残っている', async ({
   await expect(current(page).getByRole('option')).toHaveText(['nested.webp']);
   await open(page, 'nested.webp');
 
-  await page.keyboard.press('h');
+  await page.keyboard.press('Tab');
   await expect(current(page).getByRole('option')).toHaveText(['nested.webp']);
   expect(await selected(page)).toBe('nested.webp');
 
@@ -81,7 +81,10 @@ test('キャンバスから戻ると Home の状態が残っている', async ({
   await page.keyboard.press('Tab');
   await expect(current(page).getByRole('option')).toHaveText(['nested.webp']);
 
-  // H は初期位置へ
+  // H は Home の初期位置へ。キャンバスの H は何もしない(Tab で Home に戻ってから H。ADR 0030)
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('H');
+  await expect(page.getByTestId('player-window')).toBeVisible();
   await page.keyboard.press('Tab');
   await page.keyboard.press('H');
   await expect(current(page).getByRole('option', { name: 'sub' })).toBeVisible();
@@ -143,7 +146,7 @@ test('Home のバー: キャンバスへは左端、右は 検索・履歴・グ
   const x = async (name: string) => (await page.getByRole('button', { name, exact: true }).first().boundingBox())!.x;
   const crumbs = await page.getByRole('navigation', { name: 'path' }).boundingBox();
   expect(await x('キャンバスへ')).toBeLessThan(crumbs!.x);
-  const order = ['絞り込み', '履歴', 'グリッド表示', 'キー一覧', '操作パネル'];
+  const order = ['保存', '絞り込み', '履歴', 'グリッド表示', 'キー一覧', '設定 / 操作パネル'];
   const xs = await Promise.all(order.map(x));
   expect([...xs].sort((a, b) => a - b)).toEqual(xs);
   // テストでは HOME が範囲外なので、初期位置は --root の場所(パンくずの最後)

@@ -2,6 +2,7 @@
 import type { ReactNode } from 'react';
 import { ja } from '../i18n/ja';
 import { Icon, type IconName } from '../icons';
+import { useCompact } from '../useCompact';
 
 export type ToolbarActions = {
   onHistory: () => void;
@@ -19,12 +20,14 @@ function Button({ icon, label, onClick }: { icon: IconName; label: string; onCli
 }
 
 export function Toolbar(p: ToolbarActions & { lead?: ReactNode; middle?: ReactNode }) {
+  // 幅の狭い画面ではキーボードがない前提なので、キー一覧は出さない(18.2)
+  const compact = useCompact();
   return (
     <div className="toolbar">
       {p.lead}
       <Button icon="history" label={ja.history} onClick={p.onHistory} />
       {p.middle}
-      <Button icon="help" label={ja.keyHelp} onClick={p.onHelp} />
+      {!compact && <Button icon="help" label={ja.keyHelp} onClick={p.onHelp} />}
       <Button icon="menu" label={ja.opsPanel} onClick={p.onPanel} />
       <Button icon="power" label={ja.shutdown} onClick={p.onShutdown} />
     </div>

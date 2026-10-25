@@ -1,7 +1,7 @@
 // キー判定(5.6)。KeyboardEvent.key を基本にし、日本語 IME が有効なとき(key が Process)だけ
-// 英字・数字を code から求める。Ctrl 系はキーマップに使わない(入力モードを抜ける Ctrl+] だけ例外)
+// 英字・数字を code から求める。Ctrl 系はキーマップに使わない(モードや入力を抜ける Ctrl+[ だけ例外。vim の Esc の代わり)
 
-/** キーマップで使うキーの名前。`C-]` 以外は KeyboardEvent.key と同じ(例: 'j', 'J', 'Enter', ' ') */
+/** キーマップで使うキーの名前。`C-[` 以外は KeyboardEvent.key と同じ(例: 'j', 'J', 'Enter', ' ') */
 export type Key = string;
 
 export type KeyInfo = {
@@ -16,9 +16,8 @@ const imeDigit = /^Digit([0-9])$/;
 /** キーマップに渡すキーにする。無視するキー(変換中、修飾キーだけ、Ctrl 系)は null */
 export function readKey(e: Pick<KeyboardEvent, 'key' | 'code' | 'shiftKey' | 'ctrlKey' | 'metaKey' | 'altKey' | 'isComposing'>): KeyInfo | null {
   if (e.isComposing) return null;
-  if (e.ctrlKey && !e.altKey && !e.metaKey) {
-    return e.key === ']' || e.code === 'BracketRight' ? { key: 'C-]', ime: false } : null;
-  }
+  // 物理キーの位置(code)では判定しない(JIS 配列では US の ] の位置に [ がある)
+  if (e.ctrlKey && !e.altKey && !e.metaKey) return e.key === '[' ? { key: 'C-[', ime: false } : null;
   if (e.ctrlKey || e.metaKey || e.altKey) return null;
   if (e.key === 'Process') {
     const letter = imeLetter.exec(e.code)?.[1];
@@ -29,6 +28,17 @@ export function readKey(e: Pick<KeyboardEvent, 'key' | 'code' | 'shiftKey' | 'ct
   }
   if (['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Dead', 'Unidentified'].includes(e.key)) return null;
   return { key: e.key, ime: false };
+}
+
+/** モードや入力を抜けるキー(Esc・Ctrl+[・q)。文字を打つ欄では q は文字なので除く */
+export function isLeaveKey(key: Key, typing = false): boolean {
+  return key === 'Escape' || key === 'C-[' || (!typing && key === 'q');
+}
+
+/** 文字を打つ欄から抜けるキーか(Esc・Ctrl+[。変換中は除く) */
+export function leavesInput(e: Pick<KeyboardEvent, 'key' | 'code' | 'shiftKey' | 'ctrlKey' | 'metaKey' | 'altKey' | 'isComposing'>): boolean {
+  const k = readKey(e);
+  return k !== null && isLeaveKey(k.key, true);
 }
 
 /**

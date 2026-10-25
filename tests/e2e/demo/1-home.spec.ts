@@ -16,14 +16,14 @@ test('1-home', async ({ page, demo }) => {
 
   await caption(page, 'Enter で開くと、音声付き・元のフレームレートで再生');
   await keys(page, ['Enter'], 2500);
-  await caption(page, 'l / j で 5 秒送り・戻し、k で一時停止、. と , でコマ送り');
+  await caption(page, '開いた直後は操作モード: l / j で 5 秒送り・戻し、k で一時停止、. と , でコマ送り');
   await keys(page, ['l', 'l', 'j'], 900);
   await keys(page, ['k'], 700);
   await keys(page, ['.', '.', '.', ','], 500);
   await keys(page, ['k'], 1500);
 
-  await caption(page, 'h で Home に戻る');
-  await keys(page, ['h'], 1500);
+  await caption(page, 'Tab で Home に戻る');
+  await keys(page, ['Tab'], 1500);
 
   await caption(page, 'マウスでも同じことができる(クリックで選択、ダブルクリックで開く)');
   await clickOn(page, page.getByRole('option', { name: 'images', exact: true }));
@@ -52,7 +52,7 @@ test('1-home', async ({ page, demo }) => {
   await keys(page, ['Escape'], 800);
   // キー一覧が閉じきる前のクリックは閉じる操作になるので、パネルが出るまで押し直す
   await expect(async () => {
-    await clickOn(page, page.getByRole('button', { name: '操作パネル', exact: true }));
+    await clickOn(page, page.getByRole('button', { name: '設定 / 操作パネル', exact: true }));
     await expect(page.getByTestId('ops-panel')).toBeVisible({ timeout: 1000 });
   }).toPass();
   await pause(page, 3000);

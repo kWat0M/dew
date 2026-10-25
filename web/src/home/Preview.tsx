@@ -83,8 +83,25 @@ function MarkdownPreview({ path, root, mtime }: { path: string; root: string; mt
   );
 }
 
-/** reload: ディレクトリの中身が変わったら増やす(読み直す) */
-export function Preview({ dir, root, entry, showHidden, reload }: { dir: string; root: string; entry: Entry | undefined; showHidden: boolean; reload?: number }) {
+/**
+ * reload: ディレクトリの中身が変わったら増やす(読み直す)。
+ * onPick: ディレクトリの中身の一覧の項目を押した(押せるのは Home だけ。画像・動画・md・csv のプレビューは押せない)
+ */
+export function Preview({
+  dir,
+  root,
+  entry,
+  showHidden,
+  reload,
+  onPick,
+}: {
+  dir: string;
+  root: string;
+  entry: Entry | undefined;
+  showHidden: boolean;
+  reload?: number;
+  onPick?: (child: Entry) => void;
+}) {
   const path = entry ? join(dir, entry.name) : null;
   const [probe, setProbe] = useState<{ path: string; probe: Probe } | null>(null);
   const [children, setChildren] = useState<{ path: string; tree: Tree } | null>(null);
@@ -118,12 +135,15 @@ export function Preview({ dir, root, entry, showHidden, reload }: { dir: string;
             <span className="muted">{ja.emptyDir}</span>
           ) : (
             <ul className="preview-children">
-              {kids.slice(0, 200).map((k) => (
-                <li key={k.name}>
-                  <Icon name={iconFor(k)} size={16} />
-                  {k.name}
-                </li>
-              ))}
+              {kids.slice(0, 200).map((k) => {
+                const pickable = onPick !== undefined && k.readable;
+                return (
+                  <li key={k.name} data-name={k.name} className={pickable ? 'pickable' : undefined} onClick={pickable ? () => onPick(k) : undefined}>
+                    <Icon name={iconFor(k)} size={16} />
+                    {k.name}
+                  </li>
+                );
+              })}
             </ul>
           )
         ) : entry.media === 'markdown' ? (

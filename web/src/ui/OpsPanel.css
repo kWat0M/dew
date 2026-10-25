@@ -89,3 +89,71 @@
   padding: 6px 8px;
   color: var(--md-sys-color-on-surface-variant);
 }
+
+/* MD3 のセグメントボタン(テーマの選択。18.1) */
+.segmented {
+  display: flex;
+  margin: 0 8px;
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-full);
+  overflow: hidden;
+}
+
+.ops-radio .segmented label {
+  position: relative;
+  flex: 1;
+  justify-content: center;
+  gap: 4px;
+  min-height: 40px;
+  padding: 0 8px;
+  color: var(--md-sys-color-on-surface);
+  cursor: pointer;
+}
+
+.segmented label + label {
+  border-left: 1px solid var(--md-sys-color-outline);
+}
+
+.segmented label:hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) var(--md-sys-state-hover-opacity), transparent);
+}
+
+.ops-radio .segmented label.selected {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+/* ラジオボタンは見えなくし、キーで選べるようにだけ残す */
+.segmented input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.segmented label:has(input:focus-visible) {
+  outline: 2px solid var(--md-sys-color-secondary);
+  outline-offset: -2px;
+}
+
+/* 幅の狭い画面(18.2): 画面の幅いっぱいに出す */
+@media (max-width: 599.98px) {
+  .ops-panel,
+  .ops-panel.with-hints {
+    width: 100%;
+    bottom: 0;
+    border-radius: 0;
+  }
+
+  .ops-item,
+  .ops-switch,
+  .ops-radio label {
+    min-height: 48px;
+  }
+}
+
+@media (max-width: 599.98px) {
+  /* キーボードがない前提なので、キーの案内は出さない */
+  .ops-item kbd {
+    display: none;
+  }
+}

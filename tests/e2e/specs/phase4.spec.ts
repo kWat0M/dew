@@ -136,12 +136,12 @@ test('ヒントの帯がライブウィンドウの状態に合わせて変わ�
   await expect(hints).toContainText('録画を止める');
   await page.keyboard.press('R');
   await expect(hints).not.toContainText('録画を止める');
-  // 巻き戻し中: 移動のキーとライブへ戻る(q)が出る
+  // 巻き戻し中: 移動のキーとライブへ戻る(G。q は操作モードを抜けるキーなので G にした。ADR 0030)が出る
   await page.waitForTimeout(1500);
   await page.keyboard.press('k');
   await expect(hints).toContainText('ライブへ戻る');
   await expect(hints).toContainText('±5秒');
-  await page.keyboard.press('q');
+  await page.keyboard.press('G');
   await expect(win).toHaveAttribute('data-rewind', 'live');
   await expect(hints).not.toContainText('ライブへ戻る');
   // 入力モード中は抜けるキーだけ

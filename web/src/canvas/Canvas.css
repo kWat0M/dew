@@ -87,11 +87,19 @@
   overflow: hidden;
 }
 
-/* フォーカス中は primary の枠 */
+/* フォーカス中・操作モード・入力モードは、枠の色で示す(dew 独自のトークン。theme/frame.css) */
 /* フォーカスは枠の色だけで示す。影や重なり順を変えると、Firefox 系(Zen)で GPU 合成の動画が
    黒くなることがあったため。重なりのある自由配置と最大化のときだけ、手前に出す */
 .window.focused {
-  border-color: var(--md-sys-color-primary);
+  border-color: var(--dew-frame-focus);
+}
+
+/* 操作モード(5.1): 太めの枠にして、キーがどのウィンドウに効くかを分かりやすくする */
+.window.op-mode,
+.window.op-mode.focused {
+  border-color: var(--dew-frame-op);
+  outline: 2px solid var(--dew-frame-op);
+  outline-offset: -4px;
 }
 
 .canvas-area.free .window.focused {
@@ -334,9 +342,15 @@
 }
 
 .window.selected.focused {
-  border-color: var(--md-sys-color-primary);
+  border-color: var(--dew-frame-focus);
   outline: 2px solid var(--md-sys-color-tertiary);
   outline-offset: -6px;
+}
+
+/* 選択中のまま操作モードに入ったら、枠は操作モードの色(内側の線で選択中を示す) */
+.window.op-mode.selected,
+.window.op-mode.selected.focused {
+  border-color: var(--dew-frame-op);
 }
 
 /* タイルの並べ替えで落とす先 */
@@ -386,6 +400,31 @@
 .canvas.window-mode .canvas-bar {
   background: var(--md-sys-color-tertiary-container);
   color: var(--md-sys-color-on-tertiary-container);
+}
+
+/* 上部のバーを隠す設定のとき(18.4): 普段は画面の外。上端にマウスを寄せると上から重なって出る(左端のタブバーと同じ作り) */
+.top-edge {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 8px;
+  z-index: 62;
+}
+
+.canvas-bar.autohide {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  box-shadow: var(--md-sys-elevation-level2);
+  transform: translateY(-100%);
+  transition: transform var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+  z-index: 63;
+}
+
+.canvas-bar.autohide.open {
+  transform: none;
 }
 
 /* 左端の縦のタブバー。普段は隠し、画面の左端にマウスを寄せると出る(Zen・Arc 風) */
@@ -745,11 +784,13 @@
   color: var(--md-sys-color-on-surface-variant);
 }
 
-/* 入力モード(L6): 枠の色を変え、抜けるキーを常に出す */
+/* 入力モード(L6。ライブだけ): 枠の色を変え、抜けるキーを常に出す */
 .window.input-mode,
-.window.input-mode.focused {
-  border-color: var(--md-sys-color-tertiary);
-  outline: 2px solid var(--md-sys-color-tertiary);
+.window.input-mode.focused,
+.window.input-mode.op-mode {
+  border-color: var(--dew-frame-input);
+  outline: 2px solid var(--dew-frame-input);
+  outline-offset: -4px;
 }
 
 /* 録画中は枠を赤くする(入力モード中でも録画中を優先して示す) */
@@ -769,16 +810,20 @@
   text-overflow: ellipsis;
   padding: 2px 10px;
   border-radius: var(--md-sys-shape-corner-full);
-  background: var(--md-sys-color-tertiary-container);
-  color: var(--md-sys-color-on-tertiary-container);
+  background: var(--dew-frame-input);
+  color: var(--dew-on-frame);
   font: var(--md-sys-typescale-label-medium);
   white-space: nowrap;
 }
 
-/* 入力モード中は、タイトルバーの入力モードのボタンも枠と同じ tertiary 色にする */
+/* 入力モード中は、タイトルバーの入力モードのボタンも枠と同じ色にする */
 .icon-button.input-on {
-  background: var(--md-sys-color-tertiary-container);
-  color: var(--md-sys-color-on-tertiary-container);
+  background: var(--dew-frame-input);
+  color: var(--dew-on-frame);
+}
+
+.canvas-hints {
+  flex: none;
 }
 
 .exact-badge {
@@ -795,3 +840,22 @@
   color: var(--md-sys-color-on-error-container);
 }
 
+
+/* 幅の狭い画面(18.2): タブとタイトルバーのボタンを指で押せる大きさに */
+.canvas.compact .canvas-bar {
+  gap: 4px;
+  padding: 0 4px;
+}
+
+.canvas.compact .chip.assist {
+  height: 48px;
+}
+
+.canvas.compact .window-title {
+  height: 48px;
+}
+
+.canvas.compact .global-mute {
+  height: 48px;
+  min-width: 48px;
+}

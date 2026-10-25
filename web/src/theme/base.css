@@ -147,3 +147,28 @@ kbd {
   color: var(--md-sys-color-primary);
   font: var(--md-sys-typescale-title-small);
 }
+
+/* 幅の狭い画面(18.2): 押す部品は 48px 以上(MD3 のタッチターゲット)。確認の画面は幅いっぱい */
+@media (max-width: 599.98px) {
+  .icon-button,
+  .icon-button.small {
+    width: 48px;
+    height: 48px;
+  }
+
+  .toolbar {
+    gap: 0;
+  }
+
+  .text-button,
+  .filled-button {
+    min-height: 48px;
+  }
+
+  .dialog {
+    box-sizing: border-box;
+    min-width: 0;
+    width: calc(100vw - 32px);
+    padding: 16px;
+  }
+}

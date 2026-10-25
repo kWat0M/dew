@@ -94,7 +94,7 @@ test('リンクヒントで移動し、H で元の位置へ戻る', async ({ pag
   // 移動すると窓の名前が変わるので、名前ではなく(1つだけの)ドキュメントウィンドウで探す
   const win = page.getByTestId('document-window');
   const link = win.getByRole('link', { name: 'B へ移動' });
-  // 開いた直後から入力モードなので、d で半画面ずつ下がる
+  // 開いた直後から操作モードなので、d で半画面ずつ下がる
   await expect(async () => {
     await page.keyboard.press('d');
     await expect(link).toBeInViewport({ timeout: 200 });
@@ -176,8 +176,8 @@ test('Shift_JIS の Markdown を文字化けせずに出す', async ({ page, dew
   await expect(win.getByTestId('doc-encoding')).toHaveText('Shift_JIS');
 });
 
-// 基準8: 開いた直後から j でスクロールでき、q か Ctrl+] で抜けたあとは w や Tab のキャンバス操作が効く
-test('開いた直後から j で読め、q / Ctrl+] で抜けるとキャンバスの操作が効く', async ({ page, dew }) => {
+// 基準8: 開いた直後から j でスクロールでき、q か Ctrl+[ で操作モードを抜けたあとは w や Tab のキャンバス操作が効く
+test('開いた直後から j で読め、q / Ctrl+[ で抜けるとキャンバスの操作が効く', async ({ page, dew }) => {
   copyMd(dew);
   await start(page, dew);
   // Home から Enter で開く(yazi から開いたときと同じく、すぐ読めること)
@@ -187,33 +187,32 @@ test('開いた直後から j で読め、q / Ctrl+] で抜けるとキャンバ
   await page.keyboard.press('Enter');
   const win = docWindow(page, 'a.md');
   await expect(win.getByTestId('doc-body')).toBeVisible();
-  await expect(win).toHaveAttribute('data-input', 'true');
+  await expect(win).toHaveAttribute('data-op', 'true');
   await page.keyboard.press('j');
   await expect.poll(() => scrollTop(win)).toBeGreaterThan(0);
-  // Esc では抜けない(ライブウィンドウと同じ)。ヒント中の帯には抜け方を出し、Ctrl+] で入力モードごと抜ける
+  // 抜けるキーは1回で1段ずつ戻る: ヒントを閉じ、次に操作モードを抜ける(ADR 0030)
   await page.keyboard.press('f');
   await expect(win.getByTestId('link-hint').first()).toBeVisible();
   await expect(page.getByTestId('hint-bar').filter({ visible: true })).toContainText('ヒントを閉じる');
   await page.keyboard.press('Escape');
-  await expect(win.getByTestId('link-hint').first()).toBeVisible();
-  await expect(win).toHaveAttribute('data-input', 'true');
-  await page.keyboard.press('Control+BracketRight');
   await expect(win.getByTestId('link-hint')).toHaveCount(0);
-  await expect(win).toHaveAttribute('data-input', 'false');
+  await expect(win).toHaveAttribute('data-op', 'true');
+  await page.keyboard.press('Control+BracketLeft');
+  await expect(win).toHaveAttribute('data-op', 'false');
   await expect(page.getByTestId('hint-bar').filter({ visible: true })).not.toContainText('ヒントを閉じる');
-  // ノーマルモードの再生キーは効かず、i で操作できると1回だけ知らせる
+  // ノーマルモードの j はウィンドウを選ぶキーで、文書はスクロールしない(ADR 0030)
   const top = await scrollTop(win);
   await page.keyboard.press('j');
-  await expect(page.getByRole('status').filter({ hasText: 'i で操作できます' })).toBeVisible();
+  await page.waitForTimeout(200);
   expect(await scrollTop(win)).toBe(top);
   await page.keyboard.press('w');
   await expect(page.getByTestId('window-mode')).toBeVisible();
   await page.keyboard.press('q');
-  // i で入り直し、Ctrl+] で抜ける
+  // i で入り直し、Ctrl+[ で抜ける
   await page.keyboard.press('i');
-  await expect(win).toHaveAttribute('data-input', 'true');
-  await page.keyboard.press('Control+BracketRight');
-  await expect(win).toHaveAttribute('data-input', 'false');
+  await expect(win).toHaveAttribute('data-op', 'true');
+  await page.keyboard.press('Control+BracketLeft');
+  await expect(win).toHaveAttribute('data-op', 'false');
   await page.keyboard.press('Tab');
   await expect(page.getByTestId('col-current')).toBeVisible();
 });
@@ -237,24 +236,24 @@ async function pickHint(page: Page, win: Locator, key: 'f' | 'F', href: string) 
   for (const ch of (await hint.textContent())!) await page.keyboard.press(ch);
 }
 
-// ディレクトリへのリンクで Home へ移ったら、すぐに Home のキーが効く(文書の入力モードがキーを横取りしない)
+// ディレクトリへのリンクで Home へ移ったら、すぐに Home のキーが効く(文書の操作モードがキーを横取りしない)
 test('ディレクトリのリンクで Home へ移ると、すぐにキーが効く', async ({ page, dew }) => {
   copyMd(dew);
   await start(page, dew);
   const win = await openDoc(page, dew, 'docs/b.md');
-  await expect(win).toHaveAttribute('data-input', 'true');
+  await expect(win).toHaveAttribute('data-op', 'true');
   await pickHint(page, win, 'f', '..');
   await expect(current(page).getByRole('option', { name: 'a.md' })).toBeVisible();
   const before = await selected(page);
   await page.keyboard.press('j');
   await expect.poll(() => selected(page)).not.toBe(before);
-  // キャンバスへ戻ると、文書はまた入力モード
+  // キャンバスへ戻ると、文書はまた操作モード
   await page.keyboard.press('Tab');
-  await expect(win).toHaveAttribute('data-input', 'true');
+  await expect(win).toHaveAttribute('data-op', 'true');
 });
 
-// 入力モードは q でも、ヒントは Backspace でも閉じる
-test('q で入力モードを抜け、Backspace でヒントを閉じる', async ({ page, dew }) => {
+// 操作モードは q でも、ヒントは Backspace でも閉じる
+test('q で操作モードを抜け、Backspace でヒントを閉じる', async ({ page, dew }) => {
   copyMd(dew);
   await start(page, dew);
   const win = await openDoc(page, dew, 'all.md');
@@ -262,9 +261,9 @@ test('q で入力モードを抜け、Backspace でヒントを閉じる', async
   await expect(win.getByTestId('link-hint').first()).toBeVisible();
   await page.keyboard.press('Backspace');
   await expect(win.getByTestId('link-hint')).toHaveCount(0);
-  await expect(win).toHaveAttribute('data-input', 'true');
+  await expect(win).toHaveAttribute('data-op', 'true');
   await page.keyboard.press('q');
-  await expect(win).toHaveAttribute('data-input', 'false');
+  await expect(win).toHaveAttribute('data-op', 'false');
 });
 
 // f で選んだ画像は同じウィンドウに出し、H で文書へ戻る。F なら新しいウィンドウで開く
@@ -302,7 +301,7 @@ test('コードブロックをボタンと f でコピーする', async ({ page,
   await buttons.first().click();
   await expect(page.getByRole('status').filter({ hasText: 'コードをコピーしました' })).toBeVisible();
   if (browserName === 'chromium') await expect.poll(clipboard).toContain('def hello(name: str)');
-  // f のヒントでも選べる(マウスで押したので入力モードに入り直す)
+  // f のヒントでも選べる(マウスで押したので操作モードに入り直す)
   await page.keyboard.press('i');
   await buttons.last().scrollIntoViewIfNeeded();
   await page.keyboard.press('f');
@@ -393,10 +392,10 @@ test('操作パネルの Markdown の節から文書を操作する', async ({ p
   await expect.poll(() => scrollTop(win)).toBeGreaterThan(0);
   await md.getByRole('button', { name: /^先頭へ/ }).click();
   await expect.poll(() => scrollTop(win)).toBe(0);
-  // リンクヒントは続けてキーで選ぶので、押すと入力モードに入る
+  // リンクヒントは続けてキーで選ぶので、押すと操作モードに入る
   await md.getByRole('button', { name: /^リンクを選んで開く/ }).click();
   await expect(win.getByTestId('link-hint').first()).toBeVisible();
-  await expect(win).toHaveAttribute('data-input', 'true');
+  await expect(win).toHaveAttribute('data-op', 'true');
   await page.keyboard.press('Backspace');
   await expect(win.getByTestId('link-hint')).toHaveCount(0);
   // 文書以外にフォーカスすると、節は出ない
@@ -429,7 +428,7 @@ test('文字コードを手で切り替える', async ({ page, dew }) => {
   await expect(win.getByTestId('doc-body').locator('h1')).toHaveText('日本語の見出し');
 });
 
-// 入力モードの e で、文字コードを UTF-8 → Shift_JIS → EUC-JP の順に切り替える
+// 操作モードの e で、文字コードを UTF-8 → Shift_JIS → EUC-JP の順に切り替える
 test('e で文字コードを順に切り替える', async ({ page, dew }) => {
   copyMd(dew);
   await start(page, dew);

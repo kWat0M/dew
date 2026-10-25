@@ -4,6 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>dew</title>
+    <script>
+      // 選んだテーマ(18.1)を最初の描画の前に付ける。読み込んだ直後にブラウザの色で一度描いてから変わらないように
+      try {
+        var t = JSON.parse(localStorage.getItem('dew.settings') || '{}').theme;
+        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>
