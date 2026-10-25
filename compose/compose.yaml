@@ -28,7 +28,7 @@ services:
       # 場所は .env の DOTFILES で指定する（未設定ならエラーにする）
       additional_contexts:
         # --- [2] git: ssh の設定 ---
-        ssh-config: ${DOTFILES:?.env に DOTFILES を設定してください}/ssh/.ssh
+        ssh-config: ${SSH_PATH:-${DOTFILES:?.env に DOTFILES を設定してください}/ssh/.ssh}
         # --- [5] Claude Code: Claude Code の設定（CLAUDE.md など）---
         claude-config: ${DOTFILES}/claude/.claude
 
@@ -52,6 +52,7 @@ services:
       # Vite の開発サーバ（トークンがないので、ホストの 127.0.0.1 だけで受ける）。
       # WSL では Windows から http://localhost:<VITE_PORT> で、サーバでは ssh -L で開く
       - 127.0.0.1:${VITE_PORT:-5173}:5173
+
 
     volumes:
       # --- [1] 基本設定: リポジトリ全体を、ホームからの相対パスがホストと同じ場所にマウントする ---
