@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 使用量の上限: 週の使用率が開始時点から DEW_BUDGET_PCT(既定 10)ポイント増えたら作業を止める。
+# 使用量の上限: 週の使用率が開始時点から BUDGET_PCT(既定 10)ポイント増えたら作業を止める。
 #
 # PreToolUse フックとして、ツールを使う直前に毎回呼ばれる。
 # - 開始時点は .claude/budget/baseline.json。なければ今の値を開始時点として作る
@@ -14,7 +14,7 @@ cat >/dev/null  # フックの入力は使わない
 budget_dir="${CLAUDE_PROJECT_DIR:-.}/.claude/budget"
 state_file="$budget_dir/state.json"
 base_file="$budget_dir/baseline.json"
-limit="${DEW_BUDGET_PCT:-10}"
+limit="${BUDGET_PCT:-10}"
 
 # まだ使用率が届いていない(Pro / Max 以外、またはセッション開始直後)
 jq -e '.seven_day | numbers' "$state_file" >/dev/null 2>&1 || exit 0

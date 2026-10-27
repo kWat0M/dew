@@ -1,6 +1,6 @@
 {
   "env": {
-    "DEW_BUDGET_PCT": "60"
+    "BUDGET_PCT": "100"
   },
   "permissions": {
     "allow": [

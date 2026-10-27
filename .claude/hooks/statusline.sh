@@ -146,7 +146,7 @@ if [ -n "$(j '.rate_limits.seven_day.used_percentage')" ]; then
 
   # 開始時点からの増加量を、2行目の右端に (3.2 / 40%) の形で出す。
   # baseline.json がない、または週の枠がリセット済みなら出さない(budget_guard が次に作り直す)
-  limit="${DEW_BUDGET_PCT:-10}"
+  limit="${BUDGET_PCT:-10}"
   budget=$(printf '%s' "$input" | jq -r --slurpfile b "$bdir/baseline.json" --arg limit "$limit" '
     .rate_limits.seven_day as $s
     | select(($b[0].seven_day | numbers) and $b[0].resets_at == $s.resets_at)
