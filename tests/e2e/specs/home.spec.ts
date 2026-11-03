@@ -181,3 +181,21 @@ test('別のディレクトリへ移っても複数選択は残り、まとめ�
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('player-window')).toHaveCount(2);
 });
+
+test('比較のボタンは画像・動画が2つ以上選ばれているときだけ出る', async ({ page, dew }) => {
+  await start(page, dew);
+  const opt = (name: string) => current(page).getByRole('option', { name });
+  const compare = page.locator('.home-status').getByTitle('選んだ画像・動画を比較(c)');
+  await opt('sub').click({ modifiers: ['Control'] });
+  await opt('h264_aac.mp4').click({ modifiers: ['Control'] });
+  await expect(page.locator('.home-status')).toContainText('2 件を選択中');
+  await expect(compare).toHaveCount(0);
+  await page.keyboard.press('c');
+  await expect(page.getByRole('status')).toContainText('比較する画像・動画を2つ以上選んでください');
+  // 画像・動画が2つになれば出る。比較できないものは除いて比べる
+  await opt('image.png').click({ modifiers: ['Control'] });
+  await expect(compare).toBeVisible();
+  await page.keyboard.press('c');
+  await expect(page.getByTestId('compare-window')).toHaveCount(1);
+  await expect(page.getByRole('status')).toContainText('画像・動画でない 1 件は、比較に入れていません');
+});

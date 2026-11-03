@@ -109,6 +109,11 @@ export function Home(p: Props) {
 
   /** Space・Ctrl+クリックなどで選んだファイル(フルパス → 項目)。別のディレクトリへ移っても残す */
   const [marked, setMarked] = useState<Map<string, Entry>>(new Map());
+  /** 選んだもののうち比較できるもの(読める画像・動画のファイル) */
+  const comparable = useMemo(
+    () => [...marked].filter(([, e]) => e.kind === 'file' && (e.media === 'video' || e.media === 'image') && e.readable),
+    [marked],
+  );
   const compact = useCompact();
   const [changed, setChanged] = useState<Set<string>>(new Set());
   /** ディレクトリごとに最後に選んでいた名前(戻ったとき・ブラウザの履歴で戻ったときに同じ位置にする) */
@@ -324,12 +329,11 @@ export function Home(p: Props) {
       case 'history': return p.onHistory();
       case 'help': return p.onHelp();
       case 'compare': {
-        const files = [...marked]
-          .filter(([, e]) => e.kind === 'file' && (e.media === 'video' || e.media === 'image') && e.readable)
-          .map(([path, e]) => ({ path, media: e.media }));
-        if (files.length < 2) return onError(ja.compareNeedTwo);
+        if (comparable.length < 2) return onError(ja.compareNeedTwo);
+        const skipped = marked.size - comparable.length;
+        if (skipped > 0) onError(ja.compareSkipped(skipped));
         setMarked(new Map());
-        return p.onCompare(files);
+        return p.onCompare(comparable.map(([path, e]) => ({ path, media: e.media })));
       }
       case 'download': {
         // 選んだものがあれば全部、なければカーソルの位置のもの
@@ -412,7 +416,7 @@ export function Home(p: Props) {
         </nav>
         <div className="home-status">
           {marked.size > 0 && <span className="chip">{ja.selectedCount(marked.size)}</span>}
-          {marked.size > 1 && !compact && (
+          {comparable.length > 1 && !compact && (
             <button type="button" className="text-button with-icon" title={ja.compareKey} onClick={() => run('compare')}>
               <Icon name="compare" size={18} />
               {ja.compare}
