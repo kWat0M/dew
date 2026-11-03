@@ -25,6 +25,10 @@ https://github.com/user-attachments/assets/7b668a75-f42e-492f-9f4a-8bfed1dc88ca
 
 「ダウンロードする」
 
+
+https://github.com/user-attachments/assets/8d8589ba-8a31-47bf-bb6a-96839da44b71
+
+
 「プログラムの描画ウィンドウを見る」
 
 
