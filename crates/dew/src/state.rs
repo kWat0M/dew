@@ -26,6 +26,27 @@ pub struct ServerFile {
     /// 閲覧範囲(7.2)。起動したときと dew status で出す
     #[serde(default)]
     pub root: String,
+    /// サーバを起動したときの DEW_PUBLIC_HOST / DEW_PUBLIC_PORT。URL と一緒に出す。前の版のサーバは記録がない
+    #[serde(default)]
+    pub public: Option<PublicEnv>,
+}
+
+/// URL の作り方を決める環境変数(未設定・空は None。書かれたままの文字列で持つ)
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicEnv {
+    pub host: Option<String>,
+    pub port: Option<String>,
+}
+
+impl PublicEnv {
+    /// 今のプロセスの環境変数から読む
+    pub fn current() -> Self {
+        let var = |k| std::env::var(k).ok().filter(|v: &String| !v.is_empty());
+        Self {
+            host: var("DEW_PUBLIC_HOST"),
+            port: var("DEW_PUBLIC_PORT"),
+        }
+    }
 }
 
 /// 今の dew の実行ファイルの更新時刻(ナノ秒)
