@@ -35,3 +35,8 @@ export function basename(path: string): string {
 export function join(dir: string, name: string): string {
   return dir.endsWith('/') ? dir + name : `${dir}/${name}`;
 }
+
+export function dirname(path: string): string {
+  const i = path.lastIndexOf('/');
+  return i <= 0 ? '/' : path.slice(0, i);
+}

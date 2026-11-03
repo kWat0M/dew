@@ -199,3 +199,38 @@ test('比較のボタンは画像・動画が2つ以上選ばれているとき�
   await expect(page.getByTestId('compare-window')).toHaveCount(1);
   await expect(page.getByRole('status')).toContainText('画像・動画でない 1 件は、比較に入れていません');
 });
+
+test('選択中のファイルを一覧で確かめ、選択を外したり、そのディレクトリへ移ったりできる', async ({ page, dew }) => {
+  await start(page, dew);
+  await current(page).getByRole('option', { name: 'image.png' }).click({ modifiers: ['Control'] });
+  await current(page).getByRole('option', { name: 'h264_aac.mp4' }).click({ modifiers: ['Control'] });
+  await current(page).getByRole('option', { name: 'sub' }).click();
+  await page.keyboard.press('l');
+  await expect(current(page).getByRole('option')).toHaveText(['nested.webp']);
+  await page.keyboard.press(' ');
+  // 件数を押すと、別のディレクトリで選んだものも含めて、パスの順に出る
+  await page.locator('.home-status').getByRole('button', { name: '3 件を選択中' }).click();
+  const list = page.getByTestId('selection-list');
+  const rows = list.locator('.selection-path');
+  await expect(rows).toHaveText(['h264_aac.mp4', 'image.png', 'sub/nested.webp']);
+  await expect(page.locator('.home').getByTestId('hint-bar')).toContainText('選択を外す');
+  // j/k で移動し、Space で外す
+  await page.keyboard.press('j');
+  await expect(list.locator('[data-current="true"] .selection-path')).toHaveText('image.png');
+  await page.keyboard.press('k');
+  await page.keyboard.press(' ');
+  await expect(rows).toHaveText(['image.png', 'sub/nested.webp']);
+  // マウスでも外せる
+  await list.locator('.selection-row').filter({ hasText: 'sub/nested.webp' }).getByRole('button', { name: '選択解除' }).click();
+  await expect(rows).toHaveText(['image.png']);
+  // q で閉じ、m で開き直す
+  await page.keyboard.press('q');
+  await expect(list).toHaveCount(0);
+  await page.keyboard.press('m');
+  await expect(rows).toHaveText(['image.png']);
+  // l でそのディレクトリへ移り、そのファイルにカーソルを置く
+  await page.keyboard.press('l');
+  await expect(list).toHaveCount(0);
+  await expect.poll(() => selected(page)).toBe('image.png');
+  await expect(page.locator('.home-status')).toContainText('1 件を選択中');
+});

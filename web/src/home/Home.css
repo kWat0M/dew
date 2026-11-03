@@ -64,6 +64,13 @@
   gap: 8px;
 }
 
+/* 件数のチップ。押すと選択中のファイルの一覧を出す */
+.chip-button {
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
 .filter {
   margin: 8px 16px 0;
   padding: 10px 16px;
