@@ -21,7 +21,7 @@ use anyhow::{Context, bail};
 use clap::{Args, Parser, Subcommand};
 
 use client::Api;
-use state::ServerFile;
+use state::{PublicEnv, ServerFile};
 
 /// サーバの起動を待つ上限
 const START_TIMEOUT: Duration = Duration::from_secs(15);
@@ -288,6 +288,9 @@ fn ensure_server(args: &ServeArgs) -> anyhow::Result<ServerFile> {
     }
     eprintln!("dew: サーバを起動しました。ブラウザで次の URL を開いてください");
     eprintln!("\x1b]8;;{0}\x1b\\{0}\x1b]8;;\x1b\\", s.url);
+    for line in public_lines(&s) {
+        eprintln!("dew: {line}");
+    }
     Ok(s)
 }
 
@@ -480,6 +483,7 @@ fn foreground(args: &ServeArgs) -> anyhow::Result<()> {
         None => default_root(&cwd),
     };
     let root_text = root.to_string_lossy().into_owned();
+    let public = PublicEnv::current();
     let cfg = dew_server::Config {
         bind: args.bind,
         port: args.port,
@@ -492,12 +496,8 @@ fn foreground(args: &ServeArgs) -> anyhow::Result<()> {
             .unwrap_or_else(|| state::data_dir().join("tls")),
         state_dir: state::data_dir(),
         csv: config::load().csv(),
-        public_host: std::env::var("DEW_PUBLIC_HOST")
-            .ok()
-            .filter(|s| !s.is_empty()),
-        public_port: std::env::var("DEW_PUBLIC_PORT")
-            .ok()
-            .and_then(|s| s.parse().ok()),
+        public_host: public.host.clone(),
+        public_port: public.port.as_deref().and_then(|s| s.parse().ok()),
     };
     let local_host = if args.bind.is_unspecified() {
         "127.0.0.1".to_owned()
@@ -520,6 +520,7 @@ fn foreground(args: &ServeArgs) -> anyhow::Result<()> {
             notes: r.notes.clone(),
             exe_mtime,
             root: root_text,
+            public: Some(public),
         };
         if let Err(e) = state::write(&s) {
             tracing::error!("server.json を書けません: {e:#}");
@@ -568,9 +569,68 @@ fn stop(force: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// URL を OSC 8 ハイパーリンクで表示する(WezTerm ではクリックで開ける)
+/// URL を OSC 8 ハイパーリンクで表示する(WezTerm ではクリックで開ける)。
+/// URL を決めた設定は標準エラー出力に添える(標準出力は URL だけにしておく)
 fn print_url(s: &ServerFile) {
     println!("{}", term::link(&s.url));
+    for line in public_lines(s) {
+        eprintln!("dew: {line}");
+    }
+}
+
+/// URL のホストとポートを決めた設定(DEW_PUBLIC_HOST / DEW_PUBLIC_PORT)と、この端末の値が
+/// サーバを起動したときと違えばその注意。リモートのサーバで開けないときに原因を探せるように(ADR 0033)
+fn public_lines(s: &ServerFile) -> Vec<String> {
+    let Some(p) = &s.public else {
+        return Vec::new();
+    };
+    let host = match &p.host {
+        Some(h) => h.clone(),
+        None => "未設定(localhost を使う)".to_owned(),
+    };
+    let port = match &p.port {
+        None => format!("未設定(待ち受けポート {} を使う)", s.port),
+        Some(v)
+            if v.parse::<u16>()
+                .ok()
+                .is_some_and(|v| url_port(&s.url) == Some(v)) =>
+        {
+            format!("{v}(待ち受けポートは {})", s.port)
+        }
+        Some(v) => format!(
+            "{v}(使っていない。URL は待ち受けポート {} で作った)",
+            s.port
+        ),
+    };
+    let mut lines = vec![
+        format!("DEW_PUBLIC_HOST: {host}"),
+        format!("DEW_PUBLIC_PORT: {port}"),
+    ];
+    let now = PublicEnv::current();
+    for (name, then, now) in [
+        ("DEW_PUBLIC_HOST", &p.host, &now.host),
+        ("DEW_PUBLIC_PORT", &p.port, &now.port),
+    ] {
+        if then != now {
+            lines.push(format!(
+                "注意: この端末の {name} は {} で、動いているサーバを起動したときと違います。この端末の値を使うには dew stop してから起動し直してください",
+                now.as_deref().unwrap_or("未設定")
+            ));
+        }
+    }
+    lines
+}
+
+/// `https://host:port/…` のポート
+fn url_port(url: &str) -> Option<u16> {
+    url.split_once("://")?
+        .1
+        .split('/')
+        .next()?
+        .rsplit_once(':')?
+        .1
+        .parse()
+        .ok()
 }
 
 /// 端末から開かせる URL(14.3)。開くとトークンを Cookie に移し、`path` があればそのファイルを開く
