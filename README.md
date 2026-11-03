@@ -4,32 +4,32 @@ Linux(WSL2・リモートの Ubuntu サーバ・それらの中の Docker コン
 
 - 画像・動画を、音声付き・元のフレームレートで再生できます(コマ送り、A-B ループ、複数の動画の同期再生・比較、画素の値の表示)
 - `cv2.imshow`・matplotlib・pygame などのウィンドウを、**プログラムを書き換えずに**ブラウザへ映せます(キー・マウスの入力も送れます)
+- Markdownファイル, CSVファイルのプレビューができます
+- ワンクリックでローカルにダウンロードできます(複数選択・ディレクトリ選択可)
 - 映したウィンドウは、録画(MP4)・直近 30 秒の巻き戻しができます
 - 1つのコマンド・1つのポートで動き、ブラウザ側に入れるものはありません
+- 基本的にキーボードのみで操作できます
 
 ## Demo
 「ファイルを開く(キーでもマウスでも)」
 
 
-https://github.com/user-attachments/assets/12732c45-21d9-4287-9c14-aeb2f5297b03
-
-  
-「並べて比べる」
+https://github.com/user-attachments/assets/2350168e-dfab-498f-815b-d78f622f64c3
 
 
-https://github.com/user-attachments/assets/d266629b-a2b2-4e3f-ac9e-76f96dab21d0
+「Markdownを読む」
 
 
-「GUI のウィンドウを映す」
+https://github.com/user-attachments/assets/7b668a75-f42e-492f-9f4a-8bfed1dc88ca
 
 
-https://github.com/user-attachments/assets/a046befa-161b-4637-9528-74e2aad027d7
+「ダウンロードする」
+
+「プログラムの描画ウィンドウを見る」
 
 
-「録画と巻き戻し」
+https://github.com/user-attachments/assets/c15b8081-00a5-4f03-be9a-38e2e595b492
 
-
-https://github.com/user-attachments/assets/82736b2a-42cb-4993-b110-769ba91977d2
 
 
 ## 必要なもの
