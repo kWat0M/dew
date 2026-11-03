@@ -2,6 +2,7 @@
 import { describe, expect, test } from 'vitest';
 import { compareKeys, imageKeys, liveKeys, normal, playKeys, windowHelp, windowKeys } from './canvas/Canvas';
 import { homeBindings } from './home/Home';
+import { selectionBindings } from './home/SelectionList';
 import { ja } from './i18n/ja';
 
 /** 表示に載っている書き方からキーを取り出す('j / k' → j と k、'0–9' → 0〜9、'gg' → 'g g') */
@@ -45,6 +46,7 @@ describe('キー一覧に全キーが載っている', () => {
 describe('ヒントの帯に主なキーが載っている', () => {
   test.each([
     ['Home', homeBindings, ja.homeHints],
+    ['選択中の一覧', selectionBindings, ja.selectionHints],
     ['キャンバス', normal, ja.canvasHints.normal],
     // 操作モードの帯はウィンドウの種類と状態で出し分けるので、全部の組を合わせて調べる
     ['操作モード(動画)', playKeys, [...ja.canvasHints.video, ...ja.canvasHints.opCommon]],

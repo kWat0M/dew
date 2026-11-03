@@ -1,0 +1,67 @@
+/* 選択中のファイルの一覧: 上部のバーの右下に小さく出す(ヒントの帯が見えるよう、後ろは暗くしない) */
+.selection-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+}
+
+.selection-list {
+  position: absolute;
+  top: 56px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  width: min(560px, calc(100vw - 32px));
+  max-height: 60vh;
+  border-radius: var(--md-sys-shape-corner-large);
+  background: var(--md-sys-color-surface-container);
+  box-shadow: var(--md-sys-elevation-level2);
+  overflow: hidden;
+}
+
+.selection-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 4px 16px;
+}
+
+.selection-bar h2 {
+  flex: 1;
+  margin: 0;
+  font: var(--md-sys-typescale-title-medium);
+}
+
+.selection-list ul {
+  margin: 0;
+  padding: 0 8px 8px;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.selection-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--md-sys-shape-corner-small);
+}
+
+.selection-row.selected {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+.selection-path {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  color: inherit;
+  font: var(--md-sys-typescale-body-medium);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}

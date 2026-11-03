@@ -8,7 +8,7 @@ import type { Events } from '../api/events';
 import type { Entry } from '../protocol/Entry';
 import type { MediaKind } from '../protocol/MediaKind';
 import type { Tree } from '../protocol/Tree';
-import { basename, join } from '../format';
+import { basename, dirname, join } from '../format';
 import type { DownloadItem } from '../download';
 import { ja } from '../i18n/ja';
 import { Icon } from '../icons';
@@ -18,11 +18,12 @@ import { urlOf } from '../nav';
 import { useKeys } from '../useKeys';
 import { EntryList, type View } from './EntryList';
 import { Preview } from './Preview';
+import { SelectionList } from './SelectionList';
 import './Home.css';
 
 export type HomeAction =
   | 'down' | 'up' | 'parent' | 'enter' | 'open' | 'mark' | 'top' | 'bottom'
-  | 'filter' | 'follow' | 'view' | 'hidden' | 'canvas' | 'initial' | 'history' | 'help' | 'compare' | 'download' | 'escape';
+  | 'filter' | 'follow' | 'view' | 'hidden' | 'canvas' | 'initial' | 'history' | 'help' | 'compare' | 'download' | 'selection' | 'escape';
 
 type Action = HomeAction;
 
@@ -35,7 +36,8 @@ export const homeCommands: CommandDef<HomeAction>[] = [
   { id: 'filter', key: '/', label: '絞り込み' }, { id: 'follow', key: 'n', label: '最新に追従' },
   { id: 'view', key: 'v', label: 'リスト / グリッド' }, { id: 'hidden', key: '.', label: '隠しファイル' },
   { id: 'initial', key: 'H', label: '初期位置へ' }, { id: 'canvas', key: 'Tab', label: 'キャンバスへ' },
-  { id: 'compare', key: 'c', label: '選択を比較' }, { id: 'download', key: 'D', label: '保存' },
+  { id: 'selection', key: 'm', label: '選択中の一覧' }, { id: 'compare', key: 'c', label: '選択を比較' },
+  { id: 'download', key: 'D', label: '保存' },
 ];
 
 /** 操作パネルの上に出す、画面にボタンがない操作 */
@@ -46,7 +48,7 @@ export const homeBindings: Record<string, HomeAction> = {
   j: 'down', ArrowDown: 'down', k: 'up', ArrowUp: 'up',
   h: 'parent', ArrowLeft: 'parent', l: 'enter', ArrowRight: 'enter',
   Enter: 'open', ' ': 'mark', 'g g': 'top', G: 'bottom',
-  '/': 'filter', n: 'follow', v: 'view', '.': 'hidden', Tab: 'canvas', H: 'initial', r: 'history', '?': 'help', c: 'compare', D: 'download', Escape: 'escape', 'C-[': 'escape',
+  '/': 'filter', n: 'follow', v: 'view', '.': 'hidden', Tab: 'canvas', H: 'initial', r: 'history', '?': 'help', m: 'selection', c: 'compare', D: 'download', Escape: 'escape', 'C-[': 'escape',
 };
 const keymap = new KeySequence<Action>(homeBindings);
 
@@ -109,6 +111,14 @@ export function Home(p: Props) {
 
   /** Space・Ctrl+クリックなどで選んだファイル(フルパス → 項目)。別のディレクトリへ移っても残す */
   const [marked, setMarked] = useState<Map<string, Entry>>(new Map());
+  /** 選択中のファイルの一覧を出しているか(選択がなくなったら閉じる) */
+  const [listOpen, setListOpen] = useState(false);
+  if (listOpen && marked.size === 0) setListOpen(false);
+  /** 選んだもののうち比較できるもの(読める画像・動画のファイル) */
+  const comparable = useMemo(
+    () => [...marked].filter(([, e]) => e.kind === 'file' && (e.media === 'video' || e.media === 'image') && e.readable),
+    [marked],
+  );
   const compact = useCompact();
   const [changed, setChanged] = useState<Set<string>>(new Set());
   /** ディレクトリごとに最後に選んでいた名前(戻ったとき・ブラウザの履歴で戻ったときに同じ位置にする) */
@@ -324,13 +334,15 @@ export function Home(p: Props) {
       case 'history': return p.onHistory();
       case 'help': return p.onHelp();
       case 'compare': {
-        const files = [...marked]
-          .filter(([, e]) => e.kind === 'file' && (e.media === 'video' || e.media === 'image') && e.readable)
-          .map(([path, e]) => ({ path, media: e.media }));
-        if (files.length < 2) return onError(ja.compareNeedTwo);
+        if (comparable.length < 2) return onError(ja.compareNeedTwo);
+        const skipped = marked.size - comparable.length;
+        if (skipped > 0) onError(ja.compareSkipped(skipped));
         setMarked(new Map());
-        return p.onCompare(files);
+        return p.onCompare(comparable.map(([path, e]) => ({ path, media: e.media })));
       }
+      case 'selection':
+        if (marked.size === 0) return onError(ja.selectedNone);
+        return setListOpen(true);
       case 'download': {
         // 選んだものがあれば全部、なければカーソルの位置のもの
         const list: [string, Entry][] = marked.size ? [...marked] : current && cwd ? [[join(cwd, current.name), current]] : [];
@@ -351,7 +363,7 @@ export function Home(p: Props) {
     if (a === null) return;
     e.preventDefault();
     if (a !== 'pending') run(a);
-  }, p.active && !filtering);
+  }, p.active && !filtering && !listOpen);
 
   // 幅の狭い画面では、パンくずの末尾(今のディレクトリ)が見えるように右端まで送る
   const crumbsRef = useRef<HTMLElement>(null);
@@ -411,8 +423,12 @@ export function Home(p: Props) {
           )}
         </nav>
         <div className="home-status">
-          {marked.size > 0 && <span className="chip">{ja.selectedCount(marked.size)}</span>}
-          {marked.size > 1 && !compact && (
+          {marked.size > 0 && (
+            <button type="button" className="chip chip-button" title={ja.selectedListKey} aria-haspopup="dialog" aria-expanded={listOpen} onClick={() => run('selection')}>
+              {ja.selectedCount(marked.size)}
+            </button>
+          )}
+          {comparable.length > 1 && !compact && (
             <button type="button" className="text-button with-icon" title={ja.compareKey} onClick={() => run('compare')}>
               <Icon name="compare" size={18} />
               {ja.compare}
@@ -496,8 +512,26 @@ export function Home(p: Props) {
       </div>
       {p.hints && !compact && (
         <HintBar
-          items={ja.homeHints.map(([k, l]) => [k, k === 'n' && p.follow ? ja.hintFollowOff : k === '.' && p.showHidden ? ja.hintHiddenOff : l])}
+          items={listOpen ? ja.selectionHints : ja.homeHints.map(([k, l]) => [k, k === 'n' && p.follow ? ja.hintFollowOff : k === '.' && p.showHidden ? ja.hintHiddenOff : l])}
           onHide={p.onHideHints}
+        />
+      )}
+      {listOpen && (
+        <SelectionList
+          paths={[...marked.keys()]}
+          root={p.root}
+          onGo={(path) => {
+            setListOpen(false);
+            go(dirname(path), basename(path));
+          }}
+          onUnmark={(path) =>
+            setMarked((m) => {
+              const n = new Map(m);
+              n.delete(path);
+              return n;
+            })
+          }
+          onClose={() => setListOpen(false)}
         />
       )}
       <button type="button" className="fab" title={ja.toCanvas} onClick={p.onCanvas}>

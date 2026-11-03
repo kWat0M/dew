@@ -40,12 +40,13 @@ export const ja = {
   liveUntitled: '(名前のないウィンドウ)',
   sync: '同期再生',
   compare: '比較',
-  compareKey: '選んだファイルを比較(c)',
+  compareKey: '選んだ画像・動画を比較(c)',
   compareTitle: (names: string[]) => `比較: ${names.join(' / ')}`,
   compareMode: '比較の表示',
   compareModes: { side: '並べる', slider: 'スライダー', diff: '差分' } as Record<'side' | 'slider' | 'diff', string>,
   comparePair: (a: string, b: string) => `${a} と ${b} を比べています`,
-  compareNeedTwo: '比較するファイルを2つ以上選んでください(Space か Ctrl+クリック)',
+  compareNeedTwo: '比較する画像・動画を2つ以上選んでください(Space か Ctrl+クリック)',
+  compareSkipped: (n: number) => `画像・動画でない ${n} 件は、比較に入れていません`,
   syncKey: '同期再生(S)。フォーカス中のウィンドウに合わせる',
   syncing: '同期再生中',
   syncAudio: '同期再生中は全ウィンドウの音を出す',
@@ -67,6 +68,11 @@ export const ja = {
   changed: '新規・更新',
   unreadable: '読み取り権限がありません',
   selectedCount: (n: number) => `${n} 件を選択中`,
+  selectedList: '選択中のファイル',
+  selectedListKey: '選択中のファイルの一覧(m)',
+  selectedNone: '選択中のファイルはありません(Space か Ctrl+クリックで選ぶ)',
+  unmark: '選択解除',
+  showInDir: (path: string) => `${path} のあるディレクトリへ移る`,
   liveWindows: (n: number) => `ライブウィンドウ ${n} 個`,
 
   size: 'サイズ',
@@ -285,9 +291,13 @@ export const ja = {
     up: 'ディレクトリを Home で開く', copyPath: 'このファイルのパスをコピー', encoding: '文字コードを切り替える',
   },
   homeHints: [
-    ['j/k', '移動'], ['h/l', '親へ / 中へ'], ['Enter', '開く'], ['Space', '選択'], ['c', '比較'], ['D', '保存'], ['/', '絞り込み'],
+    ['j/k', '移動'], ['h/l', '親へ / 中へ'], ['Enter', '開く'], ['Space', '選択'], ['m', '選択中の一覧'], ['c', '比較'], ['D', '保存'], ['/', '絞り込み'],
     ['gg/G', '先頭 / 末尾'], ['n', '追従'], ['v', 'リスト / グリッド'], ['.', '隠しファイル'], ['H', '初期位置'],
     ['Tab', 'キャンバス'], ['r', '履歴'], ['?', 'キー一覧'],
+  ] as [string, string][],
+  /** 選択中のファイルの一覧を開いている間のヒントの帯 */
+  selectionHints: [
+    ['j/k', '移動'], ['l/Enter', 'そのディレクトリへ'], ['Space', '選択を外す'], ['gg/G', '先頭 / 末尾'], ['q/Esc', '閉じる'],
   ] as [string, string][],
   /**
    * キャンバスのヒントの帯(4.4)。ノーマルモードでは normal、操作モードではフォーカス中のウィンドウの種類と状態のもの
@@ -325,7 +335,8 @@ export const ja = {
     ['h / l', '親へ / 中へ(ファイルなら開く)'],
     ['Enter', '開く(Space で選んだものはまとめて)'],
     ['Space', '複数選択'],
-    ['c', '選んだファイルを比較(2つ以上)'],
+    ['m', '選択中のファイルの一覧(j / k で移動、l / Enter でそのディレクトリへ、Space で選択を外す、q で閉じる)'],
+    ['c', '選んだ画像・動画を比較(2つ以上)'],
     ['D', '保存(Space で選んだものはまとめて。ディレクトリや複数は zip)'],
     ['gg / G', '先頭 / 末尾'],
     ['/', '絞り込み'],
