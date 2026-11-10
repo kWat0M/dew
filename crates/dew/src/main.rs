@@ -2,6 +2,7 @@
 
 mod client;
 mod config;
+mod config_cmd;
 mod doctor;
 mod hooks;
 mod shell;
@@ -21,6 +22,7 @@ use anyhow::{Context, bail};
 use clap::{Args, Parser, Subcommand};
 
 use client::Api;
+use config::Origin;
 use state::{PublicEnv, ServerFile};
 
 /// サーバの起動を待つ上限
@@ -102,6 +104,9 @@ enum Sub {
     SetupWezterm,
     /// トークンを作り直す(接続中のタブは切れる)
     RotateToken,
+    /// URL のホストとポートの設定を読み書きする(git config の形。環境変数 DEW_PUBLIC_HOST / DEW_PUBLIC_PORT が優先)
+    #[command(long_about = config_cmd::HELP, arg_required_else_help = true)]
+    Config(config_cmd::ConfigArgs),
 }
 
 /// シェル関数が付ける引数(13.2)
@@ -146,6 +151,9 @@ fn main() -> ExitCode {
             }
         };
     }
+    if let Some(Sub::Config(args)) = &cli.command {
+        return config_cmd::run(args);
+    }
     let result = match cli.command {
         Some(Sub::Url { open, copy }) => url(open, copy),
         Some(Sub::Status) => running().map(|s| {
@@ -177,7 +185,7 @@ fn main() -> ExitCode {
         }
         Some(Sub::RotateToken) => rotate_token(),
         Some(Sub::Update) => update::run(),
-        Some(Sub::Run { .. }) => unreachable!(),
+        Some(Sub::Run { .. } | Sub::Config(_)) => unreachable!(),
         None if cli.serve.foreground => foreground(&cli.serve),
         None => start(&cli.serve, cli.path.as_deref()),
     };
@@ -483,7 +491,8 @@ fn foreground(args: &ServeArgs) -> anyhow::Result<()> {
         None => default_root(&cwd),
     };
     let root_text = root.to_string_lossy().into_owned();
-    let public = PublicEnv::current();
+    let file_cfg = config::load();
+    let public = PublicEnv::resolve(&file_cfg);
     let cfg = dew_server::Config {
         bind: args.bind,
         port: args.port,
@@ -495,7 +504,7 @@ fn foreground(args: &ServeArgs) -> anyhow::Result<()> {
             .map(PathBuf::from)
             .unwrap_or_else(|| state::data_dir().join("tls")),
         state_dir: state::data_dir(),
-        csv: config::load().csv(),
+        csv: file_cfg.csv(),
         public_host: public.host.clone(),
         public_port: public.port.as_deref().and_then(|s| s.parse().ok()),
     };
@@ -578,47 +587,103 @@ fn print_url(s: &ServerFile) {
     }
 }
 
-/// URL のホストとポートを決めた設定(DEW_PUBLIC_HOST / DEW_PUBLIC_PORT)と、この端末の値が
-/// サーバを起動したときと違えばその注意。リモートのサーバで開けないときに原因を探せるように(ADR 0033)
+/// URL のホストとポートを決めた設定(DEW_PUBLIC_HOST / DEW_PUBLIC_PORT か dew config)と、この端末の値が
+/// サーバを起動したときと違えばその注意。リモートのサーバで開けないときに原因を探せるように(ADR 0033、0035)
 fn public_lines(s: &ServerFile) -> Vec<String> {
     let Some(p) = &s.public else {
         return Vec::new();
     };
     let host = match &p.host {
-        Some(h) => h.clone(),
+        Some(h) => format!("{h}({})", origin_name(p.host_origin, PublicKey::Host)),
+        None if p.host_origin == Some(Origin::Env) => {
+            "未設定(DEW_PUBLIC_HOST が空なので localhost を使う)".to_owned()
+        }
         None => "未設定(localhost を使う)".to_owned(),
     };
     let port = match &p.port {
-        None => format!("未設定(待ち受けポート {} を使う)", s.port),
-        Some(v)
-            if v.parse::<u16>()
-                .ok()
-                .is_some_and(|v| url_port(&s.url) == Some(v)) =>
-        {
-            format!("{v}(待ち受けポートは {})", s.port)
-        }
-        Some(v) => format!(
-            "{v}(使っていない。URL は待ち受けポート {} で作った)",
+        None if p.port_origin == Some(Origin::Env) => format!(
+            "未設定(DEW_PUBLIC_PORT が空なので待ち受けポート {} を使う)",
             s.port
         ),
+        None => format!("未設定(待ち受けポート {} を使う)", s.port),
+        Some(v) => {
+            let from = origin_name(p.port_origin, PublicKey::Port);
+            if v.parse::<u16>()
+                .ok()
+                .is_some_and(|v| url_port(&s.url) == Some(v))
+            {
+                format!("{v}({from}。待ち受けポートは {})", s.port)
+            } else {
+                format!(
+                    "{v}({from}。使っていない。URL は待ち受けポート {} で作った)",
+                    s.port
+                )
+            }
+        }
     };
     let mut lines = vec![
-        format!("DEW_PUBLIC_HOST: {host}"),
-        format!("DEW_PUBLIC_PORT: {port}"),
+        format!("URL のホスト: {host}"),
+        format!("URL のポート: {port}"),
     ];
     let now = PublicEnv::current();
-    for (name, then, now) in [
-        ("DEW_PUBLIC_HOST", &p.host, &now.host),
-        ("DEW_PUBLIC_PORT", &p.port, &now.port),
+    for (key, then, now, origin) in [
+        (PublicKey::Host, &p.host, &now.host, now.host_origin),
+        (PublicKey::Port, &p.port, &now.port, now.port_origin),
     ] {
         if then != now {
+            let now = match now {
+                Some(v) => format!("{v}({})", origin_name(origin, key)),
+                None => "未設定".to_owned(),
+            };
             lines.push(format!(
-                "注意: この端末の {name} は {} で、動いているサーバを起動したときと違います。この端末の値を使うには dew stop してから起動し直してください",
-                now.as_deref().unwrap_or("未設定")
+                "注意: この端末では URL の{}が {now} で、動いているサーバを起動したときと違います。この端末の値を使うには dew stop してから起動し直してください",
+                key.label()
             ));
         }
     }
     lines
+}
+
+/// URL のホストかポート
+#[derive(Clone, Copy)]
+enum PublicKey {
+    Host,
+    Port,
+}
+
+impl PublicKey {
+    fn label(self) -> &'static str {
+        match self {
+            PublicKey::Host => "ホスト",
+            PublicKey::Port => "ポート",
+        }
+    }
+}
+
+/// 値の出どころの表示。記録のない前の版のサーバは環境変数
+fn origin_name(origin: Option<Origin>, key: PublicKey) -> &'static str {
+    match (origin, key) {
+        (Some(Origin::File), PublicKey::Host) => "dew config host",
+        (Some(Origin::File), PublicKey::Port) => "dew config port",
+        (_, PublicKey::Host) => "DEW_PUBLIC_HOST",
+        (_, PublicKey::Port) => "DEW_PUBLIC_PORT",
+    }
+}
+
+/// 設定を変えたあと、動いているサーバが前の値で URL を作っていれば知らせる
+fn note_running_server() {
+    let Some(s) = alive() else {
+        return;
+    };
+    let Some(then) = &s.public else {
+        return;
+    };
+    let now = PublicEnv::current();
+    if then.host != now.host || then.port != now.port {
+        eprintln!(
+            "dew: 注意: 動いているサーバには効きません。dew stop してから起動し直してください"
+        );
+    }
 }
 
 /// `https://host:port/…` のポート

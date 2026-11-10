@@ -1,4 +1,4 @@
-//! URL と一緒に、URL を決めた設定(DEW_PUBLIC_HOST / DEW_PUBLIC_PORT)を出す(ADR 0033)
+//! URL と一緒に、URL を決めた設定(DEW_PUBLIC_HOST / DEW_PUBLIC_PORT か dew config)を出す(ADR 0033、0035)
 
 mod common;
 
@@ -27,10 +27,13 @@ fn url_shows_public_settings_and_stale_env() {
     let port = free_port().to_string();
     let out = dew(&a, &["--port", &port], &[("DEW_PUBLIC_HOST", "192.0.2.10")]);
     let err = String::from_utf8_lossy(&out.stderr);
-    assert!(err.contains("DEW_PUBLIC_HOST: 192.0.2.10"), "{err}");
+    assert!(
+        err.contains("URL のホスト: 192.0.2.10(DEW_PUBLIC_HOST)"),
+        "{err}"
+    );
     assert!(
         err.contains(&format!(
-            "DEW_PUBLIC_PORT: 未設定(待ち受けポート {} を使う)",
+            "URL のポート: 未設定(待ち受けポート {} を使う)",
             a.port()
         )),
         "{err}"
@@ -47,9 +50,12 @@ fn url_shows_public_settings_and_stale_env() {
     // この端末で値を変えても、動いているサーバには効かないことを知らせる
     let out = dew(&a, &["url"], &[("DEW_PUBLIC_HOST", "192.0.2.20")]);
     let err = String::from_utf8_lossy(&out.stderr);
-    assert!(err.contains("DEW_PUBLIC_HOST: 192.0.2.10"), "{err}");
     assert!(
-        err.contains("この端末の DEW_PUBLIC_HOST は 192.0.2.20"),
+        err.contains("URL のホスト: 192.0.2.10(DEW_PUBLIC_HOST)"),
+        "{err}"
+    );
+    assert!(
+        err.contains("この端末では URL のホストが 192.0.2.20(DEW_PUBLIC_HOST)"),
         "{err}"
     );
 }

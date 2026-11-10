@@ -28,7 +28,7 @@ pub(crate) async fn load_or_create(
         .context("証明書を読み込めません")
 }
 
-/// 対象名はホスト名、コンテナの IP、DEW_PUBLIC_HOST、localhost
+/// 対象名はホスト名、コンテナの IP、URL のホスト(DEW_PUBLIC_HOST か dew config host)、localhost
 fn create(dir: &Path, public_host: Option<&str>) -> anyhow::Result<()> {
     let mut names = vec![
         "localhost".to_owned(),
