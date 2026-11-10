@@ -66,7 +66,7 @@ WSL2 と WSL2 内コンテナは Windows から `localhost` でそのまま開�
 
 - コンテナ内の待ち受けポートは常に 8765(`--port` / `DEW_PORT` で変更可)
 - ホスト側のポートはコンテナ作成時に各自で割り当てる。例: `docker run -p 18765:8765 -e DEW_PUBLIC_PORT=18765 …`(Jupyter の `-p 8888:8888` と同じ設定)
-- コンテナ内からはホスト側のポート番号とホスト名が分からないため、表示する URL には `DEW_PUBLIC_HOST` / `DEW_PUBLIC_PORT` を使う。`DEW_PUBLIC_HOST` が未設定ならホスト名は `localhost` にして注意を出し(2026-10-25 変更。以前はマシンのホスト名と警告。ADR 0032)、`DEW_PUBLIC_PORT` が未設定なら内部ポートで表示する。URL を出すときは、使った `DEW_PUBLIC_HOST` / `DEW_PUBLIC_PORT` と待ち受けポートを添え、端末の値がサーバ起動時と違えば注意を出す(ADR 0033)
+- コンテナ内からはホスト側のポート番号とホスト名が分からないため、表示する URL には `DEW_PUBLIC_HOST` / `DEW_PUBLIC_PORT` を使う。環境変数がなければ設定ファイルの `host` / `port`(`dew config host` / `dew config port` で書く。空の環境変数は設定ファイルも見ない。ADR 0035)を使う。`DEW_PUBLIC_HOST` が未設定ならホスト名は `localhost` にして注意を出し(2026-10-25 変更。以前はマシンのホスト名と警告。ADR 0032)、`DEW_PUBLIC_PORT` が未設定なら内部ポートで表示する。URL を出すときは、使ったホストとポートとその出どころ、待ち受けポートを添え、端末の値がサーバ起動時と違えば注意を出す(ADR 0033)
 - `--network host` のコンテナでは、8765 から順に空きポートを探して使い、そのまま表示する。前回のポートが空いていれば、それを使い直す(13.6)
 - 1つのコンテナ内では1ユーザー1サーバ。2回目以降の `dew` は起動中のサーバ(`~/.cache/dew/server.json` にポートとトークンを記録)を再利用する
 - 仮想ディスプレイ番号も空きを自動で選ぶ(`:100` から順に。前回の番号が空いていれば使い直す。13.6)
@@ -107,6 +107,7 @@ OpenCV の `VideoWriter` 既定の `mp4v` はブラウザで再生できない�
 | `dew url --open` / `dew url --copy` | 端末からブラウザに Home を開かせる / OSC 52 で URL をコピー(14.6) |
 | `dew setup-wezterm` | 端末からブラウザを開くための WezTerm の設定を表示(14.3) |
 | `dew rotate-token` | トークンを作り直す(14.6) |
+| `dew config host [値]` / `dew config port [値]` | URL のホスト・ポートを設定ファイルに書く / 値がなければ今の値を出す。`--unset`・`--list`・`--show-origin`・`--edit` は git config と同じ(ADR 0035) |
 | `dew stop` | サーバを停止(activate 中のシェルがあれば確認。`--force` で確認なし。13.6) |
 | `dew doctor` | 依存(ffmpeg、Xvfb、音声サーバ、GPU)を確認し、足りなければ導入コマンドを表示 |
 | `dew update` | 新しいバージョンを取得して自分自身を置き換える |
@@ -600,7 +601,7 @@ Rust だけ(Leptos 等)でも書けるが、(1) 動画のデコードと描画�
 | 設定ファイル | `~/.config/dew/config.toml`(キーマップも同じファイル。サーバと CLI の設定を置く。ブラウザで決まる設定は localStorage) | 既定 |
 | キャッシュ | `~/.cache/dew/`、上限 5 GB、古い順に削除 | 既定 |
 | TLS 証明書 | 自己署名(ECDSA)を初回に生成し `~/.local/share/dew/tls/` に保存して再利用。`DEW_TLS_DIR` で複数コンテナから共有できる | 既定 |
-| 証明書の対象名 | ホスト名、コンテナの IP、`DEW_PUBLIC_HOST` | 既定 |
+| 証明書の対象名 | ホスト名、コンテナの IP、URL のホスト(`DEW_PUBLIC_HOST` か `dew config host`) | 既定 |
 | サムネイル | 幅 320px の WebP | 既定 |
 | シークバーのプレビュー | 10秒ごとに幅 160px の画像を1枚のスプライトにまとめる | 既定 |
 | 変換の設定 | H.264 High、CRF 20、preset veryfast、AAC 160 kbps、fragmented MP4、6秒セグメント | 既定 |
