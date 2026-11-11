@@ -158,7 +158,7 @@ fn main() -> ExitCode {
         Some(Sub::Url { open, copy }) => url(open, copy),
         Some(Sub::Status) => running().map(|s| {
             print_url(&s);
-            if let Some(line) = root_line(&s) {
+            if let Some(line) = root_line(&s, true) {
                 println!("{line}");
             }
             println!("pid: {}  ポート: {}", s.pid, s.port);
@@ -212,22 +212,10 @@ fn start(args: &ServeArgs, path: Option<&Path>) -> anyhow::Result<()> {
             s
         }
         None => {
-            // ツールが足りなくても起動する(閲覧と、ブラウザで再生できる形式の再生はツールなしで使える。ADR 0019)
-            let unavailable = doctor::unavailable();
-            if !unavailable.is_empty() {
-                let mut pkgs: Vec<&str> = Vec::new();
-                for (name, ps) in &unavailable {
-                    eprintln!("dew: 注意: 使えない機能: {name}");
-                    for p in ps {
-                        if !pkgs.contains(p) {
-                            pkgs.push(p);
-                        }
-                    }
-                }
-                eprintln!(
-                    "dew: ファイルの閲覧と再生はできます。全部使うには: {}(dew doctor で詳しく)",
-                    doctor::install_command(&pkgs)
-                );
+            // ツールが足りなくても起動する(閲覧と、ブラウザで再生できる形式の再生はツールなしで使える。ADR 0019)。
+            // 足りないことは、前に知らせたときと変わったときだけ1行で知らせる(ADR 0036)
+            if let Some(notice) = doctor::startup_notice() {
+                eprintln!("dew: {notice}");
             }
             let s = spawn(args)?;
             for w in &s.warnings {
@@ -264,21 +252,25 @@ fn start(args: &ServeArgs, path: Option<&Path>) -> anyhow::Result<()> {
         eprintln!("dew: ブラウザのタブがありません: {}", term::link(&url));
         return Ok(());
     }
-    if let Some(line) = root_line(&server) {
+    if let Some(line) = root_line(&server, false) {
         eprintln!("dew: {line}");
     }
     print_url(&server);
     Ok(())
 }
 
-/// 閲覧範囲と変え方(範囲が思ったのと違うときに気づけるように)。前の版のサーバは記録がないので出さない
-fn root_line(s: &ServerFile) -> Option<String> {
-    (!s.root.is_empty()).then(|| {
-        format!(
-            "閲覧範囲: {}(変えるには dew stop の後、dew --root <ディレクトリ> で起動し直す)",
-            s.root
-        )
-    })
+/// 閲覧範囲(範囲が思ったのと違うときに気づけるように)。その下が見られることが分かるよう、末尾に / を付ける。
+/// 変え方は dew status でだけ添える(起動のたびには出さない。ADR 0036)。前の版のサーバは記録がないので出さない
+fn root_line(s: &ServerFile, how_to_change: bool) -> Option<String> {
+    if s.root.is_empty() {
+        return None;
+    }
+    let slash = if s.root.ends_with('/') { "" } else { "/" };
+    let mut line = format!("閲覧範囲: {}{slash}", s.root);
+    if how_to_change {
+        line.push_str("(変えるには dew stop の後、dew --root <ディレクトリ> で起動し直す)");
+    }
+    Some(line)
 }
 
 /// 動いているサーバを返す。なければ起動する
@@ -294,11 +286,11 @@ fn ensure_server(args: &ServeArgs) -> anyhow::Result<ServerFile> {
     for n in &s.notes {
         eprintln!("dew: 注意: {n}");
     }
-    eprintln!("dew: サーバを起動しました。ブラウザで次の URL を開いてください");
-    eprintln!("\x1b]8;;{0}\x1b\\{0}\x1b]8;;\x1b\\", s.url);
     for line in public_lines(&s) {
         eprintln!("dew: {line}");
     }
+    eprintln!("dew: サーバを起動しました。ブラウザで次の URL を開いてください");
+    eprintln!("\x1b]8;;{0}\x1b\\{0}\x1b]8;;\x1b\\", s.url);
     Ok(s)
 }
 
@@ -579,12 +571,12 @@ fn stop(force: bool) -> anyhow::Result<()> {
 }
 
 /// URL を OSC 8 ハイパーリンクで表示する(WezTerm ではクリックで開ける)。
-/// URL を決めた設定は標準エラー出力に添える(標準出力は URL だけにしておく)
+/// URL を決めた設定は標準エラー出力に添える(標準出力は URL だけにしておく)。URL は見つけやすいよう最後に出す
 fn print_url(s: &ServerFile) {
-    println!("{}", term::link(&s.url));
     for line in public_lines(s) {
         eprintln!("dew: {line}");
     }
+    println!("{}", term::link(&s.url));
 }
 
 /// URL のホストとポートを決めた設定(DEW_PUBLIC_HOST / DEW_PUBLIC_PORT か dew config)と、この端末の値が
@@ -593,38 +585,27 @@ fn public_lines(s: &ServerFile) -> Vec<String> {
     let Some(p) = &s.public else {
         return Vec::new();
     };
+    // 出どころは DEW_PUBLIC_HOST・dew config host・default(未設定)のどれか(ADR 0036)
     let host = match &p.host {
         Some(h) => format!("{h}({})", origin_name(p.host_origin, PublicKey::Host)),
-        None if p.host_origin == Some(Origin::Env) => {
-            "未設定(DEW_PUBLIC_HOST が空なので localhost を使う)".to_owned()
-        }
-        None => "未設定(localhost を使う)".to_owned(),
+        None if p.host_origin == Some(Origin::Env) => "localhost(DEW_PUBLIC_HOST が空)".to_owned(),
+        None => "localhost(default)".to_owned(),
     };
     let port = match &p.port {
-        None if p.port_origin == Some(Origin::Env) => format!(
-            "未設定(DEW_PUBLIC_PORT が空なので待ち受けポート {} を使う)",
-            s.port
-        ),
-        None => format!("未設定(待ち受けポート {} を使う)", s.port),
+        None if p.port_origin == Some(Origin::Env) => format!("{}(DEW_PUBLIC_PORT が空)", s.port),
+        None => format!("{}(default)", s.port),
         Some(v) => {
             let from = origin_name(p.port_origin, PublicKey::Port);
-            if v.parse::<u16>()
-                .ok()
-                .is_some_and(|v| url_port(&s.url) == Some(v))
-            {
-                format!("{v}({from}。待ち受けポートは {})", s.port)
-            } else {
-                format!(
-                    "{v}({from}。使っていない。URL は待ち受けポート {} で作った)",
-                    s.port
-                )
+            match v.parse::<u16>().ok() {
+                Some(n) if url_port(&s.url) == Some(n) && n == s.port => format!("{v}({from})"),
+                Some(n) if url_port(&s.url) == Some(n) => {
+                    format!("{v}({from}。待ち受けは {})", s.port)
+                }
+                _ => format!("{}(待ち受けポート。{from} の {v} は使っていない)", s.port),
             }
         }
     };
-    let mut lines = vec![
-        format!("URL のホスト: {host}"),
-        format!("URL のポート: {port}"),
-    ];
+    let mut lines = vec![format!("URL の host: {host}・port: {port}")];
     let now = PublicEnv::current();
     for (key, then, now, origin) in [
         (PublicKey::Host, &p.host, &now.host, now.host_origin),
@@ -636,7 +617,7 @@ fn public_lines(s: &ServerFile) -> Vec<String> {
                 None => "未設定".to_owned(),
             };
             lines.push(format!(
-                "注意: この端末では URL の{}が {now} で、動いているサーバを起動したときと違います。この端末の値を使うには dew stop してから起動し直してください",
+                "注意: この端末では URL の {} が {now} で、動いているサーバを起動したときと違います。この端末の値を使うには dew stop してから起動し直してください",
                 key.label()
             ));
         }
@@ -654,8 +635,8 @@ enum PublicKey {
 impl PublicKey {
     fn label(self) -> &'static str {
         match self {
-            PublicKey::Host => "ホスト",
-            PublicKey::Port => "ポート",
+            PublicKey::Host => "host",
+            PublicKey::Port => "port",
         }
     }
 }
