@@ -2,7 +2,7 @@
 
 版ごとの主な変更。版の付け方は「大きな変更.機能の追加.修正」(0.x の間は機能の追加でも 2 つ目を上げる)。
 
-## 未リリース
+## 0.4.0(2026-11-11)
 
 - `dew config host <名前か IP>` で、URL のホストを設定ファイル(`~/.config/dew/config.toml`)に書けるようにした。`~/.bashrc` に `DEW_PUBLIC_HOST` を書かなくてよい。値を付けなければ今の値を出し、`--unset`・`--list`・`--show-origin`・`--edit` は git config と同じ形。ポートも `dew config port` で書ける。環境変数 `DEW_PUBLIC_HOST` / `DEW_PUBLIC_PORT` があればそちらが優先
 - URL と一緒に出す設定を「URL の host: 192.168.1.10(dew config host)・port: 8765(default)」の1行にし、値の出どころ(環境変数・`dew config`・`default`)が分かるようにした。URL はその後、最後に出す
