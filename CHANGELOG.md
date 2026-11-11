@@ -5,7 +5,9 @@
 ## 未リリース
 
 - `dew config host <名前か IP>` で、URL のホストを設定ファイル(`~/.config/dew/config.toml`)に書けるようにした。`~/.bashrc` に `DEW_PUBLIC_HOST` を書かなくてよい。値を付けなければ今の値を出し、`--unset`・`--list`・`--show-origin`・`--edit` は git config と同じ形。ポートも `dew config port` で書ける。環境変数 `DEW_PUBLIC_HOST` / `DEW_PUBLIC_PORT` があればそちらが優先
-- URL と一緒に出す設定を「URL のホスト: 192.168.1.10(dew config host)」のように、値の出どころが分かる形にした
+- URL と一緒に出す設定を「URL の host: 192.168.1.10(dew config host)・port: 8765(default)」の1行にし、値の出どころ(環境変数・`dew config`・`default`)が分かるようにした。URL はその後、最後に出す
+- 起動時に足りないツールを機能ごとに並べるのをやめ、「ツール不足により、一部機能に制限があります(詳細はdew doctor)」の1行を、足りないものが前と変わったときだけ出すようにした。その機能を使う場所では、今までどおり理由と入れ方を出す
+- 起動時の閲覧範囲は末尾に `/` を付け、変え方の説明は `dew status` でだけ出すようにした
 
 ## 0.3.0(2026-11-04)
 

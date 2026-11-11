@@ -202,12 +202,11 @@ dew が端末に出す URL は `https://<ホスト>:<ポート>/?token=…` で�
 
 ```text
 $ dew url
+dew: URL の host: localhost(default)・port: 8765(default)
 https://localhost:8765/?token=0123abcd…
-dew: URL のホスト: 未設定(localhost を使う)
-dew: URL のポート: 未設定(待ち受けポート 8765 を使う)
 ```
 
-`URL のホスト: 未設定` と出たら、3. と 4. の手順で設定します。設定してあれば、値の後のかっこに、どこで設定した値か(`dew config host` か、環境変数の `DEW_PUBLIC_HOST`)が出ます。
+かっこの中は、どこで決まった値かです。`default` は未設定、`dew config host` は 4. のコマンドで設定した値、`DEW_PUBLIC_HOST` は環境変数の値です。host が `localhost(default)` と出たら、3. と 4. の手順で設定します。
 
 #### 3. サーバの名前か IP アドレスを調べる
 

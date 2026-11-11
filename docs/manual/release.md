@@ -37,7 +37,7 @@ sha256sum -c SHA256SUMS            # dew: OK
 ./dew --version
 ./dew doctor                       # 機能ごとに ✓ / ✗ が並び、apt のコマンドが出る(閲覧・再生だけ ✓)
 ./dew run true                     # 「ライブ描画(dew run / dew env)に要る … がありません」と入れ方が出て止まる
-./dew                              # 使えない機能が並び、「ファイルの閲覧と再生はできます」と出て起動する
+./dew                              # 「ツール不足により、一部機能に制限があります(詳細はdew doctor)」と出て起動する(2回目からは出ない)
                                    # ブラウザで開き、MP4 が再生でき、情報の欄に ffprobe がないと出ることを確かめる
 ./dew stop
 apt-get update && apt-get install -y ffmpeg xvfb pulseaudio python3-tk
