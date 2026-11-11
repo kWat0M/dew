@@ -157,7 +157,7 @@ fn url_uses_config_unless_env_overrides() {
     let url = find_url(&out.stdout).expect("URL が表示される");
     assert!(url.starts_with("https://localhost:"), "{url}");
     assert!(
-        stderr(&out).contains("URL のホスト: 未設定(DEW_PUBLIC_HOST が空なので localhost を使う)"),
+        stderr(&out).contains("URL の host: localhost(DEW_PUBLIC_HOST が空)"),
         "{}",
         stderr(&out)
     );
@@ -165,7 +165,7 @@ fn url_uses_config_unless_env_overrides() {
     // この端末では設定ファイルの値になるので、起動し直すよう知らせる
     let out = ok(&a, &["url"], &[]);
     assert!(
-        stderr(&out).contains("この端末では URL のホストが 192.0.2.30(dew config host)"),
+        stderr(&out).contains("この端末では URL の host が 192.0.2.30(dew config host)"),
         "{}",
         stderr(&out)
     );
@@ -175,7 +175,7 @@ fn url_uses_config_unless_env_overrides() {
     let url = find_url(&out.stdout).expect("URL が表示される");
     assert!(url.starts_with("https://192.0.2.30:"), "{url}");
     assert!(
-        stderr(&out).contains("URL のホスト: 192.0.2.30(dew config host)"),
+        stderr(&out).contains("URL の host: 192.0.2.30(dew config host)"),
         "{}",
         stderr(&out)
     );

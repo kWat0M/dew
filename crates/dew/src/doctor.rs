@@ -111,6 +111,24 @@ pub fn unavailable() -> Vec<(&'static str, Vec<&'static str>)> {
         .collect()
 }
 
+/// 起動時の注意(ADR 0036)。足りないツールがあるときに1行だけ出す。毎回出すと、要らない機能のツールを入れずに
+/// 使い続ける人には邪魔なので、前に知らせたときと足りないものが変わったときだけ出す(その機能を使う場所では毎回知らせる)
+pub fn startup_notice() -> Option<&'static str> {
+    let mut pkgs: Vec<&str> = unavailable().into_iter().flat_map(|(_, p)| p).collect();
+    pkgs.sort_unstable();
+    pkgs.dedup();
+    let now = pkgs.join(" ");
+    let path = crate::state::data_dir().join("notified-missing-tools");
+    if std::fs::read_to_string(&path).is_ok_and(|before| before == now) {
+        return None;
+    }
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let _ = std::fs::write(&path, &now);
+    (!pkgs.is_empty()).then_some("ツール不足により、一部機能に制限があります(詳細はdew doctor)")
+}
+
 /// ライブ描画(dew run / dew env)に欠かせないもので足りないもの(仮想ディスプレイの Xvfb と、映像の取り込みの ffmpeg)。
 /// 音声サーバは、なくても音なしで映せるので含めない
 pub fn missing_live() -> Vec<&'static str> {

@@ -155,18 +155,13 @@ pub async fn serve(cfg: Config, on_ready: impl FnOnce(&Ready)) -> anyhow::Result
     });
 
     let mut warnings = Vec::new();
-    let mut notes = Vec::new();
-    // 未設定なら localhost(手元の PC や WSL2 ではそのまま開ける。リモートのサーバでは設定してもらう。ADR 0032)
-    let host = match &cfg.public_host {
-        Some(h) => h.clone(),
-        None => {
-            notes.push(
-                "URL には localhost を使います(ほかの名前にするには dew config host <名前> で設定)"
-                    .to_owned(),
-            );
-            "localhost".to_owned()
-        }
-    };
+    let notes = Vec::new();
+    // 未設定なら localhost(手元の PC や WSL2 ではそのまま開ける。リモートのサーバでは設定してもらう。ADR 0032)。
+    // 未設定であることは、CLI が URL の設定と一緒に出す(ADR 0036)
+    let host = cfg
+        .public_host
+        .clone()
+        .unwrap_or_else(|| "localhost".to_owned());
     let public_port = match cfg.public_port {
         Some(p) if port == wanted => p,
         Some(p) => {

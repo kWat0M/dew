@@ -82,7 +82,7 @@ fn default_root_is_start_dir_outside_git_and_home() {
     );
 }
 
-// 起動したときと dew status で、閲覧範囲と変え方を出す(範囲が思ったのと違うときに気づけるように)
+// 起動したときと dew status で、閲覧範囲を出す(範囲が思ったのと違うときに気づけるように)。変え方は dew status でだけ出す
 #[test]
 fn start_and_status_show_root() {
     let dir = tempfile::TempDir::new().unwrap();
@@ -90,13 +90,15 @@ fn start_and_status_show_root() {
     let a = Instance::new();
     let out = a.dew_in(&dir_path, &["--port", &free_port().to_string()]);
     let err = String::from_utf8_lossy(&out.stderr);
-    let want = format!("閲覧範囲: {}", dir_path.display());
-    assert!(err.contains(&want) && err.contains("--root"), "{err}");
+    let want = format!("閲覧範囲: {}/", dir_path.display());
+    assert!(err.contains(&format!("{want}\n")), "{err}");
+    assert!(!err.contains("--root"), "{err}");
     // 動いているサーバを使い回すときも出す
     let out = a.dew_in(&dir_path, &[]);
     assert!(String::from_utf8_lossy(&out.stderr).contains(&want));
     let out = a.dew_in(&dir_path, &["status"]);
-    assert!(String::from_utf8_lossy(&out.stdout).contains(&want));
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.contains(&want) && text.contains("--root"), "{text}");
 }
 
 #[test]

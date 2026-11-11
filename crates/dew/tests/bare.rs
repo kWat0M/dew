@@ -61,8 +61,8 @@ fn run_without_live_deps_explains_how_to_install() {
     assert!(!out.contains("https://"), "{out}");
 }
 
-/// ツールがなくても起動し、使えない機能を知らせる。動画の情報は「ffprobe がない」と分かる形で返り、
-/// 録画は始める前に断る
+/// ツールがなくても起動し、制限があることを1行で知らせる(次からは、足りないものが変わるまで出さない。ADR 0036)。
+/// 動画の情報は「ffprobe がない」と分かる形で返り、録画は始める前に断る
 #[test]
 fn server_starts_and_reports_missing_tools() {
     let dir = tempfile::tempdir().unwrap();
@@ -75,8 +75,18 @@ fn server_starts_and_reports_missing_tools() {
         root.path().to_str().unwrap(),
     ]);
     let err = String::from_utf8_lossy(&out.stderr);
-    assert!(err.contains("使えない機能: ライブ描画"), "{err}");
-    assert!(err.contains("ファイルの閲覧と再生はできます"), "{err}");
+    let notice = "dew: ツール不足により、一部機能に制限があります(詳細はdew doctor)\n";
+    assert!(err.starts_with(notice), "{err}");
+    assert_eq!(err.matches("dew: ").count(), 3, "{err}");
+    a.dew(&["stop"]);
+    let out = a.dew(&[
+        "--port",
+        &free_port().to_string(),
+        "--root",
+        root.path().to_str().unwrap(),
+    ]);
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(!err.contains("ツール不足"), "{err}");
 
     let q = |p: &Path| urlencode(&p.to_string_lossy());
     let probe: serde_json::Value = a
