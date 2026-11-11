@@ -123,7 +123,7 @@ impl App {
 pub async fn serve(cfg: Config, on_ready: impl FnOnce(&Ready)) -> anyhow::Result<()> {
     let tls = tls::load_or_create(&cfg.tls_dir, cfg.public_host.as_deref()).await?;
     let store = persist::Store::open(&cfg.state_dir);
-    // 前回のポートは、ポートを公開する形(docker run -p。DEW_PUBLIC_PORT がある)では使わない。
+    // 前回のポートは、ポートを公開する形(docker run -p。DEW_PUBLIC_PORT か dew config port がある)では使わない。
     // 公開しているのはコンテナ内の 8765 なので、ほかの番号にすると外から届かない
     let saved = (cfg.port.is_none() && cfg.public_port.is_none())
         .then(|| store.port())
@@ -161,7 +161,7 @@ pub async fn serve(cfg: Config, on_ready: impl FnOnce(&Ready)) -> anyhow::Result
         Some(h) => h.clone(),
         None => {
             notes.push(
-                "URL には localhost を使います(ほかの名前にするには DEW_PUBLIC_HOST を設定)"
+                "URL には localhost を使います(ほかの名前にするには dew config host <名前> で設定)"
                     .to_owned(),
             );
             "localhost".to_owned()
@@ -171,7 +171,7 @@ pub async fn serve(cfg: Config, on_ready: impl FnOnce(&Ready)) -> anyhow::Result
         Some(p) if port == wanted => p,
         Some(p) => {
             warnings.push(format!(
-                "ポート {wanted} が使用中のため {port} で待ち受けます。DEW_PUBLIC_PORT={p} は使わず、内部のポートで表示します"
+                "ポート {wanted} が使用中のため {port} で待ち受けます。URL のポート {p} は使わず、内部のポートで表示します"
             ));
             port
         }

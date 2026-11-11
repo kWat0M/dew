@@ -5,6 +5,8 @@ use std::path::PathBuf;
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
+use crate::config::{self, Origin};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServerFile {
@@ -26,25 +28,39 @@ pub struct ServerFile {
     /// 閲覧範囲(7.2)。起動したときと dew status で出す
     #[serde(default)]
     pub root: String,
-    /// サーバを起動したときの DEW_PUBLIC_HOST / DEW_PUBLIC_PORT。URL と一緒に出す。前の版のサーバは記録がない
+    /// サーバを起動したときの URL のホストとポートの設定。URL と一緒に出す。前の版のサーバは記録がない
     #[serde(default)]
     pub public: Option<PublicEnv>,
 }
 
-/// URL の作り方を決める環境変数(未設定・空は None。書かれたままの文字列で持つ)
+/// URL の作り方を決める設定(環境変数 DEW_PUBLIC_HOST / DEW_PUBLIC_PORT か、dew config の host / port)。
+/// 未設定・空は None。書かれたままの文字列で持つ。出どころの記録がない(前の版の)ものは環境変数
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PublicEnv {
     pub host: Option<String>,
     pub port: Option<String>,
+    #[serde(default)]
+    pub host_origin: Option<Origin>,
+    #[serde(default)]
+    pub port_origin: Option<Origin>,
 }
 
 impl PublicEnv {
-    /// 今のプロセスの環境変数から読む
+    /// 今のプロセスの環境変数と設定ファイルから決める
     pub fn current() -> Self {
-        let var = |k| std::env::var(k).ok().filter(|v: &String| !v.is_empty());
+        Self::resolve(&config::load())
+    }
+
+    pub fn resolve(cfg: &config::Config) -> Self {
+        let (host, host_origin) = config::public_value("DEW_PUBLIC_HOST", cfg.host.clone());
+        let (port, port_origin) =
+            config::public_value("DEW_PUBLIC_PORT", cfg.port.map(|p| p.to_string()));
         Self {
-            host: var("DEW_PUBLIC_HOST"),
-            port: var("DEW_PUBLIC_PORT"),
+            host,
+            port,
+            host_origin,
+            port_origin,
         }
     }
 }

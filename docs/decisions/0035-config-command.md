@@ -1,0 +1,6 @@
+# 0035: URL のホストとポートを dew config で設定ファイルに書く
+
+- 日付: 2026-11-10
+- 状態: 採用
+
+共用の Linux サーバに直接入れて使う人が、`~/.bashrc` に `export DEW_PUBLIC_HOST=…` を書く手順でつまずくため(利用者の要望)、`git config` の形のコマンドで `~/.config/dew/config.toml` の `host` / `port` を読み書きできるようにした。形は利用者の指定で、`dew config host` / `dew config port` に値が続けば設定し、なければ今の値を出す。そのほかも git config に合わせ、`--unset`・`--list`(`-l`)・`--show-origin`・`--edit`(`-e`)と、終了コード(値がない 1、消す設定がない 5)をそろえた。git の新しい形(`git config get` などのサブコマンド)は今回は持たない。ファイルのキー名はコマンドの名前と同じ `host` / `port` にした(`--list` の出力とコマンドが対応するように。待ち受けポートは `--port` / `DEW_PORT` で、設定ファイルには置かない)。環境変数 `DEW_PUBLIC_HOST` / `DEW_PUBLIC_PORT` は設定ファイルより優先する(Docker の `-e` や compose の `.env` で渡す使い方と、`DEW_PUBLIC_HOST=… dew` の一時的な上書きを今までどおり使えるように。git の `GIT_CONFIG_*` と同じ考え方)。空の環境変数は「未設定」として設定ファイルも見ない(README の ssh のポート転送の手順 `DEW_PUBLIC_HOST= dew` で localhost にできるように)。どちらの値が効いているか分かるよう、URL と一緒に出す設定(ADR 0033)を「URL のホスト: 値(DEW_PUBLIC_HOST か dew config host)」の形に変え、`server.json` にも出どころを残す。`dew config` で設定したとき、環境変数が優先されるならその旨を、動いているサーバの URL と食い違うなら起動し直すよう注意を出す。書き換えは一番上の段の `host = …` の行だけを置き換え、コメントやほかの設定は残す(TOML を書き直すクレートは新しい依存になるので使わない)。書き換えた結果を読み直して意図どおりでなければ書かず、`--edit` で直すよう案内する。`--list` は設定ファイルの中身を名前の順に出し(ファイルの順を保つには toml の機能を足す必要があり、そのために依存が増えるため)、続けて設定ファイルを上書きしている環境変数を出す(後のものが効く)。
