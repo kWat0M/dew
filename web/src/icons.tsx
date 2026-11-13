@@ -59,6 +59,7 @@ import arrowDown from '@material-symbols/svg-400/rounded/keyboard_arrow_down.svg
 import dropDown from '@material-symbols/svg-400/rounded/arrow_drop_down.svg?raw';
 import check from '@material-symbols/svg-400/rounded/check.svg?raw';
 import download from '@material-symbols/svg-400/rounded/download.svg?raw';
+import upload from '@material-symbols/svg-400/rounded/upload.svg?raw';
 import './icons.css';
 
 const svgs = {
@@ -67,7 +68,7 @@ const svgs = {
   close, fullscreen, volume, volumeOff, grid, list, minimize, maximize, restore,
   history, help, menu, power, tile, free, search, sync, compare, zoomIn, zoomOut, keyboard, record, stopRecord, article, table, copy,
   arrowBack, arrowForward, toc, textDecrease, textIncrease, arrowUp, arrowDown, dropDown,
-  filter, filterOff, visibility, palette, tune, check, download,
+  filter, filterOff, visibility, palette, tune, check, download, upload,
 };
 
 export type IconName = keyof typeof svgs;

@@ -13,6 +13,7 @@ import type { DownloadItem } from '../download';
 import { ja } from '../i18n/ja';
 import { Icon } from '../icons';
 import { KeySequence, leavesInput } from '../keys';
+import { droppedFiles, hasFiles, uploadFiles, type UploadProgress } from '../upload';
 import { useCompact } from '../useCompact';
 import { urlOf } from '../nav';
 import { useKeys } from '../useKeys';
@@ -23,7 +24,7 @@ import './Home.css';
 
 export type HomeAction =
   | 'down' | 'up' | 'parent' | 'enter' | 'open' | 'mark' | 'top' | 'bottom'
-  | 'filter' | 'follow' | 'view' | 'hidden' | 'canvas' | 'initial' | 'history' | 'help' | 'compare' | 'download' | 'selection' | 'escape';
+  | 'filter' | 'follow' | 'view' | 'hidden' | 'canvas' | 'initial' | 'history' | 'help' | 'compare' | 'download' | 'upload' | 'selection' | 'escape';
 
 type Action = HomeAction;
 
@@ -37,7 +38,7 @@ export const homeCommands: CommandDef<HomeAction>[] = [
   { id: 'view', key: 'v', label: 'リスト / グリッド' }, { id: 'hidden', key: '.', label: '隠しファイル' },
   { id: 'initial', key: 'H', label: '初期位置へ' }, { id: 'canvas', key: 'Tab', label: 'キャンバスへ' },
   { id: 'selection', key: 'm', label: '選択中の一覧' }, { id: 'compare', key: 'c', label: '選択を比較' },
-  { id: 'download', key: 'D', label: '保存' },
+  { id: 'download', key: 'D', label: '保存' }, { id: 'upload', key: 'U', label: 'アップロード' },
 ];
 
 /** 操作パネルの上に出す、画面にボタンがない操作 */
@@ -48,7 +49,7 @@ export const homeBindings: Record<string, HomeAction> = {
   j: 'down', ArrowDown: 'down', k: 'up', ArrowUp: 'up',
   h: 'parent', ArrowLeft: 'parent', l: 'enter', ArrowRight: 'enter',
   Enter: 'open', ' ': 'mark', 'g g': 'top', G: 'bottom',
-  '/': 'filter', n: 'follow', v: 'view', '.': 'hidden', Tab: 'canvas', H: 'initial', r: 'history', '?': 'help', m: 'selection', c: 'compare', D: 'download', Escape: 'escape', 'C-[': 'escape',
+  '/': 'filter', n: 'follow', v: 'view', '.': 'hidden', Tab: 'canvas', H: 'initial', r: 'history', '?': 'help', m: 'selection', c: 'compare', D: 'download', U: 'upload', Escape: 'escape', 'C-[': 'escape',
 };
 const keymap = new KeySequence<Action>(homeBindings);
 
@@ -125,6 +126,12 @@ export function Home(p: Props) {
   const [remembered] = useState(() => new Map<string, string>());
   const followTarget = useRef<string | null>(null);
   const { onError, onOpen, onNavigate, showHidden, follow } = p;
+  /** アップロードの進み具合(送っている間だけ)と、止めるための入口(19章) */
+  const [uploading, setUploading] = useState<UploadProgress | null>(null);
+  const uploadAbort = useRef<AbortController | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  /** ファイルをドラッグして Home の上にあるか(置き場所の案内を出す) */
+  const [dragging, setDragging] = useState(false);
 
   // 外から表示先が変わった(初期位置の取得、dew <ディレクトリ>)
   const [lastRequest, setLastRequest] = useState(p.dir);
@@ -349,12 +356,95 @@ export function Home(p: Props) {
         if (list.length) p.onDownload(list.map(([path, e]) => ({ path, dir: e.kind === 'dir' })));
         return;
       }
+      case 'upload':
+        if (uploading) return onError(ja.uploadBusy);
+        return fileInput.current?.click();
       case 'escape':
         setMarked(new Map());
         setFilter('');
         return;
     }
   };
+
+  /** 今のディレクトリ(2カラム目)へ送る。終わったら、送った最初のファイルにカーソルを合わせる */
+  const upload = async (files: File[]) => {
+    if (!cwd || files.length === 0) return;
+    if (uploading) return onError(ja.uploadBusy);
+    const dir = cwd;
+    const ctrl = new AbortController();
+    uploadAbort.current = ctrl;
+    setUploading({ done: 0, count: files.length, sent: 0, total: files.reduce((n, f) => n + f.size, 0) });
+    const r = await uploadFiles(dir, files, setUploading, ctrl.signal);
+    uploadAbort.current = null;
+    setUploading(null);
+    const renamed = r.saved.filter((s) => s.name !== s.savedAs);
+    const first = r.saved[0];
+    if (first) {
+      remembered.set(dir, first.savedAs);
+      // 送っている間に別のディレクトリへ移っていたら、カーソルは動かさない
+      if (cwdRef.current === dir) {
+        setSelectedName(first.savedAs);
+        setReload((n) => n + 1);
+      }
+    }
+    const lines = [
+      r.canceled ? ja.uploadCanceled(r.saved.length) : r.saved.length ? ja.uploaded(r.saved.length) : null,
+      ...renamed.map((s) => ja.uploadRenamed(s.name, s.savedAs)),
+      ...r.failed.map((f) => ja.uploadFailed(f.name, f.message)),
+    ].filter((l): l is string => l !== null);
+    if (lines.length) onError(lines.join('\n'));
+  };
+  const uploadRef = useRef(upload);
+  const cwdRef = useRef(cwd);
+  useEffect(() => {
+    uploadRef.current = upload;
+    cwdRef.current = cwd;
+  });
+
+  // ドラッグ&ドロップ: Home の上に置いたファイルを今のディレクトリへ送る。
+  // ほかの画面で置いたときも、ブラウザがそのファイルを開いて dew から離れないように止める
+  const activeRef = useRef(p.active);
+  useEffect(() => {
+    activeRef.current = p.active;
+  });
+  useEffect(() => {
+    let depth = 0;
+    const over = (e: DragEvent) => {
+      if (!hasFiles(e.dataTransfer)) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = activeRef.current ? 'copy' : 'none';
+    };
+    const enter = (e: DragEvent) => {
+      if (!hasFiles(e.dataTransfer)) return;
+      depth++;
+      if (activeRef.current) setDragging(true);
+    };
+    const leave = (e: DragEvent) => {
+      if (!hasFiles(e.dataTransfer)) return;
+      depth = Math.max(0, depth - 1);
+      if (depth === 0) setDragging(false);
+    };
+    const drop = (e: DragEvent) => {
+      if (!hasFiles(e.dataTransfer)) return;
+      e.preventDefault();
+      depth = 0;
+      setDragging(false);
+      if (!activeRef.current) return onError(ja.uploadOnHome);
+      const { files, skipped } = droppedFiles(e.dataTransfer!);
+      if (skipped) onError(ja.uploadNoDirs(skipped));
+      void uploadRef.current(files);
+    };
+    window.addEventListener('dragenter', enter);
+    window.addEventListener('dragover', over);
+    window.addEventListener('dragleave', leave);
+    window.addEventListener('drop', drop);
+    return () => {
+      window.removeEventListener('dragenter', enter);
+      window.removeEventListener('dragover', over);
+      window.removeEventListener('dragleave', leave);
+      window.removeEventListener('drop', drop);
+    };
+  }, [onError]);
 
   useImperativeHandle(p.runRef, () => run);
 
@@ -434,6 +524,12 @@ export function Home(p: Props) {
               {ja.compare}
             </button>
           )}
+          {uploading && (
+            <button type="button" className="chip chip-button" data-testid="upload-progress" title={ja.uploadCancel} onClick={() => uploadAbort.current?.abort()}>
+              {ja.uploading(uploading.done + 1 > uploading.count ? uploading.count : uploading.done + 1, uploading.count, uploading.total ? Math.floor((uploading.sent / uploading.total) * 100) : 100)}
+              <Icon name="close" size={16} />
+            </button>
+          )}
           {follow && <span className="chip">{ja.following}</span>}
           {showHidden && <span className="chip">{ja.hiddenShown}</span>}
           <Toolbar
@@ -445,6 +541,21 @@ export function Home(p: Props) {
                     <Icon name="download" />
                   </button>
                 )}
+                <button type="button" className="icon-button" title={ja.uploadKey} aria-label={ja.upload} onClick={() => run('upload')}>
+                  <Icon name="upload" />
+                </button>
+                <input
+                  ref={fileInput}
+                  type="file"
+                  multiple
+                  hidden
+                  data-testid="upload-input"
+                  onChange={(e) => {
+                    const files = [...(e.target.files ?? [])];
+                    e.target.value = '';
+                    void upload(files);
+                  }}
+                />
                 <button type="button" className="icon-button" title={ja.filter} aria-label={ja.filter} onClick={() => setFiltering(true)}>
                   <Icon name="search" />
                 </button>
@@ -508,6 +619,12 @@ export function Home(p: Props) {
           onDoubleClick={(i) => enter(entries[i])}
           empty={tree ? ja.emptyDir : ja.loading}
         />
+        {dragging && (
+          <div className="drop-target" data-testid="drop-target">
+            <Icon name="upload" size={32} />
+            {ja.uploadDrop(cwd ?? '')}
+          </div>
+        )}
         {!compact && <Preview dir={cwd ?? ''} root={p.root} entry={current} showHidden={showHidden} reload={previewReload} onPick={pick} />}
       </div>
       {p.hints && !compact && (
