@@ -50,7 +50,7 @@ export type CanvasRun = {
 export type NormalAction =
   | PlayAction
   | { do: 'focusDir'; dir: Dir } | { do: 'operate' }
-  | { do: 'maximize' } | { do: 'all' } | { do: 'home' } | { do: 'select' } | { do: 'help' } | { do: 'history' }
+  | { do: 'maximize' } | { do: 'minimize' } | { do: 'all' } | { do: 'home' } | { do: 'select' } | { do: 'help' } | { do: 'history' }
   | { do: 'windowMode' } | { do: 'sync' } | { do: 'autoHideBar' } | { do: 'compareMode' } | { do: 'globalMute' } | { do: 'input' } | { do: 'sendText' }
   | { do: 'record' } | { do: 'live' } | { do: 'escape' };
 
@@ -68,7 +68,7 @@ export const normal: Record<string, NormalAction> = {
   h: { do: 'focusDir', dir: 'h' }, j: { do: 'focusDir', dir: 'j' }, k: { do: 'focusDir', dir: 'k' }, l: { do: 'focusDir', dir: 'l' },
   ArrowLeft: { do: 'focusDir', dir: 'h' }, ArrowDown: { do: 'focusDir', dir: 'j' }, ArrowUp: { do: 'focusDir', dir: 'k' }, ArrowRight: { do: 'focusDir', dir: 'l' },
   i: { do: 'operate' }, Enter: { do: 'operate' }, ' ': { do: 'select' },
-  f: { do: 'maximize' }, K: { do: 'all' }, Tab: { do: 'home' }, '?': { do: 'help' },
+  f: { do: 'maximize' }, m: { do: 'minimize' }, K: { do: 'all' }, Tab: { do: 'home' }, '?': { do: 'help' },
   w: { do: 'windowMode' }, r: { do: 'history' }, s: { do: 'autoHideBar' }, S: { do: 'sync' }, M: { do: 'globalMute' }, R: { do: 'record' },
   Escape: { do: 'escape' }, 'C-[': { do: 'escape' },
 };
@@ -148,7 +148,8 @@ export const playCommands: CommandDef<NormalAction>[] = [
 export const canvasCommands: CommandDef<NormalAction>[] = [
   { id: { do: 'operate' }, key: 'i', label: '操作モード' }, { id: { do: 'escape' }, key: 'Esc', label: '操作モードを抜ける' },
   { id: { do: 'home' }, key: 'Tab', label: 'Home へ戻る' }, { id: { do: 'select' }, key: 'Space', label: '選択を切替' },
-  { id: { do: 'maximize' }, key: 'f', label: 'ウィンドウ最大化' }, { id: { do: 'windowMode' }, key: 'w', label: 'ウィンドウ操作モード' },
+  { id: { do: 'maximize' }, key: 'f', label: 'ウィンドウ最大化' }, { id: { do: 'minimize' }, key: 'm', label: 'ウィンドウ最小化' },
+  { id: { do: 'windowMode' }, key: 'w', label: 'ウィンドウ操作モード' },
   { id: { do: 'all' }, key: 'K', label: '全ウィンドウ再生 / 停止' },
   { id: { do: 'globalMute' }, key: 'M', label: '全体のミュート' }, { id: { do: 'sync' }, key: 'S', label: '同期再生' },
   { id: { do: 'autoHideBar' }, key: 's', label: '上部のバーを隠す / 出す' },
@@ -553,6 +554,7 @@ export function Canvas(p: Props) {
       case 'focusDir': return runWindow(a);
       case 'operate': return enterOp();
       case 'maximize': return p.focused !== null && toggleMaximize(p.focused);
+      case 'minimize': return p.focused !== null && minimize(p.focused);
       case 'all': {
         // 1つでも止まっていれば全部再生、全部再生中なら全部止める(比較用)
         const list = [...apis.current.values()].filter((x): x is PlayerApi => x !== null);

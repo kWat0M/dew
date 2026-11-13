@@ -100,6 +100,39 @@ test('最小化したウィンドウはタスクバーから戻り、最大化�
   expect(await first.boundingBox()).toEqual(before);
 });
 
+test('ノーマルモードの m でフォーカス中のウィンドウを最小化する(操作モードの m はミュートのまま)', async ({ page, dew }) => {
+  await start(page, dew);
+  await openFour(page);
+  const muted = (name: string) => win(page, name).locator('video').evaluate((v: HTMLVideoElement) => v.muted);
+
+  // 操作モードの m はこのウィンドウのミュート。全体のミュート(キャンバスに入るとオン)を解いてから確かめる
+  await page.getByTestId('global-mute').click();
+  await expect.poll(() => muted('mp4v.mp4')).toBe(false);
+  await page.keyboard.press('i');
+  await expect(win(page, 'mp4v.mp4')).toHaveAttribute('data-op', 'true');
+  await page.keyboard.press('m');
+  await expect.poll(() => muted('mp4v.mp4')).toBe(true);
+  await expect(win(page, 'mp4v.mp4')).toBeVisible();
+
+  // ノーマルモードの m は最小化。フォーカスは表示中の別のウィンドウへ移る
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('m');
+  await expect(win(page, 'mp4v.mp4')).toBeHidden();
+  await expect(taskbar(page).filter({ hasText: 'mp4v.mp4' })).toBeVisible();
+  expect(await focusedName(page)).toBe('image.png');
+  await page.keyboard.press('m');
+  await expect(win(page, 'image.png')).toBeHidden();
+  await expect(page.locator('[data-testid="player-window"]:visible')).toHaveCount(2);
+
+  // 最大化中でも最小化でき、最大化は解ける
+  await page.keyboard.press('f');
+  await page.keyboard.press('m');
+  await expect(page.locator('[data-testid="player-window"]:visible')).toHaveCount(1);
+  await taskbar(page).filter({ hasText: 'mp4v.mp4' }).click();
+  const area = await page.getByTestId('canvas-area').boundingBox();
+  expect((await win(page, 'mp4v.mp4').boundingBox())!.width).toBeLessThan(area!.width - 4);
+});
+
 test('タイル配置でタイトルバーをドラッグすると並び順と番号が入れ替わる', async ({ page, dew }) => {
   await start(page, dew);
   await openFour(page);
