@@ -226,6 +226,15 @@ pub struct DownloadSize {
     pub files: u32,
 }
 
+/// `PUT /api/upload` の応答(19章)
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct UploadResult {
+    /// 保存した名前。同じ名前があったときは「名前 (1).拡張子」などに変わる
+    pub name: String,
+}
+
 /// `WS /ws/events` でサーバから送る通知
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(

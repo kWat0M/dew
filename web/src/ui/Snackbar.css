@@ -10,5 +10,7 @@
   color: var(--md-sys-color-inverse-on-surface);
   box-shadow: var(--md-sys-elevation-level3);
   font: var(--md-sys-typescale-body-medium);
+  /* 複数の知らせを1つにまとめたときは行を分ける */
+  white-space: pre-line;
   z-index: 100;
 }

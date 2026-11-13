@@ -82,6 +82,7 @@
 }
 
 .columns {
+  position: relative;
   flex: 1;
   display: grid;
   grid-template-columns: minmax(160px, 1fr) minmax(240px, 2fr) minmax(240px, 2fr);
@@ -373,4 +374,31 @@
 .home.compact .fab {
   right: 16px;
   bottom: 16px;
+}
+
+/* ファイルをドラッグしている間、置き場所(2カラム目の今のディレクトリ)に重ねて出す案内(19章) */
+.drop-target {
+  position: absolute;
+  inset: 0;
+  grid-row: 1;
+  grid-column: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px;
+  border: 2px dashed var(--md-sys-color-primary);
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: color-mix(in srgb, var(--md-sys-color-primary-container) 88%, transparent);
+  color: var(--md-sys-color-on-primary-container);
+  font: var(--md-sys-typescale-title-medium);
+  text-align: center;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.home.compact .drop-target {
+  grid-column: 1;
 }
