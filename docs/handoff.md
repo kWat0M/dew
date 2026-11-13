@@ -86,7 +86,7 @@
 
 ### 次のリリースの手順(`docs/manual/release.md` の 3)
 
-0.2.0 は 2026-10-25 にリリースした(タグ `v0.2.0`、`dew update` での更新も確かめた)。0.2.1 は 2026-10-25 にタグ `v0.2.1` を付けた。0.3.0 は 2026-11-04 にリリースした。0.4.0 は `release-0.4.0` で版を上げた(`dew config host` / `port`、起動時の表示を減らす。2026-11-11)。ユーザーが PR を main にマージしたら、下の 2 から行う。作業ツリーに compose の変更があると `scripts/release.sh` が止まるので、そのときは作業用の場所に main を clone して流す(worktree は `.git` がファイルになり、版のコミットが unknown になるので使わない)。
+0.2.0 は 2026-10-25 にリリースした(タグ `v0.2.0`、`dew update` での更新も確かめた)。0.2.1 は 2026-10-25 にタグ `v0.2.1` を付けた。0.3.0 は 2026-11-04 にリリースした。0.4.0 は `release-0.4.0` で版を上げた(`dew config host` / `port`、起動時の表示を減らす。2026-11-11)。0.5.0 は `release-0.5.0` で版を上げた(Home のアップロード、キャンバスのノーマルモードの `m` の最小化。2026-11-13)。ユーザーが PR を main にマージしたら、下の 2 から行う。作業ツリーに compose の変更があると `scripts/release.sh` が止まるので、そのときは作業用の場所に main を clone して流す(worktree は `.git` がファイルになり、版のコミットが unknown になるので使わない)。
 
 1. 新しいブランチで `CHANGELOG.md` に変更点を書き、`Cargo.toml` の `version` を上げ(2つ目の数を上げるときは `crates/*/Cargo.toml` のクレート同士の依存の `version` も)、PR で `main` に入れてもらう
 2. `main` で `scripts/release.sh`(コミットしていない変更があると止まる)。配布物で E2E を流すなら `DEW_BIN=<dist の dew> pnpm -C tests/e2e exec playwright test`
