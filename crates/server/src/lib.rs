@@ -12,6 +12,7 @@ mod persist;
 mod shells;
 mod text;
 mod tls;
+mod upload;
 mod web;
 
 pub use csv::CsvConfig;
@@ -27,7 +28,7 @@ use axum::Router;
 use axum::extract::{Query, Request, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use axum::{Json, middleware};
 use dew_protocol::{
     Info, OpenRequest, OpenResponse, RotateTokenResponse, ShellCount, ShellRequest,
@@ -262,6 +263,7 @@ fn router(app: Arc<App>) -> Router {
         .route("/csv/cancel", post(csv::cancel))
         .route("/download", get(download::file).post(download::zip))
         .route("/download/size", get(download::size))
+        .route("/upload", put(upload::upload))
         .route("/open", post(open))
         .route("/shell", post(shell))
         .route("/shells", get(shells))
